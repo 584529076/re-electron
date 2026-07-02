@@ -1,0 +1,58 @@
+{
+  "id": "Wan2.2-SmoothMix-首尾帧2",
+  "name": "Wan2.2-SmoothMix-首尾帧",
+  "description": "上传首帧和尾帧图片，中间补帧生成视频（默认 5 秒）",
+  "mode": "nsfw",
+  "cover": "covers/Wan2.2-SmoothMix-首尾帧2.png",
+  "coverFallback": {
+    "icon": "fa-images",
+    "gradient": ["#0ea5e9", "#7c3aed"]
+  },
+  "workflowFile": "Wan2.2-SmoothMix-首尾帧2.json",
+  "formFields": [
+    {
+      "id": "start_image",
+      "label": "首帧图片",
+      "type": "image",
+      "nodeId": "365",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp"
+    },
+    {
+      "id": "end_image",
+      "label": "尾帧图片",
+      "type": "image",
+      "nodeId": "342",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp"
+    },
+    {
+      "id": "positive_prompt",
+      "label": "正向提示词",
+      "type": "textarea",
+      "nodeId": "397",
+      "field": "text",
+      "default": "",
+      "rows": 6
+    },
+    {
+      "id": "duration_seconds",
+      "label": "视频时长（秒）",
+      "type": "number",
+      "nodeId": "419",
+      "field": "value",
+      "default": 5,
+      "min": 1,
+      "max": 30,
+      "step": 1,
+      "note": "实际帧数 = 秒数 × 16 + 1（写死 16fps）"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "408", "type": "video", "filenamePrefix": "Video/SmoothMix" }
+  ]
+}

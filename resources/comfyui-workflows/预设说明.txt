@@ -1,0 +1,51 @@
+1、改标题 / 介绍
+
+  打开 qwen_image_nsfw.schema.json，改前 3 行：
+
+  {
+    "id": "qwen_image_nsfw",
+    "name": "Qwen-Image NSFW 文生图",          ← 改成你想要的标题
+    "description": "Qwen-Image 17GB...",       ← 改成你想要的介绍
+    ...
+  }
+
+  保存后重启 app 生效（schema 在 app 启动时 loadAll 一次）。
+
+  ---
+ 2、 放封面图
+
+  方式 1：约定（最省事，不用改 JSON）
+
+  直接在 comfyui-workflows 目录下丢一个文件，文件名必须是 <工具id>.cover.<扩展名>：
+
+  D:\re-electron\resources\comfyui-workflows\
+    ├── qwen_image_nsfw.schema.json
+    ├── qwen_image_nsfw.cover.png        ← 放这个就生效
+    ├── workflow_nsfw.json
+    └── ...
+
+  支持的扩展名：.png / .jpg / .jpeg / .webp，推荐尺寸 560×360（280px 显示 × 2 倍 DPR 才不糊）。
+
+3、添加新工具
+
+  复制 schema 文件改名即可：
+
+  D:\re-electron\resources\comfyui-workflows\
+    ├── qwen_image_nsfw.schema.json        ← 复制
+    ├── sdxl_txt2img.schema.json           ← 改成新文件名
+    ├── sdxl_txt2img.cover.png             ← 配套封面
+    ├── workflow_sdxl.json                 ← ComfyUI workflow JSON
+    └── ...
+
+  新 schema 至少改这些字段：
+  {
+    "id": "sdxl_txt2img",                            ← 必须和文件名一致
+    "name": "SDXL 文生图",
+    "description": "...",
+    "mode": "sfw",                                   ← 或 "nsfw"
+    "workflowFile": "workflow_sdxl.json",            ← 同目录下的 workflow 文件名
+    "formFields": [...]                              ← 拷贝旧 schema 的 formFields，按节点 ID 改
+  }
+
+  formFields 里每项的 nodeId + field 必须对得上你 workflow JSON 里的节点编号（ComfyUI 浏览器里 Save (API Format) 导出的
+  JSON 里都有 id 字段）。

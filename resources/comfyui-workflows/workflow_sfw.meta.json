@@ -1,0 +1,7 @@
+{
+  "name": "SFW 通用 (SDXL 占位)",
+  "mode": "sfw",
+  "placeholders": ["<POSITIVE_PROMPT>"],
+  "defaultResolution": "1024x1024",
+  "notes": "占位 workflow，含 <POSITIVE_PROMPT> 占位符；请用 ComfyUI「Save (API Format)」导出的真 workflow JSON 替换 workflow_sfw.json。Negative prompt 已写死在节点 7。"
+}

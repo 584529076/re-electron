@@ -1,0 +1,36 @@
+{
+  "id": "Prompt_Inversion",
+  "name": "boogu_edit_图片编辑",
+  "description": "boogu_edit_图片编辑工作流",
+  "mode": "sfw",
+  "coverFallback": {
+    "icon": "fa-eye",
+    "gradient": ["#0ea5e9", "#6366f1"]
+  },
+  "workflowFile": "boogu_edit_图片编辑工作流.json",
+  "formFields": [
+    {
+      "id": "image",
+      "label": "上传图片",
+      "type": "image",
+      "nodeId": "32",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "custom_prompt",
+      "label": "图像编辑指令",
+      "type": "textarea",
+      "nodeId": "36",
+      "field": "custom_prompt",
+      "default": "根据图一的人物设计一个海报，\n\n生成一张宣传海报，整体风格为学习笔记贴画风：背景是浅米色纸张纹理，搭配蓝色、黄色装饰色块，点缀回形针、钢笔、铅笔等文具元素。 顶部：左上角标‘YOUR LOGO’，主标题用黑色粗体字 + 黄色衬底写“打造个人IP的秘密”，标题旁加蓝色小三角装饰。 主体区域：左侧是图一角色的半身像；右侧蓝色矩形框标讲师名“林某某”，黄色气泡框写“从事个人IP打造行业 6 年・培训学员过万，口碑极佳”；旁边贴一张知名机构建筑的贴纸图。 下方：蓝色毛边纸张样式的模块，标题“擅长重点”，用黄色序号列出“01.易错点及重难点讲解 02.高频考题精讲精练”。 整体元素排版错落（类似手账贴纸），色彩以浅米、蓝、黄为主，风格轻松有备考氛围感。",
+      "rows": 6,
+      "note": "图像编辑指令"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "45", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}
