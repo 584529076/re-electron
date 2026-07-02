@@ -1,0 +1,175 @@
+{
+  "2": {
+    "inputs": {
+      "unet_name": "boogu\\boogu_image_edit_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "3": {
+    "inputs": {
+      "samples": [
+        "21",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "FLUX\\flux1_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "7": {
+    "inputs": {
+      "clip_name": "boogu\\qwen3vl_8b_fp8_scaled.safetensors",
+      "type": "boogu",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "8": {
+    "inputs": {
+      "width": 1024,
+      "height": 1536,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "21": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 168549867279058,
+      "cfg": 3.5,
+      "model": [
+        "2",
+        0
+      ],
+      "positive": [
+        "36",
+        0
+      ],
+      "negative": [
+        "36",
+        1
+      ],
+      "sampler": [
+        "22",
+        0
+      ],
+      "sigmas": [
+        "26",
+        0
+      ],
+      "latent_image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "自定义采样器"
+    }
+  },
+  "22": {
+    "inputs": {
+      "sampler_name": "dpmpp_2m"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "26": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 25,
+      "denoise": 1,
+      "model": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基本调度器"
+    }
+  },
+  "32": {
+    "inputs": {
+      "image": "file_0000000031a871faa26b008d73c18bbf.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "33": {
+    "inputs": {
+      "shift": 3.16,
+      "model": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "36": {
+    "inputs": {
+      "prompt": "根据图一的人物设计一个海报，\n\n生成一张宣传海报，整体风格为学习笔记贴画风：背景是浅米色纸张纹理，搭配蓝色、黄色装饰色块，点缀回形针、钢笔、铅笔等文具元素。 顶部：左上角标‘YOUR LOGO’，主标题用黑色粗体字 + 黄色衬底写“打造个人IP的秘密”，标题旁加蓝色小三角装饰。 主体区域：左侧是图一角色的半身像；右侧蓝色矩形框标讲师名“林某某”，黄色气泡框写“从事个人IP打造行业 6 年・培训学员过万，口碑极佳”；旁边贴一张知名机构建筑的贴纸图。 下方：蓝色毛边纸张样式的模块，标题“擅长重点”，用黄色序号列出“01.易错点及重难点讲解 02.高频考题精讲精练”。 整体元素排版错落（类似手账贴纸），色彩以浅米、蓝、黄为主，风格轻松有备考氛围感。",
+      "negative_prompt": "",
+      "clip": [
+        "7",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "images.image_1": [
+        "32",
+        0
+      ]
+    },
+    "class_type": "TextEncodeBooguEdit",
+    "_meta": {
+      "title": "TextEncodeBooguEdit"
+    }
+  },
+  "45": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  }
+}

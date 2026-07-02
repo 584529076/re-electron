@@ -1,0 +1,72 @@
+{
+  "id": "qwen_image_nsfw",
+  "name": "ZT文生图",
+  "description": "ZT-NSFW文生图（单采）",
+  "mode": "nsfw",
+  "cover": "covers/qwen_image_nsfw.png",
+  "coverFallback": {
+    "icon": "fa-wand-magic-sparkles",
+    "gradient": ["#7c3aed", "#db2777"]
+  },
+  "workflowFile": "workflow_nsfw.json",
+  "placeholders": {
+    "<POSITIVE_PROMPT>": { "nodeId": "5", "field": "text", "role": "prompt" }
+  },
+  "formFields": [
+    {
+      "id": "positive_prompt",
+      "label": "正向提示词",
+      "type": "textarea",
+      "nodeId": "5",
+      "field": "text",
+      "default": "1girl, masterpiece, best quality, 8k, highly detailed, sharp focus",
+      "rows": 6
+    },
+    {
+      "id": "seed",
+      "label": "随机种子",
+      "type": "number",
+      "nodeId": "4",
+      "field": "seed",
+      "default": -1,
+      "min": -1,
+      "max": 4294967295,
+      "step": 1,
+      "randomizable": true,
+      "note": "-1 表示随机"
+    },
+    {
+      "id": "width",
+      "label": "宽度",
+      "type": "number",
+      "nodeId": "7",
+      "field": "width",
+      "default": 832,
+      "min": 64,
+      "max": 4096,
+      "step": 8
+    },
+    {
+      "id": "height",
+      "label": "高度",
+      "type": "number",
+      "nodeId": "7",
+      "field": "height",
+      "default": 1216,
+      "min": 64,
+      "max": 4096,
+      "step": 8
+    },
+    {
+      "id": "filename_prefix",
+      "label": "文件名前缀",
+      "type": "text",
+      "nodeId": "20",
+      "field": "filename_prefix",
+      "default": "ComfyUI"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "20", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}

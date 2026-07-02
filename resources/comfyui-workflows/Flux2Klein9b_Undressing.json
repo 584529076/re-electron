@@ -1,0 +1,429 @@
+{
+  "1": {
+    "inputs": {
+      "unet_name": "Klein\\flux-2-klein-9b.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "2": {
+    "inputs": {
+      "clip_name": "Qwen\\qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "6": {
+    "inputs": {},
+    "class_type": "Flux2KleinModelConfig_EditUtils",
+    "_meta": {
+      "title": "EditUtils: Flux2Klein Model Config lrzjason"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "61",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode ( Negative Prompt)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "prompt": [
+        "99",
+        0
+      ],
+      "clip": [
+        "61",
+        1
+      ],
+      "vae": [
+        "12",
+        0
+      ],
+      "model_config": [
+        "6",
+        0
+      ],
+      "configs": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "EditTextEncode_EditUtils",
+    "_meta": {
+      "title": "EditUtils: EditTextEncode lrzjason"
+    }
+  },
+  "9": {
+    "inputs": {
+      "to_ref": true,
+      "ref_main_image": true,
+      "ref_longest_edge": [
+        "19",
+        0
+      ],
+      "ref_crop": "pad",
+      "ref_upscale": "lanczos",
+      "image": [
+        "65",
+        0
+      ]
+    },
+    "class_type": "Flux2KleinConfigPreparer_EditUtils",
+    "_meta": {
+      "title": "EditUtils: Flux2Klein Config Preparer lrzjason"
+    }
+  },
+  "10": {
+    "inputs": {
+      "value": 4
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Steps"
+    }
+  },
+  "12": {
+    "inputs": {
+      "vae_name": "FLUX\\flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "13": {
+    "inputs": {
+      "value": "Improve the image quality to a high-definition level, completely remove all the clothes from this lady, including the top, coat, sleeves, skirt or pants on the lower body, achieving a nude effect, completely naked, with the lower body fully exposed. Correct navel, large nipples, true areolas and skin textures. and finally, the lighting is adjusted according to the environment shown in Figure 1."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "字符串（多行）"
+    }
+  },
+  "16": {
+    "inputs": {
+      "image": "35188B55391D0C1B729EE420D3DFDD3F.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "19": {
+    "inputs": {
+      "min_size": [
+        "65",
+        1
+      ],
+      "max_size": [
+        "65",
+        2
+      ],
+      "image": [
+        "65",
+        0
+      ]
+    },
+    "class_type": "AdaptiveLongestEdge_EditUtils",
+    "_meta": {
+      "title": "EditUtils: Adaptive Longest Edge lrzjason"
+    }
+  },
+  "22": {
+    "inputs": {
+      "seed": [
+        "31",
+        0
+      ],
+      "steps": [
+        "10",
+        0
+      ],
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "28",
+        0
+      ],
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "8",
+        1
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "23": {
+    "inputs": {
+      "samples": [
+        "22",
+        0
+      ],
+      "vae": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "28": {
+    "inputs": {
+      "lora_name": "Klein\\小志klein一致性f2k_consist_20260225.safetensors",
+      "strength_model": 0.75,
+      "model": [
+        "61",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "31": {
+    "inputs": {
+      "value": 13123123
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "35": {
+    "inputs": {
+      "custom_output": [
+        "8",
+        2
+      ]
+    },
+    "class_type": "Flux2KleinOutputExtractor_EditUtils",
+    "_meta": {
+      "title": "EditUtils: Flux2Klein Output Extractor lrzjason"
+    }
+  },
+  "59": {
+    "inputs": {
+      "lora_name": "Klein\\细节滑块Klein9B-Detail-Slider_v1.safetensors",
+      "strength_model": 5,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "加载LoRA"
+    }
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "Klein\\去衣服 undress her-Klein9b V4.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "105",
+        0
+      ],
+      "clip": [
+        "105",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "加载LoRA"
+    }
+  },
+  "61": {
+    "inputs": {
+      "lora_name": "Klein\\F2K_9b-滑块工具-胸部Chest_9B.safetensors",
+      "strength_model": 0,
+      "strength_clip": 3,
+      "model": [
+        "60",
+        0
+      ],
+      "clip": [
+        "60",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "加载LoRA"
+    }
+  },
+  "64": {
+    "inputs": {
+      "rgthree_comparer": {
+        "images": [
+          {
+            "name": "A",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_dsyqc_00001_.png&type=temp&subfolder=&rand=0.770054991406364"
+          },
+          {
+            "name": "B",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_dsyqc_00002_.png&type=temp&subfolder=&rand=0.5998092070263201"
+          }
+        ]
+      },
+      "image_a": [
+        "66",
+        1
+      ],
+      "image_b": [
+        "65",
+        0
+      ]
+    },
+    "class_type": "Image Comparer (rgthree)",
+    "_meta": {
+      "title": "图像对比"
+    }
+  },
+  "65": {
+    "inputs": {
+      "width": 1536,
+      "height": 1536,
+      "interpolation": "bilinear",
+      "method": "keep proportion",
+      "condition": "always",
+      "multiple_of": 16,
+      "image": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "🔧 Image Resize"
+    }
+  },
+  "66": {
+    "inputs": {
+      "enable_upscale": true,
+      "upscale_model": "4x_NickelbackFS_72000_G.pth",
+      "upscale_factor": 1.2,
+      "neural_corrector": false,
+      "corrector_tone": 1,
+      "corrector_color": 1,
+      "depth_relight": false,
+      "depth_relight_stringth": 0.8,
+      "depth_dof_enable": false,
+      "depth_dof_strength": 0.5,
+      "depth_dof_focus": 0.5,
+      "depth_dof_model": "V2-Small",
+      "maintain_aspect_ratio": true,
+      "enforce_mod32_boundaries": true,
+      "use_tiled_vae": false,
+      "tile_size": 512,
+      "latent": [
+        "22",
+        0
+      ],
+      "vae": [
+        "12",
+        0
+      ],
+      "image": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "LatentRefiner",
+    "_meta": {
+      "title": "Forbidden Vision 💎 Refiner"
+    }
+  },
+  "99": {
+    "inputs": {
+      "Input": 2,
+      "text2": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "CR Text Input Switch",
+    "_meta": {
+      "title": "🔀 CR Text Input Switch"
+    }
+  },
+  "105": {
+    "inputs": {
+      "lora_name": "Klein\\阴部F2K-9b-Innie_v1.safetensors",
+      "strength_model": 0,
+      "strength_clip": 1,
+      "model": [
+        "59",
+        0
+      ],
+      "clip": [
+        "59",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "加载LoRA"
+    }
+  },
+  "106": {
+    "inputs": {
+      "value": "Improve the image quality to a high-definition level, completely remove all the clothes from this lady, including the top, coat, sleeves, skirt or pants on the lower body, achieving a nude effect, completely naked, with the lower body fully exposed. Correct navel, large nipples, true areolas and skin textures. and finally, the lighting is adjusted according to the environment shown in Figure 1."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "字符串（多行）"
+    }
+  },
+  "107": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "66",
+        1
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  }
+}

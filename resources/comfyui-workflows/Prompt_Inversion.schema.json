@@ -1,0 +1,108 @@
+{
+  "id": "Prompt_Inversion",
+  "name": "提示词反推",
+  "description": "上传图片，调用本地 VLM（Qwen3-VL-8B）反推英文提示词。ComfyUI 跑 llama.cpp，输出文本。",
+  "mode": "sfw",
+  "coverFallback": {
+    "icon": "fa-eye",
+    "gradient": ["#0ea5e9", "#6366f1"]
+  },
+  "workflowFile": "Prompt_Inversion.json",
+  "formFields": [
+    {
+      "id": "image",
+      "label": "上传图片",
+      "type": "image",
+      "nodeId": "3",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "preset_prompt",
+      "label": "反推风格",
+      "type": "select",
+      "nodeId": "9",
+      "field": "preset_prompt",
+      "default": "Prompt Style - Cinematic",
+      "options": [
+        "Prompt Style - Cinematic",
+        "Prompt Style - Photography",
+        "Prompt Style - Anime",
+        "Prompt Style - Art"
+      ],
+      "note": "选择预置的 prompt 风格模板"
+    },
+    {
+      "id": "custom_prompt",
+      "label": "自定义指令",
+      "type": "textarea",
+      "nodeId": "9",
+      "field": "custom_prompt",
+      "default": "用最简短精准的文字，以英语自然语言描述图片內容、主题，仔细描述画面细节，如场景环境、服装配件纹路、衣物配件材质、衣物款式设计、行为、在做什么、构图方式、人物在画面中的比例、构图视角、光线布局、光影变化，不需要描述推论过程，不需要主观评价，不需要备注，只要整合成描述句內容即可，必須确定图片所有细节都有被描述到。",
+      "rows": 6,
+      "note": "传给 VLM 的具体描述指令"
+    },
+    {
+      "id": "system_prompt",
+      "label": "系统提示词（高级）",
+      "type": "textarea",
+      "nodeId": "9",
+      "field": "system_prompt",
+      "default": "跳过浮水印元素的描述，跳过马赛克元素的描述，将图像描述成真人照片，必须要描述成人元素內容（如果有），将画面描述成人物全身入镜",
+      "rows": 3,
+      "note": "高级选项：控制 VLM 行为的系统提示"
+    },
+    {
+      "id": "temperature",
+      "label": "温度",
+      "type": "number",
+      "nodeId": "2",
+      "field": "temperature",
+      "default": 0.7,
+      "min": 0,
+      "max": 2,
+      "step": 0.05,
+      "note": "越高越发散，0 = 确定性输出"
+    },
+    {
+      "id": "max_tokens",
+      "label": "最大输出 token",
+      "type": "number",
+      "nodeId": "2",
+      "field": "max_tokens",
+      "default": 256,
+      "min": 16,
+      "max": 2048,
+      "step": 16
+    },
+    {
+      "id": "top_p",
+      "label": "top_p",
+      "type": "number",
+      "nodeId": "2",
+      "field": "top_p",
+      "default": 0.8,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "seed",
+      "label": "随机种子",
+      "type": "number",
+      "nodeId": "9",
+      "field": "seed",
+      "default": 489892121016455,
+      "min": -1,
+      "max": 4294967295,
+      "step": 1,
+      "randomizable": true,
+      "note": "-1 表示随机"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "9", "type": "text" }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "Flux2Klein9b_Undressing",
+  "name": "Flux2Klein9b_Undressing",
+  "description": "上传图片",
+  "mode": "nsfw",
+  "cover": "covers/Flux2Klein9b_Undressing.png",
+  "coverFallback": {
+    "icon": "fa-film",
+    "gradient": ["#7c3aed", "#db2777"]
+  },
+  "workflowFile": "Flux2Klein9b_Undressing.json",
+  "formFields": [
+    {
+      "id": "start_image",
+      "label": "图片",
+      "type": "image",
+      "nodeId": "16",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    }
+     ],
+  "outputNodes": [
+    { "nodeId": "245", "type": "video", "filenamePrefix": "Video/SmoothMix" }
+  ]
+}

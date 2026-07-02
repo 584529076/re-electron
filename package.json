@@ -1,0 +1,79 @@
+{
+  "name": "re-electron",
+  "version": "1.0.0",
+  "description": "瀑布流媒体加载器 (Electron 版) — Desktop\re 的桌面化版本",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "set ELECTRON_RUN_AS_NODE=1 && electron test-smoke.js",
+    "test:config": "node --test --test-force-exit test-config.js",
+    "test:promptgen": "node --test --test-force-exit test-promptgen.js",
+    "test:nsfw": "node --test --test-force-exit test-nsfw.js",
+    "test:nsfw-assemble": "set ELECTRON_RUN_AS_NODE=1 && electron test-nsfw-assemble.js",
+    "test:cascade-delete": "set ELECTRON_RUN_AS_NODE=1 && electron test-cascade-delete.js",
+    "test:live-assemble": "node --test --test-force-exit test-live-assemble.js",
+    "test:all": "node --test --test-force-exit test-config.js test-promptgen.js test-nsfw.js test-live-assemble.js && set ELECTRON_RUN_AS_NODE=1 && electron test-smoke.js && set ELECTRON_RUN_AS_NODE=1 && electron test-nsfw-assemble.js && set ELECTRON_RUN_AS_NODE=1 && electron test-cascade-delete.js",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "electron-builder --win --x64"
+  },
+  "author": "cool",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.cool.re-electron",
+    "productName": "ReElectron",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "*.js",
+      "!test-*.js",
+      "!_shot_*.js",
+      "main.js",
+      "preload.js",
+      "web/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "prompts",
+        "to": "prompts"
+      },
+      {
+        "from": "resources",
+        "to": "resources"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ReElectron"
+    }
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0"
+  }
+}

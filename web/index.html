@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>瀑布流媒体加载器（图片+视频）</title>
+    <!-- 2026-06-08：bootcdn 上 FA 7.x 404，改用 jsDelivr 同步 npm 官方包 -->
+    <script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.1.0/js/all.min.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.1.0/css/all.min.css" crossorigin="anonymous">
+    <!-- D-38: SheetJS CDN（用于关联规则 Excel/CSV 导入） -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <!-- 移除原有文字，替换为Tab菜单 -->
+            <div class="tab-container" role="tablist" aria-label="媒体库分类">
+                <div class="tab-item active" role="tab" aria-selected="true" tabindex="0" data-tab="ai-image">AI出图</div>
+                <div class="tab-item" role="tab" aria-selected="false" tabindex="0" data-tab="ai-video">AI视频</div>
+                <div class="tab-item" role="tab" aria-selected="false" tabindex="0" data-tab="nsfw-gallery">NSFW图库</div>
+                <div class="tab-item" role="tab" aria-selected="false" tabindex="0" data-tab="more-gallery">更多图库</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <!-- 2026-06-10 D-31: 隐藏「选择媒体目录」「选择网络媒体库」按钮（保留逻辑） -->
+            <!-- <button id="btnLocal" class="btn btn-primary" title="选择本地或NAS文件夹"><i class="fa-solid fa-folder-open"></i> 选择媒体目录</button> -->
+            <!-- <button id="btnNet" class="btn" title="输入网络图片/视频地址"><i class="fa-solid fa-globe"></i> 选择网络媒体库</button> -->
+            <!-- D-31: 写死「配置」「提示词生成」按钮（不再依赖 config-ui.js 动态创建） -->
+            <button id="btnConfig" class="btn" title="管理 Tab 配置（增删改 + 切换资源路径）"><i class="fa-solid fa-gear"></i> 配置</button>
+            <button id="btnPromptGen" class="btn" title="提示词自动生成（Ollama 本地 LLM）"><i class="fa-solid fa-wand-magic-sparkles"></i> 提示词生成</button>
+            <button id="btnAiTools" class="btn" title="AI 工具（声明式 ComfyUI workflow 表单）"><i class="fa-solid fa-toolbox"></i> AI 工具</button>
+            <div class="slider-container">
+                <span class="slider-label">宽度</span>
+                <input type="range" id="widthSlider" min="200" max="600" value="300" step="10">
+                <span class="slider-label" id="widthValue">300px</span>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="gallery" role="list" aria-label="媒体瀑布流">
+            <!-- 列容器动态生成 -->
+        </div>
+        <div id="emptyState" class="empty-state" role="status">
+            <i class="fa-regular fa-images"></i>
+            <p>暂无媒体文件，请点击上方按钮加载</p>
+        </div>
+        <div id="sentinel" class="loading-sentinel" aria-hidden="true">
+            <div class="spinner"></div>
+            <span>加载更多...</span>
+        </div>
+    </main>
+
+    <!-- 新增：文件夹扫描中动画容器 -->
+    <div id="scanLoading" class="scan-loading" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <span>正在扫描媒体文件夹，请稍候...</span>
+    </div>
+
+    <div id="networkModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="networkModalTitle">
+        <div class="modal">
+            <div class="modal-header" id="networkModalTitle">输入网络媒体地址</div>
+            <div class="modal-body">
+                <textarea id="networkInput" aria-label="网络媒体 URL 列表，每行一个" placeholder="请粘贴图片/视频URL，每行一个。&#10;例如：&#10;https://example.com/img1.jpg&#10;https://example.com/video1.mp4"></textarea>
+                <div class="modal-hint">
+                    <i class="fa-solid fa-circle-info"></i> 由于浏览器安全限制，无法直接爬取网站目录。请在此处粘贴图片/视频URL列表（支持每行一个）。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnCancelNet" class="btn">取消</button>
+                <button id="btnConfirmNet" class="btn btn-primary">加载</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mediaPreviewModal" class="media-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+        <button class="close-preview" aria-label="关闭预览"><i class="fa-solid fa-times" aria-hidden="true"></i></button>
+        <div class="preview-content">
+            <span id="previewTitle" hidden>媒体预览</span>
+            <div class="preview-layout">
+                <div class="preview-media-pane">
+                    <img src="" alt="预览图片" class="preview-media" id="previewImage" style="display: none;">
+                    <video controls class="preview-media" id="previewVideo" style="display: none;"></video>
+                </div>
+                <div class="preview-prompt-pane">
+
+                    <!-- Module 1: 图片名称 + 3 个动作按钮 -->
+                    <section class="pane-module pane-module-file" aria-labelledby="modFileTitle">
+                        <div class="module-header">
+                            <span id="modFileTitle" class="module-title"><i class="fa-regular fa-image" aria-hidden="true"></i> 文件</span>
+                        </div>
+                        <div class="module-body">
+                            <div id="promptFileName" class="file-name" title=""></div>
+                            <div class="file-actions">
+                                <button id="btnRefToImg" class="btn btn-sm" type="button" title="用此图作为参考，生成新图片">
+                                    <i class="fa-solid fa-palette" aria-hidden="true"></i> 参考生图
+                                </button>
+                                <button id="btnRefToVideo" class="btn btn-sm" type="button" title="用此图作为参考首帧，生成视频">
+                                    <i class="fa-solid fa-film" aria-hidden="true"></i> 视频生成
+                                </button>
+                                <button id="btnReversePrompt" class="btn btn-sm" type="button" title="用视觉模型反推提示词（待接）">
+                                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> 反推提示词
+                                </button>
+                                <button id="btnDeleteAsset" class="btn btn-sm btn-danger" type="button" title="删除此资产文件和 .meta.json" style="display:none; margin-left:auto; background:#fee2e2; color:#dc2626; border:1px solid #fecaca;">
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i> 删除资产
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Module 2: 工作流 / 模型 / LoRA / 来源 / 耗时 / 显存（资产 Tab 自动回显 .meta.json） -->
+                    <section class="pane-module pane-module-meta" aria-labelledby="modMetaTitle">
+                        <div class="module-header">
+                            <span id="modMetaTitle" class="module-title"><i class="fa-solid fa-microchip" aria-hidden="true"></i> 元信息</span>
+                        </div>
+                        <div class="module-body">
+                            <div class="meta-row"><span class="meta-key">工作流</span><span class="meta-val" id="metaWorkflow">—</span></div>
+                            <div class="meta-row"><span class="meta-key">模型</span><span class="meta-val" id="metaModel">—</span></div>
+                            <div class="meta-row"><span class="meta-key">LoRA</span><span class="meta-val" id="metaLora">—</span></div>
+                            <div class="meta-row" id="metaVaeRow" style="display:none;"><span class="meta-key">VAE</span><span class="meta-val" id="metaVae">—</span></div>
+                            <div class="meta-row" id="metaSourceRow" style="display:none;"><span class="meta-key">来源</span><span class="meta-val" id="metaSource">—</span></div>
+                            <div class="meta-row" id="metaToolRow" style="display:none;"><span class="meta-key">工具</span><span class="meta-val" id="metaTool">—</span></div>
+                            <div class="meta-row" id="metaModeRow" style="display:none;"><span class="meta-key">模式</span><span class="meta-val" id="metaMode">—</span></div>
+                            <div class="meta-row" id="metaTimingRow" style="display:none;"><span class="meta-key">耗时</span><span class="meta-val" id="metaTiming">—</span></div>
+                            <div class="meta-row" id="metaVramRow" style="display:none;"><span class="meta-key">显存峰值</span><span class="meta-val" id="metaVram">—</span></div>
+                            <div class="meta-row" id="metaTsRow" style="display:none;"><span class="meta-key">生成时间</span><span class="meta-val" id="metaTs">—</span></div>
+                            <div class="meta-placeholder" id="metaPlaceholder">点开「资产」Tab 下的图片/视频自动回显保存的工作流、模型、提示词等元数据</div>
+                        </div>
+                    </section>
+
+                    <!-- Module 3: 标签（可增删） -->
+                    <section class="pane-module pane-module-tags" aria-labelledby="modTagsTitle">
+                        <div class="module-header">
+                            <span id="modTagsTitle" class="module-title"><i class="fa-solid fa-tags" aria-hidden="true"></i> 标签</span>
+                        </div>
+                        <div class="module-body">
+                            <div id="tagsList" class="tags-list" role="list" aria-label="标签列表">
+                                <span class="tag-empty">暂无标签</span>
+                            </div>
+                            <div class="tags-input-row">
+                                <input id="tagsInput" type="text" class="tags-input" placeholder="输入标签后回车添加" aria-label="添加标签" maxlength="40">
+                                <button id="btnTagAdd" class="btn btn-sm" type="button" title="添加标签">
+                                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Module 4: 提示词（默认纯文本，点击编辑变 textarea） -->
+                    <section class="pane-module pane-module-prompt" aria-labelledby="modPromptTitle">
+                        <div class="module-header">
+                            <span id="modPromptTitle" class="module-title"><i class="fa-solid fa-quote-left" aria-hidden="true"></i> 提示词</span>
+                            <div class="module-header-actions" id="promptHeaderActions">
+                                <button id="btnPromptEdit" class="btn btn-sm" type="button" title="编辑提示词">
+                                    <i class="fa-solid fa-pen" aria-hidden="true"></i> 编辑
+                                </button>
+                            </div>
+                        </div>
+                        <div class="module-body module-body-flex">
+                            <div id="promptDisplay" class="prompt-display" tabindex="0" role="region" aria-label="提示词内容">未填写</div>
+                            <textarea id="promptTextarea" class="prompt-textarea" placeholder="点上面「编辑」开始写提示词…" aria-label="提示词编辑区" hidden></textarea>
+                        </div>
+                        <div class="module-footer">
+                            <span id="promptStatus" class="prompt-status" role="status" aria-live="polite">就绪</span>
+                        </div>
+                    </section>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- 二次确认弹框（删除资产等） -->
+    <div id="confirmModal" class="media-preview-overlay" style="z-index:2100; display:none; background:rgba(0,0,0,0.6);">
+        <div style="background:#ffffff; color:#1f2937; border-radius:10px; padding:24px 28px; max-width:420px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+            <div id="confirmModalTitle" style="font-size:16px; font-weight:600; margin-bottom:12px; color:#1f2937;"></div>
+            <div id="confirmModalBody" style="font-size:13px; color:#4b5563; line-height:1.6; margin-bottom:20px;"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button id="confirmModalCancel" class="btn btn-sm" type="button">取消</button>
+                <button id="confirmModalOk" class="btn btn-sm btn-danger" type="button" style="background:#dc2626; color:#ffffff; border:1px solid #b91c1c;">确认删除</button>
+            </div>
+        </div>
+    </div>
+    <input type="file" id="fallbackInput" webkitdirectory directory multiple style="display: none;">
+
+    <script src="js/script.js"></script>
+    <script src="js/config-ui.js"></script> <!-- D-25 配置管理 UI -->
+    <script src="js/settings.js"></script> <!-- 统一设置页（resources / prompts / comfyui / llm） -->
+    <script src="js/prompt-gen.js"></script> <!-- D-27 提示词生成 -->
+    <script src="js/ai-tools.js"></script> <!-- AI 工具（声明式 ComfyUI workflow 表单） -->
+</body>
+</html>
