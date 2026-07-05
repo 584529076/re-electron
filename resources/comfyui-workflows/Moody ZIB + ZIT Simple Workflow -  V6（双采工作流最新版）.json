@@ -1,0 +1,449 @@
+{
+  "599": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "649",
+        0
+      ],
+      "steps": 17,
+      "cfg": 4,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "beta",
+      "start_at_step": 0,
+      "end_at_step": 12,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "669",
+        0
+      ],
+      "positive": [
+        "627",
+        0
+      ],
+      "negative": [
+        "674",
+        0
+      ],
+      "latent_image": [
+        "606",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "606": {
+    "inputs": {
+      "width": 824,
+      "height": 1280,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image (Base Dimensions) 初始大小"
+    }
+  },
+  "608": {
+    "inputs": {
+      "conditioning_a": [
+        "620",
+        0
+      ],
+      "conditioning_b": [
+        "627",
+        0
+      ],
+      "boolean": [
+        "652",
+        0
+      ]
+    },
+    "class_type": "Conditioning Input Switch",
+    "_meta": {
+      "title": "条件切换"
+    }
+  },
+  "610": {
+    "inputs": {
+      "samples": [
+        "638",
+        0
+      ],
+      "vae": [
+        "641",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "618": {
+    "inputs": {
+      "image": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸"
+    }
+  },
+  "619": {
+    "inputs": {
+      "conditioning": [
+        "608",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "620": {
+    "inputs": {
+      "text": [
+        "635",
+        0
+      ],
+      "clip": [
+        "634",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Clip from additional prompts"
+    }
+  },
+  "626": {
+    "inputs": {
+      "conditioning": [
+        "627",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "627": {
+    "inputs": {
+      "text": [
+        "628",
+        0
+      ],
+      "clip": [
+        "632",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "628": {
+    "inputs": {
+      "string_a": [
+        "633",
+        0
+      ],
+      "string_b": [
+        "664",
+        0
+      ],
+      "delimiter": ""
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "连接"
+    }
+  },
+  "630": {
+    "inputs": {
+      "value": "(a*b + (96 * 2))/2",
+      "a": [
+        "618",
+        1
+      ],
+      "b": [
+        "637",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Calculate optimized height"
+    }
+  },
+  "631": {
+    "inputs": {
+      "value": "(a*b + (96 * 2))/2",
+      "a": [
+        "618",
+        0
+      ],
+      "b": [
+        "637",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Calculate optimized width"
+    }
+  },
+  "632": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "673",
+        0
+      ],
+      "clip": [
+        "634",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "权重Lora加载器"
+    }
+  },
+  "633": {
+    "inputs": {
+      "value": "韩风冷色调网红美白滤镜，极致冷白皮，overexposure，通体雪白。高清现实主义风格，细节丰富，动态光影，8K超清。"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Additional Prompts Prefixes （额外前置提示词）"
+    }
+  },
+  "634": {
+    "inputs": {
+      "clip_name": "Qwen\\qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "635": {
+    "inputs": {
+      "value": "韩风冷色调网红美白滤镜，极致冷白皮，白嫩幼，overexposure，通体雪白。高清现实主义风格，细节丰富，动态光影，8K超清。"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "SD UPSCALE Custom Prompt 自定义提示词"
+    }
+  },
+  "637": {
+    "inputs": {
+      "value": 2.2
+    },
+    "class_type": "FloatConstant",
+    "_meta": {
+      "title": "SD Upscale Factor (放大大小）"
+    }
+  },
+  "638": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "688",
+        0
+      ],
+      "steps": 11,
+      "cfg": 1,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "sgm_uniform",
+      "start_at_step": 5,
+      "end_at_step": 999,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "667",
+        0
+      ],
+      "positive": [
+        "627",
+        0
+      ],
+      "negative": [
+        "626",
+        0
+      ],
+      "latent_image": [
+        "647",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "641": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "647": {
+    "inputs": {
+      "upscale_method": "bislerp",
+      "scale_by": 1.7,
+      "samples": [
+        "599",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "缩放Latent（比例）"
+    }
+  },
+  "648": {
+    "inputs": {
+      "filename_prefix": "image/2026-07-05/130814",
+      "images": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "649": {
+    "inputs": {
+      "seed": 8888888888888
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (1ST)"
+    }
+  },
+  "652": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Use custom prompts？用自定义提示词？"
+    }
+  },
+  "664": {
+    "inputs": {
+      "value": "一位年轻女性的半身肖像，她拥有柔顺的深棕色长卷发，发丝光泽自然，部分发丝轻柔地垂落在肩头。她正微微侧身，头部略微转向镜头，露出温柔含蓄的微笑，眼神清澈明亮，充满亲和力。她身穿一件米色针织露胸毛衣，毛衣纹理清晰可见，呈现出温暖舒适的质感，硕大圆润的两个胸部全部露出，乳头清晰可见。背景为纯净的浅灰色，简洁而专业，突出了人物主体。整体画面光线柔和均匀，色调温暖，氛围宁静优雅，具有专业的摄影棚质感。"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "667": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "632",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "668": {
+    "inputs": {
+      "unet_name": "NSFW\\moodyWildMix_ZIB_v3xeasonBASE40STEP.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model (1ST K) ZIB"
+    }
+  },
+  "669": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "671",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "671": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "668",
+        0
+      ],
+      "clip": [
+        "634",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "权重Lora加载器"
+    }
+  },
+  "673": {
+    "inputs": {
+      "unet_name": "NSFW\\moodyRealMix_ZIT_v6DPO.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model （2ND K） ZIT"
+    }
+  },
+  "674": {
+    "inputs": {
+      "text": "泛黄，模糊，低分辨率，低质量图像，诡异的外观，多餘手臂, 多餘腿部，丑陋，躁点，网格感，JPEG压缩条纹，水印，乱码，意义不明的字符，",
+      "clip": [
+        "634",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "688": {
+    "inputs": {
+      "seed": 88888888888
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed 2ND"
+    }
+  }
+}

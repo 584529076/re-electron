@@ -1105,6 +1105,10 @@ function ensureNsfwAssociationTables() {
     if (cols.length && !cols.some(c => c.name === 'description')) {
         store.exec("ALTER TABLE prompt_items ADD COLUMN description TEXT DEFAULT ''");
     }
+    // 提示词预览图：相对路径（previews/<id>.<ext>），空字符串表示无图
+    if (cols.length && !cols.some(c => c.name === 'preview_image')) {
+        store.exec("ALTER TABLE prompt_items ADD COLUMN preview_image TEXT DEFAULT ''");
+    }
     // D-40: 场景模板加 enabled 列（兼容老库）
     const stCols = store.query("PRAGMA table_info(scene_templates)");
     if (stCols.length && !stCols.some(c => c.name === 'enabled')) {
@@ -1121,7 +1125,7 @@ ipcMain.handle('prompt:item:list', async (_e, payload) => {
         let rows;
         if (catId) {
             rows = store.query(
-                `SELECT i.id, i.category_id, i.name, i.content, i.description, i.sort_order, i.sensitivity,
+                `SELECT i.id, i.category_id, i.name, i.content, i.description, i.sort_order, i.sensitivity, i.preview_image,
                         m.category_name, m.tag_required, m.tag_exclusive_group, m.exclusive_with, m.exclusive_group
                    FROM prompt_items i
                    LEFT JOIN prompt_menu m ON m.id = i.category_id
@@ -1131,7 +1135,7 @@ ipcMain.handle('prompt:item:list', async (_e, payload) => {
             );
         } else {
             rows = store.query(
-                `SELECT i.id, i.category_id, i.name, i.content, i.description, i.sort_order, i.sensitivity,
+                `SELECT i.id, i.category_id, i.name, i.content, i.description, i.sort_order, i.sensitivity, i.preview_image,
                         m.category_name, m.tag_required, m.tag_exclusive_group, m.exclusive_with, m.exclusive_group
                    FROM prompt_items i
                    LEFT JOIN prompt_menu m ON m.id = i.category_id
@@ -1151,7 +1155,7 @@ ipcMain.handle('prompt:item:listByCategories', async (_e, payload) => {
         if (!Array.isArray(ids) || ids.length === 0) return { ok: true, map: {} };
         const placeholders = ids.map(() => '?').join(',');
         const rows = store.query(
-            `SELECT i.id, i.category_id, i.name, i.content, i.description, i.sort_order, i.sensitivity,
+            `SELECT i.id, i.category_id, i.name, i.content, i.description, i.sort_order, i.sensitivity, i.preview_image,
                     m.category_name, m.tag_required, m.tag_exclusive_group, m.exclusive_with, m.exclusive_group
                FROM prompt_items i
                LEFT JOIN prompt_menu m ON m.id = i.category_id
@@ -1173,8 +1177,8 @@ ipcMain.handle('prompt:item:add', async (_e, payload) => {
     try {
         if (!payload || !payload.category_id || !payload.name) return { ok: false, error: 'category_id/name 必填' };
         const r = store.exec(
-            'INSERT INTO prompt_items (category_id, name, content, description, sort_order, sensitivity) VALUES (?, ?, ?, ?, ?, ?)',
-            Number(payload.category_id), payload.name, payload.content || '', payload.description || '', Number(payload.sort_order) || 0, payload.sensitivity || 'nsfw'
+            'INSERT INTO prompt_items (category_id, name, content, description, sort_order, sensitivity, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            Number(payload.category_id), payload.name, payload.content || '', payload.description || '', Number(payload.sort_order) || 0, payload.sensitivity || 'nsfw', payload.preview_file || ''
         );
         return { ok: true, id: r.lastInsertRowid };
     } catch (e) {
@@ -1195,9 +1199,26 @@ ipcMain.handle('prompt:item:update', async (_e, payload) => {
         const sensitivity = payload.sensitivity ?? old.sensitivity ?? 'nsfw';
         const sortOrder = (payload.sort_order !== undefined) ? Number(payload.sort_order) : old.sort_order;
         const categoryId = (payload.category_id !== undefined) ? Number(payload.category_id) : old.category_id;
+        // preview_image 处理：payload.preview_file 有值 → 用新值；显式 preview_clear=true → 清空；否则保留
+        let previewImage = old.preview_image || '';
+        if (payload.preview_clear === true) {
+            // 清除：删旧文件，DB 留空
+            if (previewImage) {
+                try { await fsp.unlink(path.join(getPreviewsDir(), previewImage)); }
+                catch (e) { console.warn('[prompt:item:update] 删旧 preview 失败:', e.message); }
+            }
+            previewImage = '';
+        } else if (payload.preview_file) {
+            // 替换：删旧文件（如果有）
+            if (previewImage && previewImage !== payload.preview_file) {
+                try { await fsp.unlink(path.join(getPreviewsDir(), previewImage)); }
+                catch (e) { console.warn('[prompt:item:update] 删旧 preview 失败:', e.message); }
+            }
+            previewImage = payload.preview_file;
+        }
         store.exec(
-            'UPDATE prompt_items SET name=?, content=?, description=?, sort_order=?, sensitivity=?, category_id=?, updated_at=strftime(\'%s\',\'now\') WHERE id=?',
-            name, content, description, sortOrder, sensitivity, categoryId, id
+            'UPDATE prompt_items SET name=?, content=?, description=?, sort_order=?, sensitivity=?, category_id=?, preview_image=?, updated_at=strftime(\'%s\',\'now\') WHERE id=?',
+            name, content, description, sortOrder, sensitivity, categoryId, previewImage, id
         );
         return { ok: true };
     } catch (e) {
@@ -1209,6 +1230,12 @@ ipcMain.handle('prompt:item:delete', async (_e, id) => {
     try {
         const nid = Number(id);
         if (!nid) return { ok: false, error: 'id 必填' };
+        // 先查 preview_image，删记录前清掉磁盘文件
+        const rows = store.query('SELECT preview_image FROM prompt_items WHERE id = ?', nid);
+        if (rows.length && rows[0].preview_image) {
+            try { await fsp.unlink(path.join(getPreviewsDir(), rows[0].preview_image)); }
+            catch (e) { console.warn('[prompt:item:delete] 删 preview 文件失败:', e.message); }
+        }
         const r = store.exec('DELETE FROM prompt_items WHERE id = ?', nid);
         return { ok: true, deleted: r.changes };
     } catch (e) {
@@ -1216,9 +1243,88 @@ ipcMain.handle('prompt:item:delete', async (_e, id) => {
     }
 });
 
+// ========== 提示词预览图：上传 / 读取 / 删除 ==========
+// 存储：<promptsDir>/previews/<filename>
+// 文件名格式：<itemId>-<timestamp36>.<ext>（itemId 必填；新增时前端可传 "new-<ts>" 占位）
+const ALLOWED_PREVIEW_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_PREVIEW_SIZE = 2 * 1024 * 1024; // 2MB
+
+function getPreviewsDir() {
+    const dir = path.join(getPromptsDir(), 'previews');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+ipcMain.handle('prompt:preview:upload', async (_e, payload) => {
+    try {
+        if (!payload) return { ok: false, error: 'payload 必填' };
+        const mime = String(payload.mime || '');
+        if (!ALLOWED_PREVIEW_MIME.has(mime)) return { ok: false, error: `不支持的 mime: ${mime}（仅 jpg/png/webp）` };
+        let b64 = payload.dataBase64 || '';
+        if (!b64 && payload.dataUrl) {
+            const m = String(payload.dataUrl).match(/^data:[^;]+;base64,(.+)$/);
+            if (m) b64 = m[1];
+        }
+        if (!b64) return { ok: false, error: '缺图片数据' };
+        const buf = Buffer.from(b64, 'base64');
+        if (buf.length > MAX_PREVIEW_SIZE) return { ok: false, error: `图片超过 ${MAX_PREVIEW_SIZE / 1024 / 1024}MB 限制（${(buf.length / 1024 / 1024).toFixed(1)}MB）` };
+        const ext = MIME_TO_EXT[mime] || 'jpg';
+        // 文件名：<itemId|new>-<timestamp36>.<ext>
+        const rawStem = String(payload.itemId || `new-${Date.now()}`).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 40);
+        const stem = `${rawStem}-${Date.now().toString(36)}`;
+        const fileName = `${stem}.${ext}`;
+        const absDir = getPreviewsDir();
+        const absFile = path.join(absDir, fileName);
+        await fsp.writeFile(absFile, buf);
+        return { ok: true, fileName, size: buf.length, mime, absDir };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('prompt:preview:read', async (_e, payload) => {
+    try {
+        const fileName = payload && payload.fileName;
+        if (!fileName) return { ok: false, error: 'fileName 必填' };
+        // 路径防穿越：禁止 .. / 路径分隔符
+        if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+            return { ok: false, error: '路径非法' };
+        }
+        const absDir = getPreviewsDir();
+        const absFile = path.join(absDir, fileName);
+        if (!fs.existsSync(absFile)) return { ok: false, error: '预览图不存在' };
+        const buf = await fsp.readFile(absFile);
+        const ext = path.extname(fileName).slice(1).toLowerCase();
+        const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+        const mime = mimeMap[ext] || 'image/jpeg';
+        return { ok: true, dataUrl: `data:${mime};base64,${buf.toString('base64')}`, mime, size: buf.length };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('prompt:preview:delete', async (_e, payload) => {
+    try {
+        const fileName = payload && payload.fileName;
+        if (!fileName) return { ok: false, error: 'fileName 必填' };
+        if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+            return { ok: false, error: '路径非法' };
+        }
+        const absDir = getPreviewsDir();
+        const absFile = path.join(absDir, fileName);
+        if (fs.existsSync(absFile)) {
+            await fsp.unlink(absFile);
+            return { ok: true, deleted: true };
+        }
+        return { ok: true, deleted: false };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
 ipcMain.handle('prompt:item:get', async (_e, id) => {
     try {
-        const rows = store.query('SELECT id, category_id, name, content, description, sort_order, sensitivity FROM prompt_items WHERE id = ?', Number(id) || 0);
+        const rows = store.query('SELECT id, category_id, name, content, description, sort_order, sensitivity, preview_image FROM prompt_items WHERE id = ?', Number(id) || 0);
         return { ok: true, item: rows[0] || null };
     } catch (e) {
         return { ok: false, error: e.message };
@@ -1235,7 +1341,7 @@ ipcMain.handle('prompt:item:getByIds', async (_e, payload) => {
         if (cleanIds.length === 0) return { ok: true, items: [] };
         const placeholders = cleanIds.map(() => '?').join(',');
         const rows = store.query(
-            `SELECT id, category_id, name, content, description, sort_order, sensitivity
+            `SELECT id, category_id, name, content, description, sort_order, sensitivity, preview_image
                FROM prompt_items WHERE id IN (${placeholders})`,
             ...cleanIds
         );
@@ -1250,7 +1356,7 @@ ipcMain.handle('prompt:item:getByIds', async (_e, payload) => {
 ipcMain.handle('prompt:item:listAll', async () => {
     try {
         const rows = store.query(
-            `SELECT i.id, i.category_id, i.name, i.sensitivity,
+            `SELECT i.id, i.category_id, i.name, i.sensitivity, i.preview_image,
                     m.category_name, m.tag_required, m.tag_exclusive_group, m.exclusive_with, m.exclusive_group
                FROM prompt_items i
                LEFT JOIN prompt_menu m ON m.id = i.category_id
@@ -1287,6 +1393,7 @@ ipcMain.handle('prompt:item:import', async (_e, payload) => {
             const description = String(r.description || r['描述'] || '').trim();
             const sortOrder = parseInt(r.sortOrder || r['排序'] || r.sort_order || 0, 10) || 0;
             const sensitivity = String(r.sensitivity || r['敏感度'] || 'nsfw').trim() || 'nsfw';
+            const previewImage = String(r.previewImage || r['预览图'] || r.preview_image || '').trim();
 
             if (!name) { skipped++; skippedDetails.push({ row: rowNum, reason: '提示词名称为空' }); continue; }
             if (!catName) { skipped++; skippedDetails.push({ row: rowNum, reason: '分类名称为空' }); continue; }
@@ -1317,14 +1424,14 @@ ipcMain.handle('prompt:item:import', async (_e, payload) => {
             );
             if (existing.length) {
                 store.exec(
-                    "UPDATE prompt_items SET content=?, description=?, sort_order=?, sensitivity=?, updated_at=strftime('%s','now') WHERE id=?",
-                    content, description, sortOrder, sensitivity, existing[0].id
+                    "UPDATE prompt_items SET content=?, description=?, sort_order=?, sensitivity=?, preview_image=?, updated_at=strftime('%s','now') WHERE id=?",
+                    content, description, sortOrder, sensitivity, previewImage, existing[0].id
                 );
                 updated++;
             } else {
                 store.exec(
-                    'INSERT INTO prompt_items (category_id, name, content, description, sort_order, sensitivity) VALUES (?, ?, ?, ?, ?, ?)',
-                    catId, name, content, description, sortOrder, sensitivity
+                    'INSERT INTO prompt_items (category_id, name, content, description, sort_order, sensitivity, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    catId, name, content, description, sortOrder, sensitivity, previewImage
                 );
                 imported++;
             }

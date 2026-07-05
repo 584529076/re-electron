@@ -301,6 +301,140 @@ main {
     margin-bottom: 1rem;
 }
 
+/* ========== 文生图 split-button（左侧运行、右侧切工具）========== */
+.pg-gen-split {
+    display: inline-flex;
+    align-items: stretch;
+    height: 30px;
+    border-radius: 6px;
+    overflow: visible;
+    position: relative;
+}
+.pg-gen-split[disabled] {
+    opacity: 0.5;
+}
+.pg-gen-main {
+    background: #0ea5e9;
+    color: #ffffff;
+    border: 1px solid #0284c7;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    min-width: 180px;
+    justify-content: center;
+    transition: background-color 0.15s;
+}
+.pg-gen-main:hover:not(:disabled) {
+    background: #0284c7;
+}
+.pg-gen-main:disabled {
+    cursor: not-allowed;
+}
+.pg-gen-arrow {
+    background: #0ea5e9;
+    color: #ffffff;
+    border: 1px solid #0284c7;
+    border-left: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 0 6px 6px 0;
+    padding: 0 10px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    transition: background-color 0.15s;
+}
+.pg-gen-arrow:hover:not(:disabled) {
+    background: #0284c7;
+}
+.pg-gen-arrow:disabled {
+    cursor: not-allowed;
+}
+.pg-gen-arrow.active {
+    background: #0284c7;
+}
+.pg-gen-menu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    padding: 4px;
+    display: none;
+}
+.pg-gen-menu.open {
+    display: block;
+}
+.pg-gen-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #1f2937;
+    transition: background-color 0.1s;
+}
+.pg-gen-menu-item:hover {
+    background: #f3f4f6;
+}
+.pg-gen-menu-item.selected {
+    background: #e0f2fe;
+    color: #075985;
+    font-weight: 600;
+}
+.pg-gen-menu-item .pg-gen-check {
+    width: 14px;
+    color: #0ea5e9;
+}
+.pg-gen-menu-empty {
+    padding: 12px;
+    font-size: 12px;
+    color: #9ca3af;
+    text-align: center;
+}
+
+/* ========== 设为预览图 多选 modal ========== */
+.pg-assign-list {
+    max-height: 280px;
+    overflow-y: auto;
+    background: #ffffff;
+}
+.pg-assign-list label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #1f2937;
+    transition: background-color 0.1s;
+}
+.pg-assign-list label:hover {
+    background: #f3f4f6;
+}
+.pg-assign-list label + label {
+    border-top: 1px solid #f3f4f6;
+}
+.pg-assign-list input[type="checkbox"] {
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
 .modal-body textarea {
     width: 100%;
     height: 150px;
@@ -489,6 +623,36 @@ main {
     font-size: 0.85rem;
     color: #e5e7eb;
 }
+/* ========== 可折叠模块通用样式（Module 2 / Module 3） ========== */
+/* 加了 .collapsed 类的 module 折叠 body */
+.pane-module.collapsed .module-body {
+    display: none;
+}
+/* 折叠模块的 header 鼠标变手形 + 焦点高亮 */
+.pane-module-meta .module-header,
+.pane-module-tags .module-header {
+    cursor: pointer;
+    user-select: none;
+}
+.pane-module-meta .module-header:focus,
+.pane-module-tags .module-header:focus {
+    outline: 2px solid #6366f1;
+    outline-offset: -2px;
+}
+.btn-icon-only {
+    padding: 0.25rem 0.45rem;
+    line-height: 1;
+}
+/* chevron 通用动画：展开时旋转 180° */
+.meta-chevron,
+.tags-chevron {
+    transition: transform 0.18s ease;
+    display: inline-block;
+}
+.pane-module-meta:not(.collapsed) .meta-chevron,
+.pane-module-tags:not(.collapsed) .tags-chevron {
+    transform: rotate(180deg);
+}
 .module-body-flex {
     display: flex;
     flex-direction: column;
@@ -505,7 +669,7 @@ main {
     flex-shrink: 0;
 }
 
-/* ========== Module 1: 文件名 + 3 按钮 ========== */
+/* ========== Module 1: 文件名 + 动态 AI 工具入口 ========== */
 .pane-module-file .file-name {
     font-weight: 500;
     color: #f3f4f6;
@@ -518,6 +682,12 @@ main {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
+}
+.ai-tool-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
 }
 
 /* ========== Module 2: 元信息 ========== */
@@ -791,4 +961,46 @@ main {
         height: 40px;
         font-size: 16px;
     }
+}
+
+/* ========== 提示词预览图 hover 浮层 ========== */
+.pg-item-preview-tip {
+    position: fixed;
+    z-index: 999999;
+    width: 320px;
+    background: #ffffff !important;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    padding: 10px;
+    pointer-events: none;
+    font-size: 12px;
+    color: #374151;
+    line-height: 1.5;
+}
+.pg-item-preview-tip-img {
+    width: 100%;
+    height: 180px;
+    border-radius: 6px;
+    background: #f3f4f6 center/cover no-repeat;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+.pg-item-preview-tip-img[data-empty="1"] {
+    border: 1px dashed #d1d5db;
+}
+.pg-item-preview-tip-text {
+    max-height: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+    color: #4b5563;
 }

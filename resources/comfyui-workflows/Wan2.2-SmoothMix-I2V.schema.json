@@ -3,6 +3,7 @@
   "name": "Wan2.2-SmoothMix-I2V（图生视频）",
   "description": "上传图片生成 5 秒视频（默认），无声音",
   "mode": "nsfw",
+  "accepts": ["image"],
   "cover": "covers/Wan2.2-SmoothMix-I2V.png",
   "coverFallback": {
     "icon": "fa-film",
@@ -40,6 +41,30 @@
       "max": 30,
       "step": 1,
       "note": "实际帧数 = 秒数 × 16 + 1（写死 16fps）"
+    },
+    {
+      "id": "seed_high",
+      "label": "Seed (高噪声 K采样器)",
+      "type": "number",
+      "nodeId": "203",
+      "field": "noise_seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
+    },
+    {
+      "id": "seed_low",
+      "label": "Seed (低噪声 K采样器)",
+      "type": "number",
+      "nodeId": "204",
+      "field": "noise_seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
     }
   ],
   "outputNodes": [

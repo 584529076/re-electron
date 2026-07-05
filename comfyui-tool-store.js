@@ -73,8 +73,12 @@ function loadAll() {
             const json = JSON.parse(txt);
             _workflows.set(toolId, { json, broken: false, error: null, path: wfPath });
         } catch (e) {
+            // workflow 缺失/损坏也要把工具标记为 broken，这样 listTools 能告诉 renderer「这个工具不能用」
+            // 避免用户在 dropdown 选了一个点了之后才报 ENOENT
             console.warn(`[comfyui-tool-store] 加载 workflow ${wfPath} 失败: ${e.message}`);
             _workflows.set(toolId, { json: null, broken: true, error: e.message, path: wfPath });
+            schema._broken = true;
+            schema._error = 'workflow 文件缺失或损坏: ' + (schema.workflowFile || '?') + ' — ' + e.message;
         }
     }
 }
@@ -92,6 +96,7 @@ function listTools() {
             name: t.name,
             description: t.description || '',
             mode: t.mode || 'sfw',
+            accepts: Array.isArray(t.accepts) ? t.accepts : [],
             broken: !!t._broken,
             error: t._error,
             formFieldCount: (t.formFields || []).length,
@@ -112,6 +117,7 @@ function getTool(id) {
     return {
         id: t.id, name: t.name, description: t.description || '',
         mode: t.mode || 'sfw',
+        accepts: Array.isArray(t.accepts) ? t.accepts : [],
         placeholders: t.placeholders || {},
         formFields: (t.formFields || []).map(f => ({ ...f })),
         outputNodes: (t.outputNodes || []).map(o => ({ ...o })),

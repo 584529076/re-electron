@@ -34,7 +34,12 @@ function loadAll() {
             const json = JSON.parse(txt);
             _workflows.set(mode, { json, broken: false, error: null, path: wfPath });
         } catch (e) {
-            console.warn(`[comfyui-workflows] 加载 ${wfPath} 失败: ${e.message}`);
+            // mode-based 旧接口（comfyui:generate / comfyui:listWorkflows）保留兼容，
+            // 但新的工具系统已迁移到 resources/comfyui-workflows/*.schema.json 模式，
+            // 所以这里如果 workflow_${mode}.json 不存在就静默，不刷错误日志。
+            if (e.code !== 'ENOENT') {
+                console.warn(`[comfyui-workflows] 加载 ${wfPath} 失败: ${e.message}`);
+            }
             _workflows.set(mode, { json: null, broken: true, error: e.message, path: wfPath });
         }
         try {
@@ -42,6 +47,9 @@ function loadAll() {
             const meta = JSON.parse(txt);
             _metas.set(mode, meta);
         } catch (e) {
+            if (e.code !== 'ENOENT') {
+                console.warn(`[comfyui-workflows] 加载 ${metaPath} 失败: ${e.message}`);
+            }
             _metas.set(mode, { name: mode.toUpperCase(), mode, placeholders: [POSITIVE_PLACEHOLDER], notes: 'meta 加载失败' });
         }
     }

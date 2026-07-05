@@ -3,6 +3,7 @@
   "name": "boogu_edit_图片编辑",
   "description": "boogu_edit_图片编辑工作流",
   "mode": "sfw",
+  "accepts": ["image"],
   "coverFallback": {
     "icon": "fa-eye",
     "gradient": ["#0ea5e9", "#6366f1"]
@@ -24,10 +25,22 @@
       "label": "图像编辑指令",
       "type": "textarea",
       "nodeId": "36",
-      "field": "custom_prompt",
+      "field": "prompt",
       "default": "根据图一的人物设计一个海报，\n\n生成一张宣传海报，整体风格为学习笔记贴画风：背景是浅米色纸张纹理，搭配蓝色、黄色装饰色块，点缀回形针、钢笔、铅笔等文具元素。 顶部：左上角标‘YOUR LOGO’，主标题用黑色粗体字 + 黄色衬底写“打造个人IP的秘密”，标题旁加蓝色小三角装饰。 主体区域：左侧是图一角色的半身像；右侧蓝色矩形框标讲师名“林某某”，黄色气泡框写“从事个人IP打造行业 6 年・培训学员过万，口碑极佳”；旁边贴一张知名机构建筑的贴纸图。 下方：蓝色毛边纸张样式的模块，标题“擅长重点”，用黄色序号列出“01.易错点及重难点讲解 02.高频考题精讲精练”。 整体元素排版错落（类似手账贴纸），色彩以浅米、蓝、黄为主，风格轻松有备考氛围感。",
       "rows": 6,
       "note": "图像编辑指令"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (自定义采样器)",
+      "type": "number",
+      "nodeId": "21",
+      "field": "noise_seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
     }
   ],
   "outputNodes": [

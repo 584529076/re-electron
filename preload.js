@@ -78,6 +78,12 @@ contextBridge.exposeInMainWorld('api', {
         listAll: () => ipcRenderer.invoke('prompt:item:listAll'),
         import: (rows) => ipcRenderer.invoke('prompt:item:import', { rows }),
     },
+    // ========= 提示词预览图（<promptsDir>/previews/<id>-<ts>.<ext>）=========
+    promptPreview: {
+        upload: (payload) => ipcRenderer.invoke('prompt:preview:upload', payload),
+        read:   (payload) => ipcRenderer.invoke('prompt:preview:read', payload),
+        delete: (payload) => ipcRenderer.invoke('prompt:preview:delete', payload),
+    },
     // ========= D-29 NSFW 模式 =========
     nsfw: {
         fetchReadme: () => ipcRenderer.invoke('nsfw:fetchReadme'),
