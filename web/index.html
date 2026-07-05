@@ -86,36 +86,35 @@
                 </div>
                 <div class="preview-prompt-pane">
 
-                    <!-- Module 1: 图片名称 + 3 个动作按钮 -->
+                    <!-- Module 1: 文件名 + AI 工具入口（动态渲染）；删除资产按钮放到标题右侧 -->
                     <section class="pane-module pane-module-file" aria-labelledby="modFileTitle">
                         <div class="module-header">
                             <span id="modFileTitle" class="module-title"><i class="fa-regular fa-image" aria-hidden="true"></i> 文件</span>
-                        </div>
-                        <div class="module-body">
-                            <div id="promptFileName" class="file-name" title=""></div>
-                            <div class="file-actions">
-                                <button id="btnRefToImg" class="btn btn-sm" type="button" title="用此图作为参考，生成新图片">
-                                    <i class="fa-solid fa-palette" aria-hidden="true"></i> 参考生图
-                                </button>
-                                <button id="btnRefToVideo" class="btn btn-sm" type="button" title="用此图作为参考首帧，生成视频">
-                                    <i class="fa-solid fa-film" aria-hidden="true"></i> 视频生成
-                                </button>
-                                <button id="btnReversePrompt" class="btn btn-sm" type="button" title="用视觉模型反推提示词（待接）">
-                                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> 反推提示词
-                                </button>
-                                <button id="btnDeleteAsset" class="btn btn-sm btn-danger" type="button" title="删除此资产文件和 .meta.json" style="display:none; margin-left:auto; background:#fee2e2; color:#dc2626; border:1px solid #fecaca;">
+                            <div class="module-header-actions">
+                                <button id="btnDeleteAsset" class="btn btn-sm btn-danger" type="button" title="删除此资产文件和 .meta.json" style="display:none; background:#fee2e2; color:#dc2626; border:1px solid #fecaca;">
                                     <i class="fa-solid fa-trash" aria-hidden="true"></i> 删除资产
                                 </button>
                             </div>
                         </div>
+                        <div class="module-body">
+                            <div id="promptFileName" class="file-name" title=""></div>
+                            <div class="file-actions">
+                                <div id="lightboxAiToolBtns" class="ai-tool-btns" aria-label="AI 工具入口"></div>
+                            </div>
+                        </div>
                     </section>
 
-                    <!-- Module 2: 工作流 / 模型 / LoRA / 来源 / 耗时 / 显存（资产 Tab 自动回显 .meta.json） -->
-                    <section class="pane-module pane-module-meta" aria-labelledby="modMetaTitle">
-                        <div class="module-header">
+                    <!-- Module 2: 工作流 / 模型 / LoRA / 来源 / 耗时 / 显存（资产 Tab 自动回显 .meta.json，默认收起） -->
+                    <section class="pane-module pane-module-meta collapsed" aria-labelledby="modMetaTitle">
+                        <div class="module-header" id="metaModuleHeader" role="button" tabindex="0" aria-expanded="false" aria-controls="metaModuleBody" title="点击展开/收起">
                             <span id="modMetaTitle" class="module-title"><i class="fa-solid fa-microchip" aria-hidden="true"></i> 元信息</span>
+                            <div class="module-header-actions">
+                                <button id="btnMetaToggle" class="btn btn-sm btn-icon-only" type="button" title="展开/收起元信息" aria-label="展开或收起元信息" tabindex="-1">
+                                    <i class="fa-solid fa-chevron-down meta-chevron" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="module-body">
+                        <div class="module-body" id="metaModuleBody">
                             <div class="meta-row"><span class="meta-key">工作流</span><span class="meta-val" id="metaWorkflow">—</span></div>
                             <div class="meta-row"><span class="meta-key">模型</span><span class="meta-val" id="metaModel">—</span></div>
                             <div class="meta-row"><span class="meta-key">LoRA</span><span class="meta-val" id="metaLora">—</span></div>
@@ -130,12 +129,17 @@
                         </div>
                     </section>
 
-                    <!-- Module 3: 标签（可增删） -->
-                    <section class="pane-module pane-module-tags" aria-labelledby="modTagsTitle">
-                        <div class="module-header">
+                    <!-- Module 3: 标签（可增删，默认收起） -->
+                    <section class="pane-module pane-module-tags collapsed" aria-labelledby="modTagsTitle">
+                        <div class="module-header" id="tagsModuleHeader" role="button" tabindex="0" aria-expanded="false" aria-controls="tagsModuleBody" title="点击展开/收起">
                             <span id="modTagsTitle" class="module-title"><i class="fa-solid fa-tags" aria-hidden="true"></i> 标签</span>
+                            <div class="module-header-actions">
+                                <button id="btnTagsToggle" class="btn btn-sm btn-icon-only" type="button" title="展开/收起标签" aria-label="展开或收起标签" tabindex="-1">
+                                    <i class="fa-solid fa-chevron-down tags-chevron" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="module-body">
+                        <div class="module-body" id="tagsModuleBody">
                             <div id="tagsList" class="tags-list" role="list" aria-label="标签列表">
                                 <span class="tag-empty">暂无标签</span>
                             </div>
@@ -163,7 +167,8 @@
                             <textarea id="promptTextarea" class="prompt-textarea" placeholder="点上面「编辑」开始写提示词…" aria-label="提示词编辑区" hidden></textarea>
                         </div>
                         <div class="module-footer">
-                            <span id="promptStatus" class="prompt-status" role="status" aria-live="polite">就绪</span>
+                            <span id="promptStatus" class="prompt-status" role="status" aria-live="polite" hidden></span>
+                            <div id="promptAiToolBtns" class="ai-tool-btns" aria-label="用此提示词调用 AI 工具"></div>
                         </div>
                     </section>
 

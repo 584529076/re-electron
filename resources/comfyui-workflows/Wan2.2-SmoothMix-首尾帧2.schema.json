@@ -3,6 +3,7 @@
   "name": "Wan2.2-SmoothMix-首尾帧",
   "description": "上传首帧和尾帧图片，中间补帧生成视频（默认 5 秒）",
   "mode": "nsfw",
+  "accepts": ["image"],
   "cover": "covers/Wan2.2-SmoothMix-首尾帧2.png",
   "coverFallback": {
     "icon": "fa-images",
@@ -50,6 +51,30 @@
       "max": 30,
       "step": 1,
       "note": "实际帧数 = 秒数 × 16 + 1（写死 16fps）"
+    },
+    {
+      "id": "seed_high",
+      "label": "Seed (高噪声 K采样器)",
+      "type": "number",
+      "nodeId": "398",
+      "field": "noise_seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
+    },
+    {
+      "id": "seed_low",
+      "label": "Seed (低噪声 K采样器)",
+      "type": "number",
+      "nodeId": "399",
+      "field": "noise_seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
     }
   ],
   "outputNodes": [

@@ -3,6 +3,7 @@
   "name": "提示词反推",
   "description": "上传图片，调用本地 VLM（Qwen3-VL-8B）反推英文提示词。ComfyUI 跑 llama.cpp，输出文本。",
   "mode": "sfw",
+  "accepts": ["image"],
   "coverFallback": {
     "icon": "fa-eye",
     "gradient": ["#0ea5e9", "#6366f1"]
