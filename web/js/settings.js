@@ -37,6 +37,7 @@
     let itemEditingId = null;       // 提示词配置：当前编辑的提示词
     let _lastCreateItemCatId = 0;   // 提示词配置：连续新增记忆
     let currentItemCatId = null;    // 提示词配置：当前展示的分类 id
+    let _itemTreeCollapsed = new Set(); // 提示词配置：左侧分类树折叠的父节点 id（默认全部折叠）
     // _exclTreeExpanded（互斥分类树展开）— 渲染时新建 Set，渲染完丢弃
 
     // ========== 共享 helpers ==========
@@ -1354,7 +1355,8 @@
             function setPickerOpen(open) {
                 _pickerOpen = open;
                 parentPickerHost.style.display = open ? 'block' : 'none';
-                if (parentPickChev) parentPickChev.className = 'fa-solid ' + (open ? 'fa-chevron-up' : 'fa-chevron-down');
+                // FA 7.x SVG icon：className 是只读 SVGAnimatedString，用 setAttribute('class', ...) 才能改
+                if (parentPickChev) parentPickChev.setAttribute('class', 'fa-solid ' + (open ? 'fa-chevron-up' : 'fa-chevron-down'));
                 if (open) renderPickerTreeInline(parentPickerHost);
             }
 
@@ -1649,6 +1651,7 @@
         toolbar.style.cssText = 'padding:10px 16px; border-bottom:1px solid #e5e7eb; background:#f9fafb; display:flex; align-items:center; gap:8px; flex-shrink:0;';
         toolbar.innerHTML = `
             <button id="setItemAddBtn" class="btn btn-sm" type="button" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-plus"></i> 新增提示词</button>
+            <button id="setItemBatchAddBtn" class="btn btn-sm" type="button" title="粘贴一段文本，按中英文逗号自动分割为多个提示词" style="background:#10b981;color:#fff;border:none;"><i class="fa-solid fa-list-ol"></i> 批量添加</button>
             <button id="setItemImportTplBtn" class="btn btn-sm" type="button" title="下载 Excel 导入模板（含表头+示例+现有分类参考）"><i class="fa-solid fa-download"></i> 下载模板</button>
             <button id="setItemImportBtn" class="btn btn-sm" type="button" title="从 Excel/CSV 批量导入提示词" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-file-import"></i> Excel 导入</button>
             <input type="file" id="setItemImportFile" accept=".xlsx,.xls,.csv" style="display:none;">
@@ -1671,8 +1674,38 @@
         root.appendChild(body);
         container.appendChild(root);
 
+        // 一次性事件委托：左树的所有点击（行选中 / chevron 折叠）都走这里，避免对动态创建的 <i> 绑定事件
+        const treeEl = document.getElementById('setItemTree');
+        if (treeEl && !treeEl._treeDelegated) {
+            treeEl._treeDelegated = true;
+            treeEl.addEventListener('click', async (e) => {
+                // 1) 折叠切换（chevron）
+                const chev = e.target.closest('[data-toggle-cat]');
+                if (chev) {
+                    e.stopPropagation();
+                    const id = Number(chev.dataset.toggleCat);
+                    if (_itemTreeCollapsed.has(id)) _itemTreeCollapsed.delete(id);
+                    else _itemTreeCollapsed.add(id);
+                    renderItemTree();
+                    return;
+                }
+                // 2) 行选中
+                const row = e.target.closest('[data-cat-id]');
+                if (row) {
+                    const id = Number(row.dataset.catId);
+                    currentItemCatId = id;
+                    _lastCreateItemCatId = 0;
+                    _expandAncestorsOf(id);
+                    renderItemTree();
+                    await loadItemList(id);
+                }
+            });
+        }
+
         async function loadItemTree() {
             await loadMenu();
+            // 默认全部折叠
+            _itemTreeCollapsed = _getAllParentIds();
             renderItemTree();
             if (menuItems.length) {
                 const byParent = {};
@@ -1683,7 +1716,13 @@
                     return children.length ? firstId(children[0].id) : pid;
                 }
                 const firstCatId = firstId(0);
-                if (firstCatId) { currentItemCatId = firstCatId; await loadItemList(firstCatId); }
+                if (firstCatId) {
+                    currentItemCatId = firstCatId;
+                    // 展开首分类的所有祖先，让用户能看到当前选中
+                    _expandAncestorsOf(firstCatId);
+                    renderItemTree();
+                    await loadItemList(firstCatId);
+                }
             }
         }
 
@@ -1698,21 +1737,52 @@
             function walk(pid, depth) {
                 const children = byParent[pid] || [];
                 for (const it of children) {
+                    const hasChildren = (byParent[it.id] || []).length > 0;
+                    const isCollapsed = _itemTreeCollapsed.has(it.id);
                     const div = document.createElement('div');
+                    div.dataset.catId = String(it.id);
                     const isSel = currentItemCatId === it.id;
                     div.style.cssText = 'padding:5px 6px;border-radius:6px;cursor:pointer;margin-bottom:1px;display:flex;align-items:center;gap:5px;' + (isSel ? 'background:#ede9fe;color:#6d28d9;font-weight:500;' : '');
                     if (!isSel) {
                         div.addEventListener('mouseenter', () => { div.style.background = '#ede9fe'; });
                         div.addEventListener('mouseleave', () => { div.style.background = 'transparent'; });
                     }
-                    div.innerHTML = '<span style="color:#d1d5db;font-size:11px;margin-left:' + (depth * 14) + 'px;display:inline-block;width:10px;"></span><i class="fa-solid fa-folder' + (it.parent_id ? '-open' : '') + '" style="color:' + (it.parent_id ? '#f59e0b' : '#6366f1') + ';font-size:11px;"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.category_name) + '</span>' + (it.is_required ? '<span title="必选" style="flex-shrink:0;width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block;margin-left:2px;"></span>' : '');
+                    // 折叠切换按钮：有 children 的节点显示 chevron，否则占位缩进
+                    // 用 <span> 包一层并设 inline-block，确保点击区域稳定（<i> + FontAwesome ::before 有时不可靠）
+                    const chevHtml = hasChildren
+                        ? `<span data-toggle-cat="${it.id}" title="${isCollapsed ? '展开' : '收起'}" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:16px;flex-shrink:0;margin-left:${depth * 14}px;cursor:pointer;color:#6b7280;border-radius:3px;"><i class="fa-solid fa-chevron-${isCollapsed ? 'right' : 'down'}" style="font-size:10px;pointer-events:none;"></i></span>`
+                        : `<span style="display:inline-block;width:14px;flex-shrink:0;margin-left:${depth * 14}px;"></span>`;
+                    div.innerHTML = chevHtml + '<i class="fa-solid fa-folder' + (it.parent_id ? '-open' : '') + '" style="color:' + (it.parent_id ? '#f59e0b' : '#6366f1') + ';font-size:11px;"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.category_name) + '</span>' + (it.is_required ? '<span title="必选" style="flex-shrink:0;width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block;margin-left:2px;"></span>' : '');
                     div.title = it.description || it.category_name;
-                    div.addEventListener('click', async () => { currentItemCatId = it.id; _lastCreateItemCatId = 0; renderItemTree(); await loadItemList(it.id); });
                     el.appendChild(div);
-                    walk(it.id, depth + 1);
+                    // 折叠时跳过子节点
+                    if (hasChildren && !isCollapsed) {
+                        walk(it.id, depth + 1);
+                    }
                 }
             }
             walk(0, 0);
+        }
+
+        // 获取所有有子节点的父节点 id（用于「默认全部折叠」初始化）
+        function _getAllParentIds() {
+            const ids = new Set();
+            const byParent = {};
+            for (const it of menuItems) { const p = it.parent_id || 0; (byParent[p] = byParent[p] || []).push(it); }
+            for (const id in byParent) {
+                if (byParent[id].length > 0) ids.add(Number(id));
+            }
+            return ids;
+        }
+
+        // 展开 catId 节点的所有祖先（用于选中时保证可见）
+        function _expandAncestorsOf(catId) {
+            let p = (menuItems.find(x => x.id === catId) || {}).parent_id;
+            while (p && p !== 0) {
+                _itemTreeCollapsed.delete(p);
+                const parent = menuItems.find(x => x.id === p);
+                p = parent ? parent.parent_id : 0;
+            }
         }
 
         async function loadItemList(catId) {
@@ -1747,6 +1817,8 @@
             wrap.style.display = 'block';
             const keepCreating = !id && !!opts.keepCreating;
             const allItems = [];
+            // 预览图状态：fileName=已上传文件名；dataUrl=用户刚选的图 base64；removed=点了「清除」
+            const _pv = { fileName: '', dataUrl: '', mime: '', removed: false };
             (async () => {
                 if (currentItemCatId) {
                     const r = await api.promptItems.list(currentItemCatId);
@@ -1795,7 +1867,77 @@
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">说明</label><textarea id="setItemDescInp" rows="2" placeholder="可选，说明此提示词的用途或效果" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;resize:vertical;box-sizing:border-box;">' + esc((id || !keepCreating) ? (it.description || '') : '') + '</textarea></div>' +
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">敏感度</label><select id="setItemSensSel" style="width:160px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;background:#fff;"><option value="sfw"' + (((id || !keepCreating) ? (it.sensitivity || 'nsfw') : 'nsfw') === 'sfw' ? ' selected' : '') + '>SFW （安全）</option><option value="nsfw"' + (((id || !keepCreating) ? (it.sensitivity || 'nsfw') : 'nsfw') === 'nsfw' ? ' selected' : '') + '>NSFW （成人）</option></select><span style="font-size:11px;color:#9ca3af;margin-left:8px;">默认 NSFW</span></div>' +
                     '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">排序权重</label><input id="setItemSortInp" type="number" value="' + defaultSort + '" min="0" style="width:120px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;' + (keepCreating ? 'border-color:#10b981;' : '') + '"><span style="font-size:11px;color:#9ca3af;margin-left:6px;">越小越靠前' + (id ? '' : ' · 新增自动取同级最大 +1') + '</span></div>' +
+                    '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">预览图 <span style="color:#9ca3af;font-weight:400;">（可选，仅 1 张，jpg/png/webp，≤2MB）</span></label><div style="display:flex;gap:10px;align-items:center;"><div id="setItemPvThumb" style="width:160px;height:90px;border:1px dashed #d1d5db;border-radius:6px;background:#f9fafb center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:11px;">暂无预览图</div><div style="display:flex;flex-direction:column;gap:6px;"><input id="setItemPvFile" type="file" accept="image/jpeg,image/png,image/webp" style="font-size:12px;max-width:220px;"><button id="setItemPvClearBtn" type="button" class="btn btn-sm" style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;"><i class="fa-solid fa-xmark"></i> 清除预览图</button></div></div></div>' +
                     '<div style="display:flex;gap:8px;"><button id="setItemSaveBtn" class="btn btn-sm" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-floppy-disk"></i> 保存' + (keepCreating ? '并继续' : '') + '</button><button id="setItemCancelBtn" class="btn btn-sm">取消</button></div>';
+
+                // ---- 预览图：编辑模式拉已有；新增模式清空 ----
+                const pvThumb = wrap.querySelector('#setItemPvThumb');
+                const pvFile = wrap.querySelector('#setItemPvFile');
+                const pvClearBtn = wrap.querySelector('#setItemPvClearBtn');
+                const _setPvThumb = (dataUrl, hasImage) => {
+                    if (hasImage) {
+                        pvThumb.style.backgroundImage = 'url(' + dataUrl + ')';
+                        pvThumb.textContent = '';
+                    } else {
+                        pvThumb.style.backgroundImage = '';
+                        pvThumb.textContent = '暂无预览图';
+                    }
+                };
+                if (id) {
+                    const cur = allItems.find(x => x.id === id);
+                    const fn = (cur && cur.preview_image) || '';
+                    if (fn) {
+                        api.promptPreview.read({ fileName: fn }).then(r => {
+                            if (r && r.ok) {
+                                _pv.fileName = fn;
+                                _setPvThumb(r.dataUrl, true);
+                                pvClearBtn.style.display = '';
+                            } else {
+                                _setPvThumb(null, false);
+                            }
+                        });
+                    } else {
+                        _setPvThumb(null, false);
+                    }
+                } else {
+                    _setPvThumb(null, false);
+                }
+                pvFile.addEventListener('change', async () => {
+                    const f = pvFile.files && pvFile.files[0];
+                    if (!f) return;
+                    if (f.size > 2 * 1024 * 1024) {
+                        showToast('预览图不能超过 2MB', 'error');
+                        pvFile.value = '';
+                        return;
+                    }
+                    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+                        showToast('仅支持 jpg / png / webp', 'error');
+                        pvFile.value = '';
+                        return;
+                    }
+                    try {
+                        const r = await window._compressImageToBase64(f, 100 * 1024);
+                        _pv.dataUrl = r.dataBase64;
+                        _pv.mime = r.mime;
+                        _pv.removed = false;
+                        _setPvThumb('data:' + r.mime + ';base64,' + r.dataBase64, true);
+                        pvClearBtn.style.display = '';
+                        if (r.compressed) {
+                            showToast(`已压缩：${(r.originalSize/1024).toFixed(0)}KB → ${(r.finalSize/1024).toFixed(0)}KB`, 'success');
+                        }
+                    } catch (e) {
+                        showToast('图片处理失败: ' + (e && e.message || e), 'error');
+                        pvFile.value = '';
+                    }
+                });
+                pvClearBtn.addEventListener('click', () => {
+                    _pv.fileName = '';
+                    _pv.dataUrl = '';
+                    _pv.removed = true;
+                    _setPvThumb(null, false);
+                    pvClearBtn.style.display = 'none';
+                    pvFile.value = '';
+                });
 
                 const catSel = wrap.querySelector('#setItemCatSel');
                 if (!id) {
@@ -1817,17 +1959,34 @@
                     let r;
                     if (itemEditingId) r = await api.promptItems.update({ id: itemEditingId, ...payload });
                     else r = await api.promptItems.add(payload);
-                    if (r.ok) {
-                        showToast(itemEditingId ? '修改成功' : '添加成功', 'success');
-                        await loadItemList(currentItemCatId);
-                        if (itemEditingId) {
-                            _lastCreateItemCatId = 0;
-                            showItemForm(null);
-                        } else {
-                            _lastCreateItemCatId = payload.category_id;
-                            showItemForm(null, { defaultCatId: _lastCreateItemCatId, keepCreating: true });
+                    if (!r.ok) { showToast(r.error || '操作失败', 'error'); return; }
+
+                    // ---- 预览图后处理 ----
+                    const newId = itemEditingId || r.id;
+                    if (_pv.removed) {
+                        await api.promptItems.update({ id: newId, preview_clear: true });
+                    } else if (_pv.dataUrl) {
+                        const up = await api.promptPreview.upload({
+                            mime: _pv.mime,
+                            dataBase64: _pv.dataUrl,
+                            itemId: newId,
+                        });
+                        if (up && up.ok) {
+                            await api.promptItems.update({ id: newId, preview_file: up.fileName });
+                        } else if (up && up.error) {
+                            showToast('预览图上传失败: ' + up.error, 'error');
                         }
-                    } else showToast(r.error || '操作失败', 'error');
+                    }
+
+                    showToast(itemEditingId ? '修改成功' : '添加成功', 'success');
+                    await loadItemList(currentItemCatId);
+                    if (itemEditingId) {
+                        _lastCreateItemCatId = 0;
+                        showItemForm(null);
+                    } else {
+                        _lastCreateItemCatId = payload.category_id;
+                        showItemForm(null, { defaultCatId: _lastCreateItemCatId, keepCreating: true });
+                    }
                 });
                 wrap.querySelector('#setItemCancelBtn').addEventListener('click', () => { wrap.style.display = 'none'; wrap.innerHTML = ''; itemEditingId = null; _lastCreateItemCatId = 0; });
                 if (id) {
@@ -1846,6 +2005,156 @@
             const defaultCatId = _lastCreateItemCatId || currentItemCatId || 0;
             showItemForm(null, { defaultCatId, keepCreating: !!_lastCreateItemCatId });
         });
+
+        // ---- 批量添加按钮：弹多行文本框，按中英文逗号分割入库 ----
+        toolbar.querySelector('#setItemBatchAddBtn').addEventListener('click', () => {
+            // 只用 currentItemCatId（左侧当前选中的分类），不能用 _lastCreateItemCatId 否则会导到错分类
+            const catId = currentItemCatId;
+            if (!catId) { showToast('请先在左侧选中一个分类', 'error'); return; }
+            const catName = (menuItems.find(x => x.id === catId) || {}).category_name || '';
+            showBatchAddModal(catId, catName);
+        });
+
+        function showBatchAddModal(catId, catName) {
+            let overlay = document.getElementById('setBatchAddModal');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'setBatchAddModal';
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10002;display:flex;align-items:center;justify-content:center;';
+                overlay.innerHTML = `
+                    <div style="background:#fff;border-radius:10px;width:680px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,0.3);font-family:system-ui,-apple-system,sans-serif;overflow:hidden;">
+                        <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:8px;background:#f9fafb;">
+                            <span style="font-size:14px;font-weight:600;color:#1f2937;"><i class="fa-solid fa-list-ol" style="color:#10b981;margin-right:6px;"></i>批量添加提示词</span>
+                            <span id="setBatchAddCatBadge" style="font-size:12px;color:#6b7280;margin-left:6px;"></span>
+                            <button id="setBatchAddClose" style="background:transparent;border:none;cursor:pointer;color:#6b7280;font-size:16px;margin-left:auto;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div style="padding:14px 18px;flex:1;display:flex;flex-direction:column;min-height:0;">
+                            <div style="font-size:12px;color:#6b7280;margin-bottom:8px;line-height:1.6;">
+                                粘贴一段文本，系统按 <strong style="color:#374151;">中文「，」</strong> 与 <strong style="color:#374151;">英文「,」</strong> 自动分割成多个提示词，名称与内容均使用分割后的文本。
+                                <br>空段、同名段会被自动跳过。
+                            </div>
+                            <textarea id="setBatchAddInput" placeholder="示例：&#10;1girl, masterpiece, best quality&#10;red dress, long hair, smile&#10;outdoor, sunlight, cinematic lighting&#10;..." style="flex:1;min-height:260px;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;resize:vertical;box-sizing:border-box;"></textarea>
+                            <div style="display:flex;align-items:center;gap:12px;margin-top:10px;font-size:12px;color:#374151;">
+                                <span style="font-weight:500;">敏感度：</span>
+                                <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                                    <input type="radio" name="setBatchAddSens" value="sfw" checked style="cursor:pointer;"> SFW
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                                    <input type="radio" name="setBatchAddSens" value="nsfw" style="cursor:pointer;"> NSFW
+                                </label>
+                                <span id="setBatchAddCount" style="margin-left:auto;font-weight:500;color:#6b7280;">已识别 0 个提示词</span>
+                            </div>
+                        </div>
+                        <div style="padding:12px 18px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;background:#fafafa;">
+                            <button id="setBatchAddCancel" class="btn">取消</button>
+                            <button id="setBatchAddSubmit" class="btn btn-primary" disabled style="background:#10b981;border:none;"><i class="fa-solid fa-check"></i> 确定添加</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+
+                const input = overlay.querySelector('#setBatchAddInput');
+                const countEl = overlay.querySelector('#setBatchAddCount');
+                const submitBtn = overlay.querySelector('#setBatchAddSubmit');
+                const close = () => overlay.style.display = 'none';
+                overlay.querySelector('#setBatchAddClose').addEventListener('click', close);
+                overlay.querySelector('#setBatchAddCancel').addEventListener('click', close);
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+                // 实时识别计数
+                input.addEventListener('input', () => {
+                    const n = _parseBatchPrompts(input.value).length;
+                    countEl.textContent = `已识别 ${n} 个提示词`;
+                    countEl.style.color = n > 0 ? '#059669' : '#6b7280';
+                    submitBtn.disabled = n === 0;
+                });
+                submitBtn.addEventListener('click', async () => {
+                    const list = _parseBatchPrompts(input.value);
+                    if (!list.length) { showToast('没有可添加的提示词', 'error'); return; }
+                    const sensEl = overlay.querySelector('input[name="setBatchAddSens"]:checked');
+                    const sensitivity = sensEl ? String(sensEl.value) : 'sfw';
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 添加中...';
+                    const result = await doBatchAdd(list, catId, sensitivity);
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> 确定添加';
+                    if (result.success > 0) {
+                        showToast(`批量添加完成：成功 ${result.success} 个${result.skip ? `，跳过 ${result.skip} 个` : ''}${result.fail ? `，失败 ${result.fail} 个` : ''}`, 'success');
+                        input.value = '';
+                        countEl.textContent = '已识别 0 个提示词';
+                        countEl.style.color = '#6b7280';
+                        submitBtn.disabled = true;
+                        await loadItemList(catId);
+                        // 关闭弹框
+                        close();
+                    } else {
+                        showToast(`添加失败：${result.errors.slice(0, 3).join('；')}`, 'error');
+                    }
+                });
+            }
+            // 弹框显示前：刷新 catBadge + 清空输入
+            const badge = overlay.querySelector('#setBatchAddCatBadge');
+            if (badge) badge.innerHTML = `目标分类：<strong style="color:#6366f1;">${esc(catName)}</strong>`;
+            const input = overlay.querySelector('#setBatchAddInput');
+            const countEl = overlay.querySelector('#setBatchAddCount');
+            const submitBtn = overlay.querySelector('#setBatchAddSubmit');
+            if (input) input.value = '';
+            if (countEl) { countEl.textContent = '已识别 0 个提示词'; countEl.style.color = '#6b7280'; }
+            if (submitBtn) submitBtn.disabled = true;
+            overlay.style.display = 'flex';
+            // 自动聚焦
+            setTimeout(() => { if (input) input.focus(); }, 30);
+        }
+
+        // 解析批量输入：按中英文逗号分割，trim，去空，去重（保持顺序）
+        function _parseBatchPrompts(text) {
+            if (!text) return [];
+            const parts = String(text).split(/[,，]/);
+            const seen = new Set();
+            const out = [];
+            for (let p of parts) {
+                p = String(p || '').trim();
+                if (!p) continue;
+                if (seen.has(p)) continue;
+                seen.add(p);
+                out.push(p);
+            }
+            return out;
+        }
+
+        // 批量入库：循环调 api.promptItems.add
+        async function doBatchAdd(list, catId, sensitivity) {
+            const sens = sensitivity === 'nsfw' ? 'nsfw' : 'sfw';
+            const result = { success: 0, fail: 0, skip: 0, errors: [] };
+            for (let i = 0; i < list.length; i++) {
+                const text = list[i];
+                try {
+                    const r = await api.promptItems.add({
+                        category_id: catId,
+                        name: text,
+                        content: text,
+                        description: '',
+                        sort_order: 0,
+                        sensitivity: sens,
+                    });
+                    if (r && r.ok) {
+                        result.success++;
+                    } else {
+                        // 唯一约束冲突（同分类下同名）视为跳过，不算失败
+                        const errMsg = (r && r.error) || '未知错误';
+                        if (/unique|conflict|UNIQUE/i.test(errMsg)) {
+                            result.skip++;
+                        } else {
+                            result.fail++;
+                            result.errors.push(`「${text.slice(0, 12)}${text.length > 12 ? '…' : ''}」: ${errMsg}`);
+                        }
+                    }
+                } catch (e) {
+                    result.fail++;
+                    result.errors.push(`「${text.slice(0, 12)}${text.length > 12 ? '…' : ''}」: ${e && e.message || '异常'}`);
+                }
+            }
+            return result;
+        }
 
         // ---- Excel 导入 / 模板下载 ----
         toolbar.querySelector('#setItemImportBtn').addEventListener('click', () => {

@@ -4,4 +4,6 @@ dist/
 build/
 assets/
 tmp/
+prompts/previews/
+previews/media/
 smoke-electron.log

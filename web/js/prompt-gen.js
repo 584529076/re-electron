@@ -414,7 +414,7 @@ function pathOfMenu(menuId, menuById) {
         // 预加载关联规则缓存（fire-and-forget，不阻塞 UI；首次约 10-50ms）
         ensureAssocCache().catch(() => {});
         // 拉数据
-        await Promise.all([loadMenuTree(), loadLlmConfig(), loadAssembleRule(), loadComfyConfig()]);
+        await Promise.all([loadMenuTree(), loadLlmConfig(), loadAssembleRule(), loadComfyConfig(), loadT2iTools()]);
         showPage();
         // 默认沿第一支走到底，让用户进页面就看到最深层（N 级通用）
         navigateToDeepestFirstBranch();
@@ -515,13 +515,24 @@ function pathOfMenu(menuId, menuById) {
                             <div style="display:flex; gap:6px; padding-top:6px;">
                                 <button id="pgBtnSaveImageToLib" class="btn btn-sm" disabled title="保存到提示词库（关联当前提示词）"><i class="fa-solid fa-floppy-disk"></i> 保存到库</button>
                                 <button id="pgBtnSaveImageAs" class="btn btn-sm" disabled><i class="fa-solid fa-download"></i> 另存为</button>
+                                <button id="pgBtnSetAsPreview" class="btn btn-sm" disabled title="把当前生图设为选中提示词的预览图（多选时弹出选择框）"><i class="fa-solid fa-image"></i> 设为预览图</button>
                             </div>
                         </div>
                     </div>
-                    <div style="padding:10px 14px; border-top:1px solid #e5e7eb; display:flex; gap:6px; flex-wrap:wrap; background:#ffffff;">
+                    <div style="padding:10px 14px; border-top:1px solid #e5e7eb; display:flex; gap:6px; flex-wrap:wrap; align-items:center; background:#ffffff;">
                         <button id="pgBtnCopy" class="btn btn-sm"><i class="fa-solid fa-copy"></i> 复制</button>
                         <button id="pgBtnSave" class="btn btn-sm btn-primary" disabled><i class="fa-solid fa-floppy-disk"></i> 保存提示词</button>
-                        <button id="pgBtnGenImage" class="btn btn-sm" disabled style="background:#0ea5e9; color:#ffffff; border:1px solid #0284c7;" title="调本地 ComfyUI 出图（需先在「模型」配置并启动）"><i class="fa-solid fa-image"></i> AI 生图</button>
+                        <!-- 文生图 split-button：左侧点击生图、右侧 ▼ 弹菜单换工具 -->
+                        <div class="pg-gen-split" id="pgGenSplit" disabled>
+                            <button id="pgBtnGenImage" class="pg-gen-main" disabled title="用选中工作流生图">
+                                <i class="fa-solid fa-image" id="pgGenIcon"></i>
+                                <span id="pgGenLabel">AI 生图</span>
+                            </button>
+                            <button id="pgBtnGenArrow" class="pg-gen-arrow" disabled title="切换文生图工具" aria-label="切换文生图工具"><i class="fa-solid fa-caret-down"></i></button>
+                        </div>
+                        <select id="pgSelectT2iTool" hidden>
+                            <option value="">(加载中…)</option>
+                        </select>
                         <button id="pgBtnRegen" class="btn btn-sm" disabled><i class="fa-solid fa-rotate"></i> 重新生成</button>
                     </div>
                 </div>
@@ -535,7 +546,7 @@ function pathOfMenu(menuId, menuById) {
         page.querySelector('#pgBtnCancel').addEventListener('click', doCancel);
         page.querySelector('#pgBtnCopy').addEventListener('click', doCopy);
         page.querySelector('#pgBtnSave').addEventListener('click', doSave);
-        page.querySelector('#pgBtnRegen').addEventListener('click', doGenerate);
+        page.querySelector('#pgBtnRegen').addEventListener('click', doGenImage);
         page.querySelector('#pgBtnRefine').addEventListener('click', doRefine);
         page.querySelector('#pgBtnClear').addEventListener('click', doClear);
         page.querySelector('#pgBtnHistory').addEventListener('click', openHistoryDrawer);
@@ -547,8 +558,20 @@ function pathOfMenu(menuId, menuById) {
             b.addEventListener('click', () => switchResultTab(b.dataset.tab));
         });
         page.querySelector('#pgBtnGenImage').addEventListener('click', doGenImage);
+        page.querySelector('#pgBtnGenArrow').addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleGenMenu();
+        });
+        // 点菜单外部关闭（菜单已挂到 body，点击 split 内或菜单内都不关；只有两者之外才关）
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('pgGenMenu');
+            const split = document.getElementById('pgGenSplit');
+            if (!menu || !split) return;
+            if (!split.contains(e.target) && !menu.contains(e.target)) closeGenMenu();
+        });
         page.querySelector('#pgBtnSaveImageToLib').addEventListener('click', saveCurrentImageToLibrary);
         page.querySelector('#pgBtnSaveImageAs').addEventListener('click', saveCurrentImageAs);
+        page.querySelector('#pgBtnSetAsPreview').addEventListener('click', setCurrentImageAsPreview);
         // 点击生图结果图片/视频 → 放大查看
         const pgResultImgEl = page.querySelector('#pgResultMediaImg');
         if (pgResultImgEl) {
@@ -584,6 +607,24 @@ function pathOfMenu(menuId, menuById) {
                 showToast(`已切换到 ${mode.toUpperCase()} 模式`, 'success');
             });
         });
+        // 预览图浮层：事件委托（pgContent 是稳定父元素，chip 重建也不影响）
+        const pgContentEl = page.querySelector('#pgContent');
+        if (pgContentEl && !pgContentEl._pvDelegated) {
+            pgContentEl._pvDelegated = true;
+            pgContentEl.addEventListener('mouseenter', (e) => {
+                const chip = e.target.closest && e.target.closest('[data-item-id]');
+                if (!chip) return;
+                _cancelHidePvTip();
+                const id = Number(chip.dataset.itemId);
+                const item = _chipItemCache.get(id);
+                if (item) _showPvTip(item, chip);
+            }, true);
+            pgContentEl.addEventListener('mouseleave', (e) => {
+                const chip = e.target.closest && e.target.closest('[data-item-id]');
+                if (!chip) return;
+                _hidePvTipDelayed();
+            }, true);
+        }
     }
 
     // D-29: 模式 UI 同步（用 class 切换，CSS 控制样式，含 hover 行为）
@@ -693,53 +734,101 @@ function pathOfMenu(menuId, menuById) {
 
     async function doGenImage() {
         const btn = document.getElementById('pgBtnGenImage');
+        const sel = document.getElementById('pgSelectT2iTool');
         const meta = document.getElementById('pgResultMeta');
-        // 1) 以 textarea 当前值为准（用户手敲/粘贴可能没同步到 _resultText）
-        const resultEl = document.getElementById('pgResult');
-        const promptText = ((resultEl && resultEl.value) || _resultText || '').trim();
-        if (!promptText) {
-            showToast('没有可用的提示词，请先生成或拼装', 'error');
-            return;
+        // 立即给视觉反馈（不等任何 await），保证即便后续异常被吞用户也能看到
+        // 「点了有响应」的明确信号
+        try {
+            setGenBtnState('loading', '准备中...');
+            if (meta) { meta.textContent = '准备提交生图...'; meta.style.color = '#0ea5e9'; }
+        } catch (_) {}
+        // 兜底：捕获所有未预期异常（IPC reject / sync throw 等），避免 click handler
+        // fire-and-forget 把异常吞掉导致「按钮能点无任何反馈」。
+        try {
+            return await _doGenImageInner(btn, sel, meta);
+        } catch (e) {
+            try { setGenBtnState('idle'); } catch (_) {}
+            const msg = (e && e.message) || String(e);
+            showToast('生图请求失败: ' + msg, 'error');
+            if (meta) { meta.textContent = '生图异常: ' + msg; meta.style.color = '#dc2626'; }
+            console.error('[doGenImage] 未捕获异常:', e);
         }
-        // 2) 拿最新 comfyui 状态（防 polling 滞后）
-        await refreshComfyStatus();
-        // 3) 没跑就自动启动
-        if (!_comfyStatus || !_comfyStatus.running) {
-            const cfg = _comfyConfig;
-            if (!cfg || !cfg.pythonPath || !cfg.comfyDir) {
-                showToast('未配置 ComfyUI 路径，请先在「模型」里设置', 'error');
+    }
+
+    async function _doGenImageInner(btn, sel, meta) {
+        // submitted = true 表示已经把 job 提交到 ComfyUI，需要等 onComfyComplete 来恢复按钮；
+        // 其它任何提前 return / 抛异常都要恢复按钮 idle（doGenImage 外层也会做一次兜底）
+        let submitted = false;
+        try {
+            // 1) 以 textarea 当前值为准（用户手敲/粘贴可能没同步到 _resultText）
+            const resultEl = document.getElementById('pgResult');
+            const promptText = ((resultEl && resultEl.value) || _resultText || '').trim();
+            if (!promptText) {
+                showToast('没有可用的提示词，请先生成或拼装', 'error');
                 return;
             }
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 启动 ComfyUI...'; }
-            if (meta) { meta.textContent = 'ComfyUI 未启动，正在自动启动（大模型冷启可能需 30-120s）...'; meta.style.color = '#0ea5e9'; }
-            const sr = await api.comfyui.start(cfg);
-            if (!sr || !sr.ok) {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-image"></i> AI 生图'; }
-                if (meta) { meta.textContent = 'ComfyUI 启动失败: ' + ((sr && sr.error) || '未知'); meta.style.color = '#dc2626'; }
-                showToast('ComfyUI 启动失败: ' + ((sr && sr.error) || '未知'), 'error');
-                await refreshComfyStatus();
+            // 2) 从 select 拿选中的文生图工具
+            const toolId = sel && sel.value;
+            if (!toolId) {
+                showToast('请先选择一个文生图工具', 'error');
                 return;
             }
-            // 启动成功，刷新状态
+            // 3) 取工具 schema，拼 formValues（prompt + 其他 default）
+            const toolRes = await api.tools.get(toolId);
+            if (!toolRes || !toolRes.ok || !toolRes.tool) {
+                showToast('加载工具失败: ' + ((toolRes && toolRes.error) || '未知'), 'error');
+                return;
+            }
+            const tool = toolRes.tool;
+            const { values: formValues, promptFieldId } = buildT2iFormValues(tool, promptText);
+            if (!promptFieldId) {
+                showToast('该工具没有文本输入字段', 'error');
+                return;
+            }
+            // 4) 拿最新 comfyui 状态（防 polling 滞后）
             await refreshComfyStatus();
-            if (meta) { meta.textContent = 'ComfyUI 已启动，准备生图...'; meta.style.color = '#059669'; }
+            // 5) 没跑就自动启动（tools.run 也会自动启，但提前启动可以早一点把 UI 状态切对）
+            if (!_comfyStatus || !_comfyStatus.running) {
+                const cfg = _comfyConfig;
+                if (!cfg || !cfg.pythonPath || !cfg.comfyDir) {
+                    showToast('未配置 ComfyUI 路径，请先在「模型」里设置', 'error');
+                    return;
+                }
+                if (btn) { setGenBtnState('loading', '启动 ComfyUI...'); }
+                if (meta) { meta.textContent = 'ComfyUI 未启动，正在自动启动（大模型冷启可能需 30-120s）...'; meta.style.color = '#0ea5e9'; }
+                const sr = await api.comfyui.start(cfg);
+                if (!sr || !sr.ok) {
+                    if (meta) { meta.textContent = 'ComfyUI 启动失败: ' + ((sr && sr.error) || '未知'); meta.style.color = '#dc2626'; }
+                    showToast('ComfyUI 启动失败: ' + ((sr && sr.error) || '未知'), 'error');
+                    await refreshComfyStatus();
+                    return;
+                }
+                // 启动成功，刷新状态
+                await refreshComfyStatus();
+                if (meta) { meta.textContent = 'ComfyUI 已启动，准备生图...'; meta.style.color = '#059669'; }
+            }
+            // 6) 提交生图（走 tools.run：动态工具 + formValues）
+            if (btn) { setGenBtnState('loading', '生成中...'); }
+            const mode = (tool && tool.mode) || (_llmConfig && _llmConfig.mode) || 'sfw';
+            if (meta) { meta.textContent = `${tool.name || toolId} | ${mode.toUpperCase()} | 提交中...`; meta.style.color = '#0ea5e9'; }
+            const r = await api.tools.run({ toolId, formValues });
+            if (!r || !r.ok) {
+                if (meta) { meta.textContent = `生图失败: ${(r && r.error) || '未知错误'}`; meta.style.color = '#dc2626'; }
+                showToast('生图失败: ' + ((r && r.error) || '未知错误'), 'error');
+                return;
+            }
+            submitted = true;  // 已提交，交给 onComfyComplete 恢复按钮
+            _currentImageJobId = r.jobId;
+            if (meta) meta.textContent = `${tool.name || toolId} | ${mode.toUpperCase()} | jobId=${r.jobId} | 等待结果...`;
+            // 自动切到图片 tab（无图占位 + spinner）
+            showImageWaiting();
+            switchResultTab('image');
+        } finally {
+            // 任何提前 return / 异常（非成功提交）都恢复按钮 idle
+            if (!submitted) {
+                try { setGenBtnState('idle'); } catch (_) {}
+            }
         }
-        // 4) 提交生图
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...'; }
-        const mode = (_llmConfig && _llmConfig.mode) || 'sfw';
-        if (meta) { meta.textContent = `ComfyUI: ${mode.toUpperCase()} | 提交中...`; meta.style.color = '#0ea5e9'; }
-        const r = await api.comfyui.generate({ promptText, mode });
-        if (!r || !r.ok) {
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-image"></i> AI 生图'; }
-            if (meta) { meta.textContent = `生图失败: ${(r && r.error) || '未知错误'}`; meta.style.color = '#dc2626'; }
-            showToast('生图失败: ' + ((r && r.error) || '未知错误'), 'error');
-            return;
-        }
-        _currentImageJobId = r.jobId;
-        if (meta) meta.textContent = `ComfyUI: ${mode.toUpperCase()} | jobId=${r.jobId} | 等待结果...`;
-        // 自动切到图片 tab（无图占位 + spinner）
-        showImageWaiting();
-        switchResultTab('image');
     }
 
     function showImageWaiting() {
@@ -764,26 +853,34 @@ function pathOfMenu(menuId, menuById) {
     // 同步结果区操作按钮（含 AI 生图）的 enable 状态
     // 调用时机：_resultText 改变后（doGenerate / doAssemble / doRefine / history 载入）
     // 也由 textarea 的 input 事件触发（手敲 / 粘贴也支持）
+    // 注意：AI 生图按钮**只在「没选中工作流」时禁用**——其他状态（无提示词 / 未配 ComfyUI）
+    // 故意不禁用，让用户点了之后走 doGenImage → showToast 的明确反馈路径，
+    // 避免「下拉选完后按钮看似有响应其实被静默禁用」的体验断裂。
     function syncResultActions() {
         const btnGen = document.getElementById('pgBtnGenImage');
-        if (btnGen) {
-            // textarea 是 source of truth（手敲/粘贴的场景 _resultText 可能没同步）
-            const resultEl = document.getElementById('pgResult');
-            const liveText = (resultEl && resultEl.value) || _resultText || '';
-            const hasConfig = !!(_comfyConfig && _comfyConfig.pythonPath && _comfyConfig.comfyDir);
-            const running = !!(_comfyStatus && _comfyStatus.running);
-            // 有 prompt + (已运行 OR 有配置可自动启) → 可点
-            const ok = !!liveText.trim() && (running || hasConfig);
-            btnGen.disabled = !ok;
-            if (!liveText.trim()) {
-                btnGen.title = '先生成或拼装一段提示词';
-            } else if (!hasConfig && !running) {
-                btnGen.title = '请先在「模型」里配置 ComfyUI 路径';
-            } else if (!running) {
-                btnGen.title = '点一下自动启动 ComfyUI 并生图';
-            } else {
-                btnGen.title = '调本地 ComfyUI 出图';
-            }
+        const btnRegen = document.getElementById('pgBtnRegen');
+        if (!btnGen) return;
+        const sel = document.getElementById('pgSelectT2iTool');
+        const hasTool = !!(sel && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex].value && !sel.options[sel.selectedIndex].text.startsWith('('));
+        btnGen.disabled = !hasTool;
+        // 旁边的「重新生成」按钮跟 AI 生图走同一套判断（有工具就可点），
+        // 但语义是「用现有 prompt 再跑一次 ComfyUI」，所以 click handler 走 doGenImage
+        if (btnRegen) btnRegen.disabled = !hasTool;
+        // tooltip：提示当前可点 / 不可点的理由（hover 可见）
+        const resultEl = document.getElementById('pgResult');
+        const liveText = (resultEl && resultEl.value) || _resultText || '';
+        const hasConfig = !!(_comfyConfig && _comfyConfig.pythonPath && _comfyConfig.comfyDir);
+        const running = !!(_comfyStatus && _comfyStatus.running);
+        if (!hasTool) {
+            btnGen.title = '先在右上 ▼ 选一个文生图工作流';
+        } else if (!liveText.trim()) {
+            btnGen.title = '先生成或拼装一段提示词（也可点我看提示）';
+        } else if (!hasConfig && !running) {
+            btnGen.title = '请先在「模型」里配置 ComfyUI 路径（也可点我自动启动）';
+        } else if (!running) {
+            btnGen.title = '点一下自动启动 ComfyUI 并生图';
+        } else {
+            btnGen.title = '调本地 ComfyUI 出图';
         }
     }
 
@@ -874,10 +971,11 @@ function pathOfMenu(menuId, menuById) {
         showImageLoaded();
         document.getElementById('pgBtnSaveImageToLib').disabled = false;
         document.getElementById('pgBtnSaveImageAs').disabled = false;
+        document.getElementById('pgBtnSetAsPreview').disabled = false;
         const meta = document.getElementById('pgResultMeta');
         if (meta) { meta.textContent = `ComfyUI: 完成`; meta.style.color = '#059669'; }
         const btn = document.getElementById('pgBtnGenImage');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-image"></i> AI 生图'; }
+        if (btn) { setGenBtnState('idle'); }
         refreshComfyStatus().catch(() => {});
         showToast('生图完成', 'success');
     }
@@ -889,7 +987,7 @@ function pathOfMenu(menuId, menuById) {
         const meta = document.getElementById('pgResultMeta');
         if (meta) { meta.textContent = `ComfyUI 错误: ${payload.message || payload.code || '未知'}`; meta.style.color = '#dc2626'; }
         const btn = document.getElementById('pgBtnGenImage');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-image"></i> AI 生图'; }
+        if (btn) { setGenBtnState('idle'); }
         showToast('ComfyUI: ' + (payload.message || '失败'), 'error');
     }
 
@@ -898,7 +996,7 @@ function pathOfMenu(menuId, menuById) {
         if (el) { el.style.color = '#dc2626'; el.textContent = `● ComfyUI 已退出 (code ${payload && payload.code != null ? payload.code : '?'})`; }
         _comfyStatus = { running: false };
         const btn = document.getElementById('pgBtnGenImage');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-image"></i> AI 生图'; btn.title = 'ComfyUI 已退出'; }
+        if (btn) { setGenBtnState('disabled'); btn.title = 'ComfyUI 已退出'; }
     }
 
     // 解析 data URL 成 { mime, base64, byteLength }
@@ -973,6 +1071,359 @@ function pathOfMenu(menuId, menuById) {
             return;
         }
         showToast('已保存到 ' + (r.path || '本地'), 'success');
+    }
+
+    // 把当前生成的图设为选中提示词的预览图
+    // 单选：直接走；多选：弹 modal 让用户勾选要赋给哪些提示词
+    async function setCurrentImageAsPreview() {
+        if (!_currentImage) return;
+        const items = Array.from(_selectedItems.values());
+        if (items.length === 0) {
+            showToast('请先选择提示词', 'error');
+            return;
+        }
+        // 1. 取图 + 必要压缩（preview IPC 上限 2MB，ComfyUI 输出经常超）
+        let mime, base64;
+        try {
+            ({ mime, base64 } = dataUrlToBuffer(_currentImage.dataUrl));
+        } catch (e) {
+            showToast('图片数据异常: ' + e.message, 'error');
+            return;
+        }
+        let byteLen = 0;
+        try { byteLen = atob(base64).length; } catch (_) {}
+        if (byteLen > 2 * 1024 * 1024) {
+            try {
+                const blob = await (await fetch(_currentImage.dataUrl)).blob();
+                const c = await window._compressImageToBase64(blob, 100 * 1024);
+                mime = c.mime; base64 = c.dataBase64;
+            } catch (e) {
+                showToast('压缩失败: ' + (e && e.message || e), 'error');
+                return;
+            }
+        }
+        // 2. 选 1 个：直接走；>=2 个：弹 modal
+        let targetIds;
+        if (items.length === 1) {
+            targetIds = new Set([items[0].id]);
+        } else {
+            targetIds = await openPreviewAssignModal(items, _currentImage.dataUrl);
+            if (!targetIds || targetIds.size === 0) return;
+        }
+        // 3. 上传一次 → 共享 fileName（多 item 共一份物理文件，避免重复 copy；主进程 update 会自动删旧 preview_file）
+        const up = await api.promptPreview.upload({
+            itemId: `gen-${Date.now()}`,
+            mime,
+            dataBase64: base64,
+        });
+        if (!up || !up.ok) {
+            showToast('上传失败: ' + ((up && up.error) || '未知'), 'error');
+            return;
+        }
+        // 4. 逐条 update；_chipItemCache 也要就地刷，保证 hover 立刻看到新预览
+        let ok = 0, fail = 0;
+        for (const id of targetIds) {
+            const r = await api.promptItems.update({ id, preview_file: up.fileName });
+            if (r && r.ok) {
+                const cached = _chipItemCache.get(id);
+                if (cached) cached.preview_image = up.fileName;
+                ok++;
+            } else {
+                fail++;
+            }
+        }
+        if (fail) showToast(`已设为 ${ok} 个，失败 ${fail}`, 'error');
+        else showToast(`已设为 ${ok} 个提示词的预览图`, 'success');
+    }
+
+    // 多选 modal：让用户选哪些提示词要赋当前生图为预览图
+    // 返回 Promise<Set<itemId> | null>
+    function openPreviewAssignModal(items, thumbDataUrl) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay pg-assign-preview-modal active';
+            overlay.style.cssText = 'z-index:2200;';
+            overlay.innerHTML = `
+                <div class="modal" style="max-width:460px; padding:18px 20px;">
+                    <div style="display:flex; align-items:center; gap:12px; padding-bottom:12px; border-bottom:1px solid #e5e7eb; margin-bottom:12px;">
+                        <img src="${thumbDataUrl}" style="width:80px; height:60px; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb;" />
+                        <div style="flex:1; font-size:13px; color:#374151;">把当前生成的图设为下方勾选提示词的预览图（已有的预览将被替换）</div>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                        <span style="font-size:12px; color:#6b7280;">已选 ${items.length} 个</span>
+                        <button type="button" class="pg-assign-toggle-all" style="background:transparent;border:none;color:#6366f1;font-size:12px;cursor:pointer;padding:2px 6px;">全选/全不选</button>
+                    </div>
+                    <div class="pg-assign-list" style="border:1px solid #e5e7eb; border-radius:6px; padding:6px;">
+                        ${items.map(it => `
+                            <label data-id="${it.id}">
+                                <input type="checkbox" class="pg-assign-chk" data-id="${it.id}" checked />
+                                <span style="flex:1;">${escHtml(it.name || '(未命名)')}</span>
+                                ${it.preview_image ? '<span style="font-size:10px;color:#f59e0b;" title="该提示词已有预览图，将被替换">已有图</span>' : ''}
+                            </label>
+                        `).join('')}
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+                        <button type="button" class="btn btn-sm pg-assign-cancel">取消</button>
+                        <button type="button" class="btn btn-sm btn-primary pg-assign-ok" style="background:#6366f1;color:#fff;border-color:#4f46e5;">设为 <span class="pg-assign-count">${items.length}</span> 个预览图</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const chkEls = overlay.querySelectorAll('.pg-assign-chk');
+            const countEl = overlay.querySelector('.pg-assign-count');
+            const okBtn = overlay.querySelector('.pg-assign-ok');
+            const updateCount = () => {
+                const n = Array.from(chkEls).filter(c => c.checked).length;
+                countEl.textContent = String(n);
+                okBtn.disabled = n === 0;
+                okBtn.style.opacity = n === 0 ? '0.5' : '1';
+                okBtn.style.cursor = n === 0 ? 'not-allowed' : 'pointer';
+            };
+            updateCount();
+            chkEls.forEach(c => c.addEventListener('change', updateCount));
+
+            // 全选切换
+            overlay.querySelector('.pg-assign-toggle-all').addEventListener('click', () => {
+                const allChecked = Array.from(chkEls).every(c => c.checked);
+                chkEls.forEach(c => { c.checked = !allChecked; });
+                updateCount();
+            });
+
+            const cleanup = () => {
+                document.removeEventListener('keydown', onKey);
+                overlay.remove();
+            };
+            const onKey = (e) => { if (e.key === 'Escape') { cleanup(); resolve(null); } };
+            document.addEventListener('keydown', onKey);
+
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) { cleanup(); resolve(null); }
+            });
+            overlay.querySelector('.pg-assign-cancel').addEventListener('click', () => {
+                cleanup(); resolve(null);
+            });
+            okBtn.addEventListener('click', () => {
+                const ids = new Set();
+                chkEls.forEach(c => { if (c.checked) ids.add(Number(c.dataset.id)); });
+                cleanup();
+                resolve(ids);
+            });
+        });
+    }
+
+    // ========== 文生图（t2i）工具：动态选择 AI 工具替换写死的工作流 ==========
+
+    // 「文生图」工具判定：
+    //   1) 没有 image 类型字段（不依赖图片上传）
+    //   2) 有 textarea / text 字段（可输入 prompt）
+    //   3) 输出节点含 image 类型（产物是图片，不是视频/文本）
+    //   4) 未 broken（schema 或 workflow 文件损坏的直接跳过）
+    // 与 ai-tools.js:447 同款逻辑，保持同步。
+    function isT2iTool(t) {
+        if (!t) return false;
+        if (t.broken) return false;        // schema 或 workflow 损坏
+        if (t.error) return false;         // 有错误信息
+        const fields = Array.isArray(t.fieldTypes) ? t.fieldTypes : [];
+        let hasPromptField = false;
+        for (const f of fields) {
+            if (!f) continue;
+            if (f.type === 'image') return false;
+            if (f.type === 'textarea' || f.type === 'text') hasPromptField = true;
+        }
+        if (!hasPromptField) return false;
+        const outs = Array.isArray(t.outputNodeTypes) ? t.outputNodeTypes : [];
+        return outs.some(o => o && o.type === 'image');
+    }
+
+    // 页面打开时拉一次工具列表，填进 #pgSelectT2iTool（隐藏 state）+ 自定义下拉菜单
+    async function loadT2iTools() {
+        const sel = document.getElementById('pgSelectT2iTool');
+        const mainBtn = document.getElementById('pgBtnGenImage');
+        const arrowBtn = document.getElementById('pgBtnGenArrow');
+        const split = document.getElementById('pgGenSplit');
+        const labelEl = document.getElementById('pgGenLabel');
+        if (!sel || !mainBtn || !arrowBtn || !split) return;
+        let tools = [];
+        try {
+            const r = await api.tools.list();
+            if (r && r.ok && Array.isArray(r.tools)) tools = r.tools;
+        } catch (e) {
+            sel.innerHTML = '<option value="">(加载失败)</option>';
+            labelEl.textContent = 'AI 生图（加载失败）';
+            return;
+        }
+        const t2i = tools.filter(isT2iTool);
+        if (!t2i.length) {
+            sel.innerHTML = '<option value="">(无文生图工具)</option>';
+            labelEl.textContent = 'AI 生图（无工具）';
+            return;
+        }
+        // 1) 隐藏 select 仍作为数据源（doGenImage 通过 sel.value 拿当前 toolId）
+        sel.innerHTML = t2i.map(t => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('');
+        sel.value = t2i[0].id;
+        // 2) 主按钮显示当前工具名
+        const fmtLabel = (name) => `AI 生图 · ${name}`;
+        labelEl.textContent = fmtLabel(t2i[0].name);
+        // 3) 解禁按钮
+        mainBtn.disabled = false;
+        arrowBtn.disabled = false;
+        split.removeAttribute('disabled');
+        // 旁边的「重新生成」按钮也解禁（语义跟 AI 生图一致：有可用工具就能跑）
+        const regenBtn = document.getElementById('pgBtnRegen');
+        if (regenBtn) regenBtn.disabled = false;
+        // 4) 构建/刷新自定义下拉菜单（每次刷新工具列表都重建）
+        let menu = document.getElementById('pgGenMenu');
+        if (menu) menu.remove();
+        menu = document.createElement('div');
+        menu.id = 'pgGenMenu';
+        menu.className = 'pg-gen-menu';
+        menu.innerHTML = t2i.map(t => `
+            <div class="pg-gen-menu-item${t.id === t2i[0].id ? ' selected' : ''}" data-tool-id="${escHtml(t.id)}">
+                <i class="fa-solid fa-check pg-gen-check"${t.id === t2i[0].id ? '' : ' style="visibility:hidden;"'}></i>
+                <span style="flex:1;">${escHtml(t.name)}</span>
+            </div>
+        `).join('');
+        // 菜单挂到 document.body 上，避免被父级 overflow / 层级裁剪影响可见性
+        // 用 position:fixed + getBoundingClientRect 计算位置（防被页面边缘遮挡）
+        document.body.appendChild(menu);
+        // 菜单项点击：切工具 + 刷新选中态 + 关闭菜单
+        menu.querySelectorAll('.pg-gen-menu-item').forEach(item => {
+            item.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const newId = item.dataset.toolId;
+                const newTool = t2i.find(x => x.id === newId);
+                if (!newTool) return;
+                sel.value = newId;
+                labelEl.textContent = fmtLabel(newTool.name);
+                menu.querySelectorAll('.pg-gen-menu-item').forEach(m => {
+                    m.classList.remove('selected');
+                    const ck = m.querySelector('.pg-gen-check');
+                    if (ck) ck.style.visibility = 'hidden';
+                });
+                item.classList.add('selected');
+                const ck2 = item.querySelector('.pg-gen-check');
+                if (ck2) ck2.style.visibility = '';
+                closeGenMenu();
+                // 切工具后立即刷一次按钮 enable/title（依赖 #pgSelectT2iTool 状态）
+                if (typeof syncResultActions === 'function') syncResultActions();
+            });
+        });
+    }
+
+    // 根据 split 的实际屏幕坐标定位菜单（fixed 坐标系）
+    // 优先往下放；视口下方空间不够则往上放
+    function positionGenMenu() {
+        const split = document.getElementById('pgGenSplit');
+        const menu = document.getElementById('pgGenMenu');
+        if (!split || !menu) return;
+        const r = split.getBoundingClientRect();
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        const desiredGap = 4;
+        // 先渲染测量一下尺寸（用 visibility:hidden 而不是 display:block，避免污染 display 内联样式）
+        menu.style.visibility = 'hidden';
+        menu.style.display = 'block';
+        const mh = menu.offsetHeight;
+        const mw = menu.offsetWidth;
+        const spaceBelow = vh - r.bottom - desiredGap;
+        const spaceAbove = r.top - desiredGap;
+        // 默认往下；下方不够则往上
+        let topPx;
+        if (spaceBelow >= Math.min(mh, 200) || spaceBelow >= spaceAbove) {
+            topPx = r.bottom + desiredGap;
+        } else {
+            topPx = r.top - desiredGap - mh;
+            if (topPx < 0) topPx = 0;
+        }
+        // 右对齐 split 的右边缘；同时保证不超出左边界
+        let leftPx = r.right - mw;
+        if (leftPx < 4) leftPx = 4;
+        menu.style.top = `${topPx}px`;
+        menu.style.left = `${leftPx}px`;
+        menu.style.right = 'auto';
+        menu.style.visibility = '';
+    }
+
+    function toggleGenMenu() {
+        const arrowBtn = document.getElementById('pgBtnGenArrow');
+        const menu = document.getElementById('pgGenMenu');
+        if (!arrowBtn || !menu) return;
+        // 用 inline style._genMenuOpen 作 single source of truth（避免 .open class 在某些场景未同步）
+        const isOpen = menu._genMenuOpen === true;
+        if (isOpen) closeGenMenu();
+        else {
+            positionGenMenu();
+            menu._genMenuOpen = true;
+            menu.classList.add('open');
+            arrowBtn.classList.add('active');
+        }
+    }
+    function closeGenMenu() {
+        const arrowBtn = document.getElementById('pgBtnGenArrow');
+        const menu = document.getElementById('pgGenMenu');
+        if (menu) {
+            menu._genMenuOpen = false;
+            menu.classList.remove('open');
+            // 清掉 positionGenMenu 设置的 inline display:block / visibility，否则 CSS .pg-gen-menu{display:none} 被 inline 覆盖，菜单关不掉
+            menu.style.removeProperty('display');
+            menu.style.removeProperty('visibility');
+        }
+        if (arrowBtn) arrowBtn.classList.remove('active');
+    }
+
+    // 生图按钮状态切换（替代直接改 innerHTML，避免破坏 split-button 结构）
+    // state: 'loading' = 转圈+禁用；'idle' = 恢复 idle（标签 = "AI 生图 · 工具名"）；'disabled' = 禁用（标签自定）
+    function setGenBtnState(state, labelText) {
+        const btn = document.getElementById('pgBtnGenImage');
+        const arrow = document.getElementById('pgBtnGenArrow');
+        const icon = document.getElementById('pgGenIcon');
+        const label = document.getElementById('pgGenLabel');
+        const regen = document.getElementById('pgBtnRegen');
+        const sel = document.getElementById('pgSelectT2iTool');
+        if (!btn || !icon || !label) return;
+        const toolName = (sel && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : '';
+        const hasTool = toolName && !toolName.startsWith('(');
+        // FA 7.x 默认用 SVG 替换 <i class="fa-...">，SVGElement 的 className 是只读的 SVGAnimatedString
+        // 用 setAttribute('class', ...) 才能在 <i> / <svg> 两种情况下都生效
+        if (state === 'loading') {
+            btn.disabled = true;
+            if (arrow) arrow.disabled = true;
+            if (regen) regen.disabled = true;
+            icon.setAttribute('class', 'fa-solid fa-spinner fa-spin');
+            if (labelText !== undefined) label.textContent = labelText;
+        } else if (state === 'disabled') {
+            btn.disabled = true;
+            if (arrow) arrow.disabled = true;
+            if (regen) regen.disabled = true;
+            icon.setAttribute('class', 'fa-solid fa-image');
+            label.textContent = labelText !== undefined ? labelText : (hasTool ? `AI 生图 · ${toolName}` : 'AI 生图');
+        } else {  // 'idle'
+            btn.disabled = !hasTool;
+            if (arrow) arrow.disabled = !hasTool;
+            if (regen) regen.disabled = !hasTool;
+            icon.setAttribute('class', 'fa-solid fa-image');
+            label.textContent = labelText !== undefined ? labelText : (hasTool ? `AI 生图 · ${toolName}` : 'AI 生图');
+        }
+    }
+
+    // 把结果区文本塞进工具的 prompt 字段；其他字段取 schema default
+    // 返回 { values, promptFieldId }
+    function buildT2iFormValues(tool, promptText) {
+        const values = {};
+        const fields = (tool && tool.formFields) || [];
+        // 与 ai-tools.js:799 约定一致：第一个 textarea 字段是 prompt 字段；
+        // text 类型字段（如 filename_prefix）走 default，不当作 prompt。
+        let promptFieldId = null;
+        for (const f of fields) {
+            if (!f || !f.id) continue;
+            if (f.type === 'textarea' && !promptFieldId) {
+                promptFieldId = f.id;
+                values[f.id] = promptText;
+            } else if (f.default !== undefined) {
+                values[f.id] = f.default;
+            }
+        }
+        return { values, promptFieldId };
     }
 
     // ========== 数据加载 ==========
@@ -1189,6 +1640,71 @@ function pathOfMenu(menuId, menuById) {
         updateSelectedCount();
     }
 
+    // ========== 提示词预览图 hover 浮层（singleton）==========
+    let _pvTipEl = null;
+    let _chipItemCache = new Map();  // id → item（事件委托用：chip 重建后仍能找到对应 item）
+    function _ensurePvTip() {
+        if (_pvTipEl) return _pvTipEl;
+        _pvTipEl = document.createElement('div');
+        _pvTipEl.className = 'pg-item-preview-tip';
+        _pvTipEl.style.display = 'none';
+        document.body.appendChild(_pvTipEl);
+        return _pvTipEl;
+    }
+    async function _showPvTip(item, anchorEl) {
+        const tip = _ensurePvTip();
+        const hasPreview = !!item.preview_image;
+        if (hasPreview) {
+            tip.innerHTML = '<div class="pg-item-preview-tip-img" data-empty="1"></div>'
+                + '<div class="pg-item-preview-tip-text"></div>';
+        } else {
+            tip.innerHTML = '<div class="pg-item-preview-tip-text"></div>';
+        }
+        const imgEl = tip.querySelector('.pg-item-preview-tip-img');
+        const txtEl = tip.querySelector('.pg-item-preview-tip-text');
+        txtEl.textContent = item.content || '(无内容)';
+        // 先定位并显示，再异步加载图（避免 IPC 失败时整个 tooltip 不出现）
+        const rect = anchorEl.getBoundingClientRect();
+        const TIP_W = 340, TIP_H = hasPreview ? 230 : 70;
+        let left = rect.right + 10;
+        let top = rect.top;
+        if (left + TIP_W > window.innerWidth) {
+            left = rect.left - TIP_W - 10;
+        }
+        if (left < 8) left = 8;
+        if (top + TIP_H > window.innerHeight) {
+            top = window.innerHeight - TIP_H - 8;
+        }
+        if (top < 8) top = 8;
+        tip.style.left = left + 'px';
+        tip.style.top = top + 'px';
+        tip.style.display = 'block';
+        if (item.preview_image) {
+            try {
+                const r = await window.api.promptPreview.read({ fileName: item.preview_image });
+                if (r && r.ok) {
+                    imgEl.style.backgroundImage = 'url(' + r.dataUrl + ')';
+                    imgEl.removeAttribute('data-empty');
+                    imgEl.textContent = '';
+                } else if (r && r.error) {
+                    imgEl.textContent = '加载失败: ' + r.error;
+                }
+            } catch (e) {
+                imgEl.textContent = '加载异常: ' + (e && e.message || e);
+            }
+        }
+    }
+    function _hidePvTip() { if (_pvTipEl) _pvTipEl.style.display = 'none'; }
+    // 延迟隐藏（IPC 异步加载期间，鼠标快速移动会被误关）
+    let _hideTimer = null;
+    function _hidePvTipDelayed() {
+        if (_hideTimer) clearTimeout(_hideTimer);
+        _hideTimer = setTimeout(() => { _hidePvTip(); _hideTimer = null; }, 300);
+    }
+    function _cancelHidePvTip() {
+        if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
+    }
+
     function renderItemSection(container, title, items) {
         // D-31: 按当前模式（SFW/NSFW）过滤 sensitivity
         const mode = (_llmConfig && _llmConfig.mode) || 'sfw';
@@ -1226,6 +1742,7 @@ function pathOfMenu(menuId, menuById) {
             const sel = _selectedItems.has(it.id);
             const chip = document.createElement('div');
             chip.dataset.itemId = String(it.id);  // D-33: 让 toggleItem 能定位这个 chip 改样式
+            _chipItemCache.set(it.id, it);  // 事件委托用
             chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 12px 6px 13px;border-radius:5px;cursor:pointer;user-select:none;font-size:12px;border:1px solid ' + (sel ? '#6366f1' : '#d1d5db') + ';background:' + (sel ? '#6366f1' : '#fff') + ';color:' + (sel ? '#ffffff' : '#374151') + ';box-shadow:' + (sel ? '0 2px 4px rgba(99,102,241,0.3)' : '0 1px 1px rgba(0,0,0,0.04)') + ';transition:all 0.1s;';
             // hover 样式：未选中 → 浅灰底；已选中 → 不变（保留紫底）
             // 修复：原代码选中的 chip mouseenter 也会被覆盖成浅灰 → 白底白字
@@ -1242,7 +1759,8 @@ function pathOfMenu(menuId, menuById) {
                 }
             });
             chip.innerHTML = '<span style="font-weight:500;">' + escHtml(it.name) + '</span>';
-            chip.title = it.content || it.name;
+            chip.addEventListener('mouseenter', () => { _cancelHidePvTip(); _showPvTip(it, chip); });
+            chip.addEventListener('mouseleave', _hidePvTipDelayed);
             chip.addEventListener('click', () => toggleItem(it));
             chips.appendChild(chip);
         }
@@ -1631,7 +2149,6 @@ function pathOfMenu(menuId, menuById) {
             _resultText = r.text;
             _lastGeneratedItems = items;
             _lastGeneratedTags = items;
-            document.getElementById('pgBtnRegen').disabled = false;
             updateSaveButtonState();
             syncResultActions();
             showToast('生成完成（已自动保存到历史）', 'success');
@@ -1681,7 +2198,6 @@ function pathOfMenu(menuId, menuById) {
         result.value = r.refined.text;
         _resultText = r.refined.text;
         _lastGeneratedTags = Array.from(_selectedTags.values());
-        document.getElementById('pgBtnRegen').disabled = false;
         updateSaveButtonState();
         syncResultActions();
         const a = r.assembled;
@@ -3301,6 +3817,8 @@ async function openConfigModal(opts) {
         wrap.style.display = 'block';
         const keepCreating = !id && !!opts.keepCreating;
         const allItems = [];
+        // 预览图状态：fileName=已上传文件名；dataUrl=用户刚选的图 base64；removed=点了「清除」
+        const _pv = { fileName: '', dataUrl: '', mime: '', removed: false };
         (async () => {
             if (currentItemCatId) {
                 const r = await window.api.promptItems.list(currentItemCatId);
@@ -3358,7 +3876,77 @@ async function openConfigModal(opts) {
                 '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">说明</label><textarea id="cfgItemDescInp" rows="2" placeholder="可选，说明此提示词的用途或效果" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;resize:vertical;box-sizing:border-box;">' + esc((id || !keepCreating) ? (it.description||'') : '') + '</textarea></div>' +
                 '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">敏感度</label><select id="cfgItemSensSel" style="width:160px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;background:#fff;"><option value="sfw"' + (((id || !keepCreating) ? (it.sensitivity||'nsfw') : 'nsfw')==='sfw'?' selected':'') + '>SFW （安全）</option><option value="nsfw"' + (((id || !keepCreating) ? (it.sensitivity||'nsfw') : 'nsfw')==='nsfw'?' selected':'') + '>NSFW （成人）</option></select><span style="font-size:11px;color:#9ca3af;margin-left:8px;">默认 NSFW</span></div>' +
                 '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">排序权重</label><input id="cfgItemSortInp" type="number" value="' + defaultSort + '" min="0" style="width:120px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;' + (keepCreating ? 'border-color:#10b981;' : '') + '"><span style="font-size:11px;color:#9ca3af;margin-left:6px;">越小越靠前' + (id ? '' : ' · 新增自动取同级最大 +1') + '</span></div>' +
+                '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">预览图 <span style="color:#9ca3af;font-weight:400;">（可选，仅 1 张，jpg/png/webp，≤2MB）</span></label><div style="display:flex;gap:10px;align-items:center;"><div id="cfgItemPvThumb" style="width:160px;height:90px;border:1px dashed #d1d5db;border-radius:6px;background:#f9fafb center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:11px;">暂无预览图</div><div style="display:flex;flex-direction:column;gap:6px;"><input id="cfgItemPvFile" type="file" accept="image/jpeg,image/png,image/webp" style="font-size:12px;max-width:220px;"><button id="cfgItemPvClearBtn" type="button" class="btn btn-sm" style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;"><i class="fa-solid fa-xmark"></i> 清除预览图</button></div></div></div>' +
                 '<div style="display:flex;gap:8px;"><button id="cfgItemSaveBtn" class="btn btn-sm btn-primary"><i class="fa-solid fa-floppy-disk"></i> 保存' + (keepCreating ? '并继续' : '') + '</button><button id="cfgItemCancelBtn" class="btn btn-sm cfgHoverBtn">取消</button></div>';
+
+            // ---- 预览图：编辑模式拉已有；新增模式清空 ----
+            const pvThumb = wrap.querySelector('#cfgItemPvThumb');
+            const pvFile = wrap.querySelector('#cfgItemPvFile');
+            const pvClearBtn = wrap.querySelector('#cfgItemPvClearBtn');
+            const _setPvThumb = (dataUrl, hasImage) => {
+                if (hasImage) {
+                    pvThumb.style.backgroundImage = 'url(' + dataUrl + ')';
+                    pvThumb.textContent = '';
+                } else {
+                    pvThumb.style.backgroundImage = '';
+                    pvThumb.textContent = '暂无预览图';
+                }
+            };
+            if (id) {
+                const cur = allItems.find(x => x.id === id);
+                const fn = (cur && cur.preview_image) || '';
+                if (fn) {
+                    window.api.promptPreview.read({ fileName: fn }).then(r => {
+                        if (r && r.ok) {
+                            _pv.fileName = fn;
+                            _setPvThumb(r.dataUrl, true);
+                            pvClearBtn.style.display = '';
+                        } else {
+                            _setPvThumb(null, false);
+                        }
+                    });
+                } else {
+                    _setPvThumb(null, false);
+                }
+            } else {
+                _setPvThumb(null, false);
+            }
+            pvFile.addEventListener('change', async () => {
+                const f = pvFile.files && pvFile.files[0];
+                if (!f) return;
+                if (f.size > 2 * 1024 * 1024) {
+                    showToast('预览图不能超过 2MB', 'error');
+                    pvFile.value = '';
+                    return;
+                }
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+                    showToast('仅支持 jpg / png / webp', 'error');
+                    pvFile.value = '';
+                    return;
+                }
+                try {
+                    const r = await window._compressImageToBase64(f, 100 * 1024);
+                    _pv.dataUrl = r.dataBase64;
+                    _pv.mime = r.mime;
+                    _pv.removed = false;
+                    _setPvThumb('data:' + r.mime + ';base64,' + r.dataBase64, true);
+                    pvClearBtn.style.display = '';
+                    if (r.compressed) {
+                        showToast(`已压缩：${(r.originalSize/1024).toFixed(0)}KB → ${(r.finalSize/1024).toFixed(0)}KB`, 'success');
+                    }
+                } catch (e) {
+                    showToast('图片处理失败: ' + (e && e.message || e), 'error');
+                    pvFile.value = '';
+                }
+            });
+            pvClearBtn.addEventListener('click', () => {
+                _pv.fileName = '';
+                _pv.dataUrl = '';
+                _pv.removed = true;
+                _setPvThumb(null, false);
+                pvClearBtn.style.display = 'none';
+                pvFile.value = '';
+            });
 
             // 改 cat 时重算 sort（仅新增）
             const catSel = wrap.querySelector('#cfgItemCatSel');
@@ -3382,19 +3970,37 @@ async function openConfigModal(opts) {
                 let r;
                 if (itemEditingId) r = await window.api.promptItems.update({ id: itemEditingId, ...payload });
                 else r = await window.api.promptItems.add(payload);
-                if (r.ok) {
-                    showToast(itemEditingId ? '修改成功' : '添加成功', 'success');
-                    await loadItemList(currentItemCatId);
-                    // D-31-r3: 新增保存后 → 连续新增（保留 cat + sort+1）
-                    if (itemEditingId) {
-                        _lastCreateItemCatId = 0;
-                        showItemForm(null);
-                    } else {
-                        _lastCreateItemCatId = payload.category_id;
-                        showItemForm(null, { defaultCatId: _lastCreateItemCatId, keepCreating: true });
+                if (!r.ok) { showToast(r.error||'操作失败', 'error'); return; }
+
+                // ---- 预览图后处理 ----
+                const newId = itemEditingId || r.id;
+                if (_pv.removed) {
+                    // 清除预览图（仅编辑模式有意义；新增模式本来就没图）
+                    await window.api.promptItems.update({ id: newId, preview_clear: true });
+                } else if (_pv.dataUrl) {
+                    // 上传新图
+                    const up = await window.api.promptPreview.upload({
+                        mime: _pv.mime,
+                        dataBase64: _pv.dataUrl,
+                        itemId: newId,
+                    });
+                    if (up && up.ok) {
+                        await window.api.promptItems.update({ id: newId, preview_file: up.fileName });
+                    } else if (up && up.error) {
+                        showToast('预览图上传失败: ' + up.error, 'error');
                     }
                 }
-                else showToast(r.error||'操作失败', 'error');
+
+                showToast(itemEditingId ? '修改成功' : '添加成功', 'success');
+                await loadItemList(currentItemCatId);
+                // D-31-r3: 新增保存后 → 连续新增（保留 cat + sort+1）
+                if (itemEditingId) {
+                    _lastCreateItemCatId = 0;
+                    showItemForm(null);
+                } else {
+                    _lastCreateItemCatId = payload.category_id;
+                    showItemForm(null, { defaultCatId: _lastCreateItemCatId, keepCreating: true });
+                }
             });
             wrap.querySelector('#cfgItemCancelBtn').addEventListener('click', () => { wrap.style.display='none'; wrap.innerHTML=''; itemEditingId = null; _lastCreateItemCatId = 0; });
             if (id) {

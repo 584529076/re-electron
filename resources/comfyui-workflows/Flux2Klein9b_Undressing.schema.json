@@ -3,6 +3,7 @@
   "name": "Flux2Klein9b_Undressing",
   "description": "上传图片",
   "mode": "nsfw",
+  "accepts": ["image"],
   "cover": "covers/Flux2Klein9b_Undressing.png",
   "coverFallback": {
     "icon": "fa-film",
@@ -19,9 +20,21 @@
       "required": true,
       "accept": "image/*",
       "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (K采样器)",
+      "type": "number",
+      "nodeId": "31",
+      "field": "value",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "实际写入 node 31 (PrimitiveInt)，通过链路传至 node 22 KSampler.seed；-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
     }
-     ],
+  ],
   "outputNodes": [
-    { "nodeId": "245", "type": "video", "filenamePrefix": "Video/SmoothMix" }
+    { "nodeId": "107", "type": "image", "filenamePrefix": "ComfyUI" }
   ]
 }

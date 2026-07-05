@@ -1,14 +1,15 @@
 {
   "id": "qwen_image_nsfw",
   "name": "ZT文生图",
-  "description": "ZT-NSFW文生图（单采）",
+  "description": "ZT-NSFW文生图（双采）",
   "mode": "nsfw",
+  "accepts": ["text"],
   "cover": "covers/qwen_image_nsfw.png",
   "coverFallback": {
     "icon": "fa-wand-magic-sparkles",
     "gradient": ["#7c3aed", "#db2777"]
   },
-  "workflowFile": "workflow_nsfw.json",
+  "workflowFile": "Moody ZIB + ZIT Simple Workflow -  V6（双采工作流最新版）.json",
   "placeholders": {
     "<POSITIVE_PROMPT>": { "nodeId": "5", "field": "text", "role": "prompt" }
   },
@@ -17,29 +18,16 @@
       "id": "positive_prompt",
       "label": "正向提示词",
       "type": "textarea",
-      "nodeId": "5",
-      "field": "text",
-      "default": "1girl, masterpiece, best quality, 8k, highly detailed, sharp focus",
+      "nodeId": "664",
+      "field": "value",
+      "default": "一位年轻女性的半身肖像，她拥有柔顺的深棕色长卷发，发丝光泽自然，部分发丝轻柔地垂落在肩头。她正微微侧身，头部略微转向镜头，露出温柔含蓄的微笑，眼神清澈明亮，充满亲和力。她身穿一件米色针织露胸毛衣，毛衣纹理清晰可见，呈现出温暖舒适的质感，硕大圆润的两个胸部全部露出，乳头清晰可见。背景为纯净的浅灰色，简洁而专业，突出了人物主体。整体画面光线柔和均匀，色调温暖，氛围宁静优雅，具有专业的摄影棚质感。",
       "rows": 6
-    },
-    {
-      "id": "seed",
-      "label": "随机种子",
-      "type": "number",
-      "nodeId": "4",
-      "field": "seed",
-      "default": -1,
-      "min": -1,
-      "max": 4294967295,
-      "step": 1,
-      "randomizable": true,
-      "note": "-1 表示随机"
     },
     {
       "id": "width",
       "label": "宽度",
       "type": "number",
-      "nodeId": "7",
+      "nodeId": "606",
       "field": "width",
       "default": 832,
       "min": 64,
@@ -50,7 +38,7 @@
       "id": "height",
       "label": "高度",
       "type": "number",
-      "nodeId": "7",
+      "nodeId": "606",
       "field": "height",
       "default": 1216,
       "min": 64,
@@ -61,12 +49,36 @@
       "id": "filename_prefix",
       "label": "文件名前缀",
       "type": "text",
-      "nodeId": "20",
+      "nodeId": "648",
       "field": "filename_prefix",
       "default": "ComfyUI"
+    },
+    {
+      "id": "seed_1st",
+      "label": "Seed (1ST) KSamplerAdvanced",
+      "type": "number",
+      "nodeId": "649",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）；固定值可复现同一张图"
+    },
+    {
+      "id": "seed_2nd",
+      "label": "Seed (2ND) KSamplerAdvanced",
+      "type": "number",
+      "nodeId": "688",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
     }
   ],
   "outputNodes": [
-    { "nodeId": "20", "type": "image", "filenamePrefix": "ComfyUI" }
+    { "nodeId": "648", "type": "image", "filenamePrefix": "ComfyUI" }
   ]
 }
