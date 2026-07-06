@@ -488,9 +488,18 @@ function pathOfMenu(menuId, menuById) {
                 </div>
                 <!-- 3. 生成结果 -->
                 <div style="width:420px; border-left:1px solid #e5e7eb; display:flex; flex-direction:column; background:#ffffff;">
-                    <div style="padding:12px 16px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; justify-content:space-between;">
+                    <div style="padding:12px 16px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; gap:8px;">
                         <span style="font-size:14px; color:#374151; font-weight:500;">生成结果</span>
-                        <span id="pgResultMeta" style="font-size:11px; color:#9ca3af;"></span>
+                        <span id="pgResultMeta" style="flex:1; text-align:right; font-size:11px; color:#9ca3af; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <input id="pgGenWidth" type="number" min="64" max="4096" step="8"
+                                   style="width:56px; padding:4px 6px; font-size:11px; border:1px solid #d1d5db; border-radius:4px;"
+                                   title="图片宽度（当前工具不支持时此输入被忽略）" />
+                            <span style="color:#9ca3af; font-size:11px;">×</span>
+                            <input id="pgGenHeight" type="number" min="64" max="4096" step="8"
+                                   style="width:56px; padding:4px 6px; font-size:11px; border:1px solid #d1d5db; border-radius:4px;"
+                                   title="图片高度（当前工具不支持时此输入被忽略）" />
+                        </div>
                     </div>
                     <!-- tab 切换：提示词 / 图片 -->
                     <div id="pgResultTabs" style="display:flex; border-bottom:1px solid #e5e7eb; background:#fafafa;">
@@ -780,7 +789,19 @@ function pathOfMenu(menuId, menuById) {
                 return;
             }
             const tool = toolRes.tool;
-            const { values: formValues, promptFieldId } = buildT2iFormValues(tool, promptText);
+            // 读「宽×高」输入（仅当 input 可用 + 有值时才作为 override）
+            const sizeOverride = {};
+            const wEl = document.getElementById('pgGenWidth');
+            const hEl = document.getElementById('pgGenHeight');
+            if (wEl && !wEl.disabled && wEl.value.trim() !== '') {
+                const n = parseInt(wEl.value, 10);
+                if (!Number.isNaN(n)) sizeOverride.width = n;
+            }
+            if (hEl && !hEl.disabled && hEl.value.trim() !== '') {
+                const n = parseInt(hEl.value, 10);
+                if (!Number.isNaN(n)) sizeOverride.height = n;
+            }
+            const { values: formValues, promptFieldId } = buildT2iFormValues(tool, promptText, sizeOverride);
             if (!promptFieldId) {
                 showToast('该工具没有文本输入字段', 'error');
                 return;
@@ -1262,6 +1283,11 @@ function pathOfMenu(menuId, menuById) {
         // 1) 隐藏 select 仍作为数据源（doGenImage 通过 sel.value 拿当前 toolId）
         sel.innerHTML = t2i.map(t => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('');
         sel.value = t2i[0].id;
+        // 1.5) 同步「宽×高」输入框状态（依据第一个 tool 的 schema）
+        // 需要先 fetch 拿到完整 schema（含 formFields），因为 list() 只返回摘要
+        api.tools.get(t2i[0].id).then((res) => {
+            if (res && res.ok && res.tool) syncGenSizeInputs(res.tool);
+        }).catch(() => {});
         // 2) 主按钮显示当前工具名
         const fmtLabel = (name) => `AI 生图 · ${name}`;
         labelEl.textContent = fmtLabel(t2i[0].name);
@@ -1307,6 +1333,10 @@ function pathOfMenu(menuId, menuById) {
                 closeGenMenu();
                 // 切工具后立即刷一次按钮 enable/title（依赖 #pgSelectT2iTool 状态）
                 if (typeof syncResultActions === 'function') syncResultActions();
+                // 同步「宽×高」输入框（fetch 新 tool 的 schema）
+                api.tools.get(newId).then((res) => {
+                    if (res && res.ok && res.tool) syncGenSizeInputs(res.tool);
+                }).catch(() => {});
             });
         });
     }
@@ -1406,9 +1436,46 @@ function pathOfMenu(menuId, menuById) {
         }
     }
 
+    // 根据当前选中工具的 schema 同步「宽×高」输入框状态：
+    //   - schema 有 width/height 字段 → 启用 + placeholder 显示 default
+    //   - schema 没有该字段 → 禁用 + 灰显 + placeholder "—"
+    //   - 用户已手敲的值不会被覆盖（保留用户输入）
+    // 通过 dataset.supportsWidth/Height 让 doGenImage 知道哪些 input 可信（即使没读 disabled 也兜底）
+    function syncGenSizeInputs(tool) {
+        const wEl = document.getElementById('pgGenWidth');
+        const hEl = document.getElementById('pgGenHeight');
+        if (!wEl || !hEl) return;
+        const fields = (tool && tool.formFields) || [];
+        const wField = fields.find(f => f && f.id === 'width' && f.type === 'number');
+        const hField = fields.find(f => f && f.id === 'height' && f.type === 'number');
+        const apply = (el, field) => {
+            if (field && field.default !== undefined) {
+                el.disabled = false;
+                el.style.opacity = '1';
+                el.style.background = '#ffffff';
+                el.style.cursor = 'text';
+                el.placeholder = String(field.default);
+                el.dataset.supportsSize = '1';
+                el.dataset.toolDefault = String(field.default);
+            } else {
+                el.disabled = true;
+                el.style.opacity = '0.4';
+                el.style.background = '#f3f4f6';
+                el.style.cursor = 'not-allowed';
+                el.placeholder = '—';
+                el.dataset.supportsSize = '0';
+                delete el.dataset.toolDefault;
+            }
+        };
+        apply(wEl, wField);
+        apply(hEl, hField);
+    }
+
     // 把结果区文本塞进工具的 prompt 字段；其他字段取 schema default
+    // sizeOverride: 可选 { width, height } —— 用户在右侧面板输入的尺寸，覆盖 schema default；
+    //   仅对 formField.id === 'width' / 'height' 且 type === 'number' 的字段生效
     // 返回 { values, promptFieldId }
-    function buildT2iFormValues(tool, promptText) {
+    function buildT2iFormValues(tool, promptText, sizeOverride) {
         const values = {};
         const fields = (tool && tool.formFields) || [];
         // 与 ai-tools.js:799 约定一致：第一个 textarea 字段是 prompt 字段；
@@ -1419,6 +1486,11 @@ function pathOfMenu(menuId, menuById) {
             if (f.type === 'textarea' && !promptFieldId) {
                 promptFieldId = f.id;
                 values[f.id] = promptText;
+            } else if (f.type === 'number' && (f.id === 'width' || f.id === 'height') && sizeOverride) {
+                // 尺寸字段：用户输入 > schema default；空值/NaN 回退到 default
+                const ov = sizeOverride[f.id];
+                const v = (ov !== undefined && ov !== null && !Number.isNaN(ov)) ? ov : f.default;
+                if (v !== undefined) values[f.id] = v;
             } else if (f.default !== undefined) {
                 values[f.id] = f.default;
             }

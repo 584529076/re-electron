@@ -1,0 +1,61 @@
+{
+  "id": "Moody_Krea2_Turbo_Minimal",
+  "name": "Moody Krea2 Turbo Minimal",
+  "description": "Moody Krea2 Turbo Minimal 文生图工作流（双段采样：1ST euler 8步 + 2ND dpmpp_2m_sde 10步，中间 1.8× Latent Upscale）",
+  "mode": "nsfw",
+  "accepts": ["text"],
+  "coverFallback": {
+    "icon": "fa-wand-magic-sparkles",
+    "gradient": ["#7c3aed", "#db2777"]
+  },
+  "workflowFile": "Moody Krea2 Turbo Minimal Workflow.json",
+  "formFields": [
+      {
+      "id": "custom_prompt",
+      "label": "提示词",
+      "type": "textarea",
+      "nodeId": "627",
+      "field": "text",
+      "default": "画面中央是一位年轻女性，赤裸上身，肌肤细腻光滑，表面覆盖着细密的水珠，呈现出湿润透亮的质感；她的胸部丰满圆润，乳头清晰可见，周围皮肤纹理自然，微微泛着柔光；腹部平坦紧致，腰线柔和，大腿线条修长，臀部饱满，腿部肌肉线条流畅，膝盖以下被浅水浸润，水波轻漾在皮肤表面形成细微涟漪；私处区域完整呈现，阴毛浓密自然，阴唇轮廓分明，外阴部分湿润且富有弹性，边缘略带光泽，整体结构真实而细腻；她坐在一个白色的浴缸边缘，双腿微屈，左腿搭在右腿上，身体略微前倾，右手轻扶浴缸沿，左手自然垂落于膝旁，手指纤细，指甲修剪整齐；头部微微仰起，黑发束成低马尾，额前留有齐刘海，眼神直视镜头，表情平静而专注，嘴唇微张，嘴角略带笑意，鼻梁挺直，睫毛浓密，面部皮肤白皙无瑕，毛孔细腻，脸颊略带红晕；背景为纯白色瓷砖墙面，墙面平整无瑕疵，上方有白色窗框或门框线条，光线从左侧窗户斜射入内，形成柔和的漫射光，照亮人物身体曲线，同时在右侧投下柔和阴影，光影过渡自然，营造出温暖而宁静的氛围；浴缸内盛有清澈淡蓝色温水，水面平静，倒映出人物下半身与部分墙面，水波轻微荡漾，水珠在皮肤表面不断滑落，形成动态的水滴轨迹；构图采用中景特写，人物占据画面中心偏左位置，浴缸边缘构成视觉引导线，使观众视线自然聚焦于人物躯干与面部；色彩基调以冷白为主，辅以肤色暖调与水体淡蓝，形成鲜明对比，整体色调干净、清透、高饱和度，具有极强的视觉冲击力；图像风格为高精度摄影写实主义，细节刻画极致，皮肤质感如丝绸般柔滑，水珠晶莹剔透，毛发根根分明，光影层次丰富，符合专业级人体摄影艺术标准，画面具有胶片颗粒感与真实拍摄的质感，背景虚化处理柔和，突出主体，整体氛围静谧、纯净、充满生命力。",
+      "rows": 6,
+      "note": "图像编辑指令"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (1ST+2ND K采样器)",
+      "type": "number",
+      "nodeId": "649",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "实际写入 node 649 (rgthree Seed)，通过链路同时传至 node 599 + node 638 KSamplerAdvanced.noise_seed；-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
+    },
+    {
+      "id": "width",
+      "label": "宽度",
+      "type": "number",
+      "nodeId": "698",
+      "field": "width",
+      "default": 640,
+      "min": 64,
+      "max": 4096,
+      "step": 8
+    },
+    {
+      "id": "height",
+      "label": "高度",
+      "type": "number",
+      "nodeId": "698",
+      "field": "height",
+      "default": 960,
+      "min": 64,
+      "max": 4096,
+      "step": 8
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "732", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}
