@@ -1,0 +1,273 @@
+{
+  "599": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "649",
+        0
+      ],
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 8,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "822",
+        0
+      ],
+      "positive": [
+        "627",
+        0
+      ],
+      "negative": [
+        "763",
+        0
+      ],
+      "latent_image": [
+        "698",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "610": {
+    "inputs": {
+      "samples": [
+        "638",
+        0
+      ],
+      "vae": [
+        "757",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "627": {
+    "inputs": {
+      "text": "画面中央是一位年轻女性，赤裸上身，肌肤细腻光滑，表面覆盖着细密的水珠，呈现出湿润透亮的质感；她的胸部丰满圆润，乳头清晰可见，周围皮肤纹理自然，微微泛着柔光；腹部平坦紧致，腰线柔和，大腿线条修长，臀部饱满，腿部肌肉线条流畅，膝盖以下被浅水浸润，水波轻漾在皮肤表面形成细微涟漪；私处区域完整呈现，阴毛浓密自然，阴唇轮廓分明，外阴部分湿润且富有弹性，边缘略带光泽，整体结构真实而细腻；她坐在一个白色的浴缸边缘，双腿微屈，左腿搭在右腿上，身体略微前倾，右手轻扶浴缸沿，左手自然垂落于膝旁，手指纤细，指甲修剪整齐；头部微微仰起，黑发束成低马尾，额前留有齐刘海，眼神直视镜头，表情平静而专注，嘴唇微张，嘴角略带笑意，鼻梁挺直，睫毛浓密，面部皮肤白皙无瑕，毛孔细腻，脸颊略带红晕；背景为纯白色瓷砖墙面，墙面平整无瑕疵，上方有白色窗框或门框线条，光线从左侧窗户斜射入内，形成柔和的漫射光，照亮人物身体曲线，同时在右侧投下柔和阴影，光影过渡自然，营造出温暖而宁静的氛围；浴缸内盛有清澈淡蓝色温水，水面平静，倒映出人物下半身与部分墙面，水波轻微荡漾，水珠在皮肤表面不断滑落，形成动态的水滴轨迹；构图采用中景特写，人物占据画面中心偏左位置，浴缸边缘构成视觉引导线，使观众视线自然聚焦于人物躯干与面部；色彩基调以冷白为主，辅以肤色暖调与水体淡蓝，形成鲜明对比，整体色调干净、清透、高饱和度，具有极强的视觉冲击力；图像风格为高精度摄影写实主义，细节刻画极致，皮肤质感如丝绸般柔滑，水珠晶莹剔透，毛发根根分明，光影层次丰富，符合专业级人体摄影艺术标准，画面具有胶片颗粒感与真实拍摄的质感，背景虚化处理柔和，突出主体，整体氛围静谧、纯净、充满生命力。",
+      "clip": [
+        "755",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "638": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": [
+        "649",
+        0
+      ],
+      "steps": 10,
+      "cfg": 1,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "sgm_uniform",
+      "start_at_step": 5,
+      "end_at_step": 999,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "822",
+        0
+      ],
+      "positive": [
+        "627",
+        0
+      ],
+      "negative": [
+        "627",
+        0
+      ],
+      "latent_image": [
+        "647",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "647": {
+    "inputs": {
+      "upscale_method": "bislerp",
+      "scale_by": 1.8,
+      "samples": [
+        "599",
+        0
+      ]
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "缩放Latent（比例）"
+    }
+  },
+  "649": {
+    "inputs": {
+      "seed": -1
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (1ST)"
+    }
+  },
+  "651": {
+    "inputs": {
+      "images": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image (2ND) Fine Details"
+    }
+  },
+  "698": {
+    "inputs": {
+      "width": 640,
+      "height": 960,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image (Base Dimensions) 初始大小"
+    }
+  },
+  "732": {
+    "inputs": {
+      "filename_prefix": "image/2026-07-06/Krea2-214536",
+      "images": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "755": {
+    "inputs": {
+      "clip_name": "Kera2\\Huihui-Qwen3-VL-4B-Instruct-abliterated.safetensors",
+      "type": "krea2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "757": {
+    "inputs": {
+      "vae_name": "Qwen\\qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "761": {
+    "inputs": {
+      "unet_name": "Krea2\\红潮2_INT8_2_Krea2_Edition.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "763": {
+    "inputs": {
+      "conditioning": [
+        "627",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "822": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": true,
+        "lora": "Krea2\\KNPV4.1_pre_NSFW.safetensors",
+        "strength": 0
+      },
+      "lora_2": {
+        "on": true,
+        "lora": "Krea2\\雯雯的后宫-姿势-Krea-2-Turbo.safetensors",
+        "strength": 0
+      },
+      "lora_3": {
+        "on": true,
+        "lora": "Krea2\\zsuger_c1-st6000魅魔.safetensors",
+        "strength": 0
+      },
+      "lora_4": {
+        "on": true,
+        "lora": "Krea2\\NSFW全面真实感引擎表意文字4 + Krea 2_V2_LORA.safetensors",
+        "strength": 0.75
+      },
+      "lora_5": {
+        "on": true,
+        "lora": "Krea2\\Krea2更好的阴部.safetensors",
+        "strength": 0.75
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "761",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "权重Lora加载器"
+    }
+  },
+  "828": {
+    "inputs": {
+      "images": [
+        "829",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image (1ST)"
+    }
+  },
+  "829": {
+    "inputs": {
+      "samples": [
+        "599",
+        0
+      ],
+      "vae": [
+        "757",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  }
+}
