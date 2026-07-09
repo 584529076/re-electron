@@ -31,6 +31,7 @@
             <button id="btnConfig" class="btn" title="管理 Tab 配置（增删改 + 切换资源路径）"><i class="fa-solid fa-gear"></i> 配置</button>
             <button id="btnPromptGen" class="btn" title="提示词自动生成（Ollama 本地 LLM）"><i class="fa-solid fa-wand-magic-sparkles"></i> 提示词生成</button>
             <button id="btnAiTools" class="btn" title="AI 工具（声明式 ComfyUI workflow 表单）"><i class="fa-solid fa-toolbox"></i> AI 工具</button>
+            <button id="btnLoras" class="btn" title="Lora 库（管理 Lora 并在工作流中插入）"><i class="fa-solid fa-puzzle-piece"></i> Lora 库</button>
             <div class="slider-container">
                 <span class="slider-label">宽度</span>
                 <input type="range" id="widthSlider" min="200" max="600" value="300" step="10">
@@ -52,6 +53,24 @@
             <span>加载更多...</span>
         </div>
     </main>
+
+    <!-- 主内容区域锁屏遮罩（默认显示，点击「解锁」后隐藏；不覆盖 header 顶部按钮）
+         关键：放在 main 外（body 级别）而不是 main 内。这样其他页面（loras / settings / ai-tools）
+         在 main.style.display='none' → '' 时，遮罩不会跟着切换 display，避免 display:none→flex
+         重启动画导致闪屏（关键 bug：@keyframes lockFadeIn 的 transform:translate(-50%,-50%)
+         会让 .lock-overlay 被平移 -50% 自身尺寸，露出右下半屏主内容）。
+         loras / settings 等全屏页（z-index:200 fixed inset:0）天然会盖住 z-index:50 的遮罩，
+         所以移到 main 外之后仍能保持「打开其他页面时遮罩不出现 / 切回主界面遮罩常驻」。 -->
+    <div id="lockOverlay" class="lock-overlay" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+        <div class="lock-card">
+            <div class="lock-icon"><i class="fa-solid fa-lock"></i></div>
+            <h2 id="lockTitle">内容已锁定</h2>
+            <p class="lock-hint">点击下方按钮解锁以查看媒体内容</p>
+            <button id="btnUnlock" class="btn btn-primary lock-btn" type="button">
+                <i class="fa-solid fa-unlock"></i> 解锁
+            </button>
+        </div>
+    </div>
 
     <!-- 新增：文件夹扫描中动画容器 -->
     <div id="scanLoading" class="scan-loading" role="status" aria-live="polite">
@@ -83,6 +102,12 @@
                 <div class="preview-media-pane">
                     <img src="" alt="预览图片" class="preview-media" id="previewImage" style="display: none;">
                     <video controls class="preview-media" id="previewVideo" style="display: none;"></video>
+                    <button id="previewPrevBtn" class="preview-nav preview-nav-prev" type="button" aria-label="上一张" title="上一张" disabled>
+                        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <button id="previewNextBtn" class="preview-nav preview-nav-next" type="button" aria-label="下一张" title="下一张" disabled>
+                        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                    </button>
                 </div>
                 <div class="preview-prompt-pane">
 
@@ -197,5 +222,6 @@
     <script src="js/settings.js"></script> <!-- 统一设置页（resources / prompts / comfyui / llm） -->
     <script src="js/prompt-gen.js"></script> <!-- D-27 提示词生成 -->
     <script src="js/ai-tools.js"></script> <!-- AI 工具（声明式 ComfyUI workflow 表单） -->
+    <script src="js/loras.js"></script> <!-- Lora 库（管理 / 插入工作流）-->
 </body>
 </html>

@@ -9,6 +9,7 @@
     "gradient": ["#0ea5e9", "#6366f1"]
   },
   "workflowFile": "boogu_turbo文生图工作流.json",
+  "models": ["Flux"],
   "formFields": [
       {
       "id": "custom_prompt",

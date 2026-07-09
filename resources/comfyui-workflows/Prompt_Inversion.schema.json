@@ -9,6 +9,7 @@
     "gradient": ["#0ea5e9", "#6366f1"]
   },
   "workflowFile": "Prompt_Inversion.json",
+  "models": ["Qwen"],
   "formFields": [
     {
       "id": "image",

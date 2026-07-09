@@ -303,6 +303,8 @@ const els = {
     previewModal: document.getElementById('mediaPreviewModal'),
     previewImage: document.getElementById('previewImage'),
     previewVideo: document.getElementById('previewVideo'),
+    previewPrevBtn: document.getElementById('previewPrevBtn'),
+    previewNextBtn: document.getElementById('previewNextBtn'),
     closePreviewBtn: document.querySelector('.close-preview'),
     promptTextarea: document.getElementById('promptTextarea'),
     promptDisplay: document.getElementById('promptDisplay'),
@@ -432,6 +434,36 @@ function init() {
                 window.aiTools.open();
             } else {
                 alert('AI 工具模块未加载');
+            }
+        });
+    }
+    const btnLoras = document.getElementById('btnLoras');
+    if (btnLoras) {
+        btnLoras.addEventListener('click', () => {
+            if (window.lorasPage && window.lorasPage.open) {
+                window.lorasPage.open();
+            } else {
+                alert('Lora 库模块未加载');
+            }
+        });
+    }
+
+    // ========== 主内容区域锁屏遮罩 ==========
+    // 每次打开软件默认锁定；点击「解锁」后隐藏（直至软件重启）。
+    // 实现细节：遮罩挂 body 级别（不在 main 里），所以其他页面打开/关闭 main.style.display
+    // 不会让遮罩重新触发动画 —— 锁屏首帧即全屏，无过渡动画（避免 keyframe 缩放期间底部内容露出）。
+    // loras / settings 等全屏页（z-index:200 fixed inset:0）会自动盖住 z-index:50 的遮罩。
+    const lockOverlay = document.getElementById('lockOverlay');
+    const btnUnlock = document.getElementById('btnUnlock');
+    if (lockOverlay && btnUnlock) {
+        btnUnlock.addEventListener('click', () => {
+            lockOverlay.classList.add('lock-hidden');
+        });
+        // 键盘支持：Enter / Space 触发解锁
+        btnUnlock.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                lockOverlay.classList.add('lock-hidden');
             }
         });
     }
@@ -1131,6 +1163,39 @@ async function _renderPromptAiToolButtons() {
 }
 
 /**
+ * 预览弹框内的「上一张 / 下一张」导航
+ * - 按 mediaId 在 state.media 里查 index，禁用边界按钮
+ * - 列表只有 1 条时禁用两个按钮
+ */
+function _updatePreviewNavState(mediaId) {
+    if (!els.previewPrevBtn || !els.previewNextBtn) return;
+    const list = Array.isArray(state.media) ? state.media : [];
+    const idx = list.findIndex(m => m && m.id === mediaId);
+    if (idx < 0 || list.length < 2) {
+        els.previewPrevBtn.disabled = true;
+        els.previewNextBtn.disabled = true;
+        return;
+    }
+    els.previewPrevBtn.disabled = idx <= 0;
+    els.previewNextBtn.disabled = idx >= list.length - 1;
+}
+
+/**
+ * 切换到相邻媒体并重新打开预览；delta = -1 上一张，+1 下一张
+ */
+function _navigatePreview(delta) {
+    const list = Array.isArray(state.media) ? state.media : [];
+    if (list.length < 2 || !_currentPreviewId) return;
+    const idx = list.findIndex(m => m && m.id === _currentPreviewId);
+    if (idx < 0) return;
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= list.length) return;
+    const next = list[nextIdx];
+    if (!next || !next.src) return;
+    showMediaPreview(next.src, next.type, next.id, next.fileName);
+}
+
+/**
  * 显示媒体预览（图片/视频）—— 2026-06-08 重构为 4 模块
  */
 function showMediaPreview(src, type, mediaId, fileName) {
@@ -1175,6 +1240,9 @@ function showMediaPreview(src, type, mediaId, fileName) {
         els.btnDeleteAsset.disabled = false;
         els.btnDeleteAsset.innerHTML = '<i class="fa-solid fa-trash"></i> 删除资产';
     }
+
+    // 上一张 / 下一张：根据当前媒体在 state.media 中的位置决定按钮可用性
+    _updatePreviewNavState(mediaId);
 
     // AI 工具入口（动态渲染）：根据当前资产类型筛选 schema.accepts 包含此类型的工具
     _renderAiToolButtons(type);
@@ -1837,20 +1905,37 @@ function bindEvents() {
     }
     els.closePreviewBtn.addEventListener('click', _closePreview);
 
+    // 上一张 / 下一张
+    if (els.previewPrevBtn) els.previewPrevBtn.addEventListener('click', () => _navigatePreview(-1));
+    if (els.previewNextBtn) els.previewNextBtn.addEventListener('click', () => _navigatePreview(1));
+
     // 点击预览背景关闭
     els.previewModal.addEventListener('click', (e) => {
         if (e.target === els.previewModal) _closePreview();
     });
 
-    // ESC 退出编辑/关闭弹窗
+    // ESC 退出编辑/关闭弹窗；←/→ 切换上下张
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && els.previewModal.classList.contains('active')) {
+        if (!els.previewModal.classList.contains('active')) return;
+        if (e.key === 'Escape') {
             if (_isEditingPrompt) {
                 e.preventDefault();
                 _exitPromptEdit(false);
             } else {
                 _closePreview();
             }
+            return;
+        }
+        // 文本编辑态下让方向键正常移动光标，不触发翻页
+        if (_isEditingPrompt) return;
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'TEXTAREA' || tag === 'INPUT' || e.target.isContentEditable) return;
+        if (e.key === 'ArrowLeft' && !els.previewPrevBtn.disabled) {
+            e.preventDefault();
+            _navigatePreview(-1);
+        } else if (e.key === 'ArrowRight' && !els.previewNextBtn.disabled) {
+            e.preventDefault();
+            _navigatePreview(1);
         }
     });
 

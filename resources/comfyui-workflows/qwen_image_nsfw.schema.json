@@ -10,6 +10,8 @@
     "gradient": ["#7c3aed", "#db2777"]
   },
   "workflowFile": "Moody ZIB + ZIT Simple Workflow -  V6（双采工作流最新版）.json",
+  "models": ["ZIB", "ZIT"],
+  "modelField": { "nodeId": "668", "field": "unet_name" },
   "placeholders": {
     "<POSITIVE_PROMPT>": { "nodeId": "5", "field": "text", "role": "prompt" }
   },
@@ -22,6 +24,28 @@
       "field": "value",
       "default": "一位年轻女性的半身肖像，她拥有柔顺的深棕色长卷发，发丝光泽自然，部分发丝轻柔地垂落在肩头。她正微微侧身，头部略微转向镜头，露出温柔含蓄的微笑，眼神清澈明亮，充满亲和力。她身穿一件米色针织露胸毛衣，毛衣纹理清晰可见，呈现出温暖舒适的质感，硕大圆润的两个胸部全部露出，乳头清晰可见。背景为纯净的浅灰色，简洁而专业，突出了人物主体。整体画面光线柔和均匀，色调温暖，氛围宁静优雅，具有专业的摄影棚质感。",
       "rows": 6
+    },
+    {
+      "id": "loras_base",
+      "label": "底模 Lora（Power Lora Loader）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "671",
+      "slotCount": 5,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "ZIB 底模的 Power Lora Loader（动态 slot 最多 5 个）；按主模型筛选"
+    },
+    {
+      "id": "loras_refiner",
+      "label": "精炼模 Lora（Power Lora Loader）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "632",
+      "slotCount": 5,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "ZIT 精炼模的 Power Lora Loader（动态 slot 最多 5 个）；按主模型筛选"
     },
     {
       "id": "width",

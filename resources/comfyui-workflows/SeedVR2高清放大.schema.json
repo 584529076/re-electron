@@ -1,0 +1,96 @@
+{
+  "id": "SeedVR2高清放大",
+  "name": "SeedVR2 高清放大",
+  "description": "SeedVR2 7B 图像超分：保留细节的同时提升分辨率，支持 1x/2x/4x 初始缩放 + 自定义目标分辨率",
+  "mode": "sfw",
+  "accepts": ["image"],
+  "coverFallback": {
+    "icon": "fa-magnifying-glass-plus",
+    "gradient": ["#0ea5e9", "#6366f1"]
+  },
+  "workflowFile": "SeedVR2高清放大.json",
+  "models": ["SeedVR2"],
+  "formFields": [
+    {
+      "id": "image",
+      "label": "上传图片",
+      "type": "image",
+      "nodeId": "252",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "scale_by",
+      "label": "初始缩放倍数",
+      "type": "select",
+      "nodeId": "247",
+      "field": "scale_by",
+      "default": 1,
+      "options": [1, 2, 4],
+      "note": "输入图先按此倍数缩放，再交给 SeedVR2；显存紧就保持 1x，让 SeedVR2 单独搞定"
+    },
+    {
+      "id": "resolution",
+      "label": "目标分辨率（短边像素）",
+      "type": "number",
+      "nodeId": "249",
+      "field": "resolution",
+      "default": 2048,
+      "min": 512,
+      "max": 8192,
+      "step": 64,
+      "note": "SeedVR2 输出图的短边像素；和 max_resolution 配合控制切块"
+    },
+    {
+      "id": "max_resolution",
+      "label": "最大分辨率（短边像素）",
+      "type": "number",
+      "nodeId": "249",
+      "field": "max_resolution",
+      "default": 4096,
+      "min": 1024,
+      "max": 16384,
+      "step": 64,
+      "note": "单图最长边上限；超过会被切成多块分批处理"
+    },
+    {
+      "id": "batch_size",
+      "label": "每批图数",
+      "type": "number",
+      "nodeId": "249",
+      "field": "batch_size",
+      "default": 5,
+      "min": 1,
+      "max": 20,
+      "step": 1,
+      "note": "一次处理几张图，显存不够就调小"
+    },
+    {
+      "id": "color_correction",
+      "label": "色彩校正",
+      "type": "select",
+      "nodeId": "249",
+      "field": "color_correction",
+      "default": "lab",
+      "options": ["none", "lab", "wavelet", "wavelet_adaptive", "hdr"],
+      "note": "放大后处理色彩，lab / wavelet 系列能减少偏色"
+    },
+    {
+      "id": "seed",
+      "label": "Seed",
+      "type": "number",
+      "nodeId": "249",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "251", "type": "image", "filenamePrefix": "end" }
+  ]
+}

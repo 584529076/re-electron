@@ -10,6 +10,8 @@
     "gradient": ["#7c3aed", "#db2777"]
   },
   "workflowFile": "Flux2Klein9b_Undressing.json",
+  "models": ["Kelin2"],
+  "modelField": { "nodeId": "1", "field": "unet_name" },
   "formFields": [
     {
       "id": "start_image",
@@ -20,6 +22,18 @@
       "required": true,
       "accept": "image/*",
       "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "loras",
+      "label": "Lora 链（5 节点链式）",
+      "type": "loraMulti",
+      "nodeIds": ["59", "105", "60", "61", "28"],
+      "weightFields": ["strength_model", "strength_model", "strength_model", "strength_model", "strength_model"],
+      "field": "lora_name",
+      "default": [],
+      "group": "Lora 链",
+      "filterByModel": true,
+      "note": "按链顺序 59→105→60→61→28 写入；按主模型筛选"
     },
     {
       "id": "seed",
