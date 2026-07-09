@@ -10,6 +10,8 @@
     "gradient": ["#7c3aed", "#db2777"]
   },
   "workflowFile": "Wan2.2-SmoothMix-I2V.json",
+  "models": ["Wan2.2"],
+  "modelField": { "nodeId": "236", "field": "unet_name" },
   "formFields": [
     {
       "id": "start_image",
@@ -20,6 +22,28 @@
       "required": true,
       "accept": "image/*",
       "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "loras_high",
+      "label": "高噪声模型 Lora（Power Lora Loader 4 slot）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "201",
+      "slotCount": 4,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "Wan2.2 高噪声模型的 Power Lora Loader；按主模型筛选"
+    },
+    {
+      "id": "loras_low",
+      "label": "低噪声模型 Lora（Power Lora Loader 4 slot）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "235",
+      "slotCount": 4,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "Wan2.2 低噪声模型的 Power Lora Loader；按主模型筛选"
     },
     {
       "id": "positive_prompt",

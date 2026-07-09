@@ -1,0 +1,60 @@
+{
+  "id": "flux-2-klein-单-多图编辑",
+  "name": "Flux2-Klein换衣、换头、换脸、多图融合",
+  "description": "FLUX.2 Klein 9B + Klein NSFW LoRA 多图编辑：上传 2 张图 + 编辑指令，AI 按指令合成新图",
+  "mode": "nsfw/sfw",
+  "accepts": ["image"],
+  "coverFallback": {
+    "icon": "fa-images",
+    "gradient": ["#0ea5e9", "#7c3aed"]
+  },
+  "workflowFile": "flux-2-klein-单-多图编辑.json",
+  "models": ["Klein2"],
+  "formFields": [
+    {
+      "id": "image1",
+      "label": "图 1（基础图）",
+      "type": "image",
+      "nodeId": "63",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "作为构图 / 风格基础，会被 EasySize 缩放到最长边 1280"
+    },
+    {
+      "id": "image2",
+      "label": "图 2（参考图）",
+      "type": "image",
+      "nodeId": "64",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "作为元素 / 风格参考，会被缩放到约 1MP"
+    },
+    {
+      "id": "prompt",
+      "label": "编辑指令",
+      "type": "textarea",
+      "nodeId": "19",
+      "field": "text",
+      "default": "把图2的人物面部替换到图1，肤色，比例，发型和图1保持一致",
+      "rows": 5,
+      "note": "描述如何把图 1 / 图 2 合成新图；引用「图1」「图2」时自动对应到上方上传的两张图"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (K采样器)",
+      "type": "number",
+      "nodeId": "95",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "62", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}

@@ -10,6 +10,7 @@
     "gradient": ["#0ea5e9", "#7c3aed"]
   },
   "workflowFile": "Wan2.2-SmoothMix-首尾帧2.json",
+  "models": ["Wan2.2"],
   "formFields": [
     {
       "id": "start_image",
@@ -30,6 +31,28 @@
       "required": true,
       "accept": "image/*",
       "note": "支持 png/jpg/webp"
+    },
+    {
+      "id": "loras_high",
+      "label": "高噪声模型 Lora（Power Lora Loader 4 slot）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "400",
+      "slotCount": 4,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "Wan2.2 高噪声模型的 Power Lora Loader；按主模型筛选"
+    },
+    {
+      "id": "loras_low",
+      "label": "低噪声模型 Lora（Power Lora Loader 4 slot）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "406",
+      "slotCount": 4,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "Wan2.2 低噪声模型的 Power Lora Loader；按主模型筛选"
     },
     {
       "id": "positive_prompt",

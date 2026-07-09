@@ -1,0 +1,74 @@
+{
+  "id": "Moody_Minimal_Anima_动漫_NSFW",
+  "name": "Moody Minimal Anima 动漫 NSFW",
+  "description": "Moody Minimal Anima 动漫 NSFW 文生图工作流（Anima 底模 + anima-highres-aesthetic-boost LoRA，单段 KSamplerAdvanced 4 步）",
+  "mode": "nsfw",
+  "accepts": ["text"],
+  "coverFallback": {
+    "icon": "fa-wand-magic-sparkles",
+    "gradient": ["#312e81", "#be185d"]
+  },
+  "workflowFile": "Moody Minimal Anima动漫NSFW.json",
+  "models": ["Anima"],
+  "modelField": { "nodeId": "761", "field": "unet_name" },
+  "formFields": [
+    {
+      "id": "custom_prompt",
+      "label": "提示词",
+      "type": "textarea",
+      "nodeId": "627",
+      "field": "text",
+      "default": "masterpiece, best quality, anima style, adult woman, tentacles sucking nipples, tentacles sucking vagina, ahegao, underwater temple, sea monster tentacles, wet hair, torn white dress, glowing blue tentacles, floating pose, fearful expression, mystical horror, eldritch ocean monster, sensual atmosphere, cinematic lighting, no explicit action, no sex",
+      "rows": 6,
+      "note": "图像编辑指令"
+    },
+    {
+      "id": "loras",
+      "label": "Lora（Power Lora Loader 5 slot）",
+      "type": "loraMulti",
+      "powerLoraLoaderNodeId": "822",
+      "slotCount": 5,
+      "default": [],
+      "group": "Lora 叠加",
+      "filterByModel": true,
+      "note": "按主模型筛选；按选择顺序写入 Power Lora Loader 的 slot 1..5"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (K采样器)",
+      "type": "number",
+      "nodeId": "649",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
+    },
+    {
+      "id": "width",
+      "label": "宽度",
+      "type": "number",
+      "nodeId": "698",
+      "field": "width",
+      "default": 960,
+      "min": 64,
+      "max": 4096,
+      "step": 8
+    },
+    {
+      "id": "height",
+      "label": "高度",
+      "type": "number",
+      "nodeId": "698",
+      "field": "height",
+      "default": 1472,
+      "min": 64,
+      "max": 4096,
+      "step": 8
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "825", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}

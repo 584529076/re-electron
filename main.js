@@ -30,11 +30,190 @@ const comfyuiWorkflows = require('./comfyui-workflows');
 const comfyuiToolStore = require('./comfyui-tool-store');
 const comfyuiApplier = require('./comfyui-workflow-applier');
 const { COMFYUI_STATUS, COMFYUI_JOBS, setSender: setComfySender, abortAllJobs: abortAllComfyJobs } = require('./comfyui-state');
+const { LorasStore, createLinkElevated } = require('./loras-store');
+const { spawn, execSync, spawnSync } = require('child_process');
+
+// 关键：app 启动期会通过 Start-Process -Verb RunAs 提权，进程会变成 admin。
+// elevated Electron 在某些 Windows 配置下会因为 GPU 加速 / 沙箱渲染失败
+// 导致窗口不显示（主进程在跑，但渲染进程黑屏 / 没出来）。
+// 提前禁用硬件加速 + 沙箱，避免 elevated 模式下渲染失败。
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('no-sandbox');
+
+// 提权诊断日志：写文件 + stdout 双通道（用户可能从快捷方式启动，看不到 stdout）
+const ELEV_LOG_NAME = 'elev-debug.log';
+let _elevLogPath = null;
+function elevLog(...args) {
+    const line = '[' + new Date().toISOString() + '] ' + args.join(' ');
+    console.log(line);
+    try {
+        if (!_elevLogPath) _elevLogPath = path.join(app.getPath('userData'), ELEV_LOG_NAME);
+        fs.appendFileSync(_elevLogPath, line + '\n');
+    } catch (_) {}
+}
 
 let mainWindow = null;
 let store = null;         // KVDb 实例（prompt 存储）
 let configStore = null;   // KVDb 实例（config 存储，跟 prompts 同一份 db）
 let promptsDir = null;    // 兼容老行为：保留 prompts 目录
+let lorasStore = null;    // Lora 库数据访问层（Phase 1）
+
+// ========== UAC 一次性提权（app 启动时）==========
+// 设计：D-30 重构 — 启动期不是 admin 就直接触发系统 UAC，不再弹自定义 dialog。
+// 之后所有 symlink 调用走 fs.symlinkSync（Win32 CreateSymbolicLinkW），无需再触发系统 UAC。
+// 流程：
+//   1) 进程启动 → isElevated() 检查是否已是 admin（High Mandatory Label）
+//   2) 不是 → PowerShell Start-Process -Verb RunAs 自重启（**这一步会弹系统 UAC**）
+//   3) 新进程带 --elevated 标记 → 跳过自检 → 继续正常初始化
+//
+// 与 .exe 思路一致（ShellExecuteW + "runas"），区别是 .exe 每次操作都 UAC，
+// 我们提到启动期一次性付 UAC 成本，session 内 0 弹窗。
+//
+// 用户取消 UAC：relaunchElevated 内已 app.exit(0)，原进程静默退出。
+// 用户可再次点击图标重新触发 UAC（标准 Windows admin-app 行为）。
+
+function isElevated() {
+    if (process.platform !== 'win32') return true;  // mac/Linux 上不需要此机制
+    try {
+        // whoami /groups 输出含 "Mandatory Label\High Mandatory Level" → S-1-16-12288
+        // 普通进程是 Medium Mandatory Level (S-1-16-8192)
+        const out = execSync('whoami /groups', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        return /S-1-16-12288/.test(out);
+    } catch (_) {
+        return false;
+    }
+}
+
+function relaunchElevated() {
+    // 把当前 argv 转发给新进程，并加 --elevated 防止循环
+    const exe = process.execPath;
+    const args = process.argv.slice(1).filter(a => a !== '--elevated');
+    args.push('--elevated');
+    const cwd = process.cwd();
+    const esc = s => String(s).replace(/'/g, "''");
+
+    elevLog('==== relaunchElevated ====');
+    elevLog('exe:', exe);
+    elevLog('args:', JSON.stringify(args));
+    elevLog('cwd:', cwd);
+
+    // 用临时 .ps1 文件避免 -Command 引号地狱
+    // 用 Out-File 写日志（Write-Host 走 information stream，stdout pipe 抓不到）
+    // 用 spawnSync 同步等待（带 timeout），保证 PowerShell 卡死时也能拿到日志
+    const tmpDir = require('os').tmpdir();
+    const psPath = path.join(tmpDir, `relaunch-${process.pid}-${Date.now()}.ps1`);
+    const psLogPath = path.join(app.getPath('userData'), `elev-ps-${Date.now()}.log`);
+
+    const psScript = [
+        `$ErrorActionPreference = 'Stop'`,
+        `$exe = '${esc(exe)}'`,
+        `$argArr = @(${args.map(a => `'${esc(a)}'`).join(', ')})`,
+        `$cwd = '${esc(cwd)}'`,
+        `$logPath = '${esc(psLogPath)}'`,
+        `function _log($s) { $s | Out-File -Append -Encoding utf8 $logPath }`,
+        // 全部用单引号字面 + 拼接 $var，避免双引号里嵌套 $() 触发 PowerShell 解析歧义
+        `$ts = Get-Date -Format 'HH:mm:ss.fff'`,
+        `_log ('[elev-ps] start at ' + $ts)`,
+        `_log ('[elev-ps] exe  : ' + $exe)`,
+        `$argsStr = ($argArr -join ' ')`,
+        `_log ('[elev-ps] args : ' + $argsStr)`,
+        `_log ('[elev-ps] cwd  : ' + $cwd)`,
+        // UAC 设置探测
+        `$sysPol = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -ErrorAction SilentlyContinue`,
+        `$enableLUA = $sysPol.EnableLUA`,
+        `$consentAdmin = $sysPol.ConsentPromptBehaviorAdmin`,
+        `$promptSecure = $sysPol.PromptOnSecureDesktop`,
+        `_log ('[elev-ps] EnableLUA=' + $enableLUA)`,
+        `_log ('[elev-ps] ConsentPromptBehaviorAdmin=' + $consentAdmin)`,
+        `_log ('[elev-ps] PromptOnSecureDesktop=' + $promptSecure)`,
+        `_log '[elev-ps] calling Start-Process -Verb RunAs...'`,
+        `$proc = Start-Process -FilePath $exe -ArgumentList $argArr -WorkingDirectory $cwd -Verb RunAs -PassThru -ErrorAction SilentlyContinue`,
+        `if ($proc -ne $null) {`,
+        `    $pidVal = $proc.Id`,
+        `    $nameVal = $proc.ProcessName`,
+        `    _log ('[elev-ps] Start-Process returned PID=' + $pidVal + ' Name=' + $nameVal)`,
+        `    Start-Sleep -Milliseconds 2000`,
+        `    $alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue`,
+        `    if ($alive) {`,
+        `        $alivePath = $alive.Path`,
+        `        _log ('[elev-ps] 2sec later alive Path=' + $alivePath)`,
+        `    } else {`,
+        `        _log '[elev-ps] 2sec later process exited'`,
+        `    }`,
+        `} else {`,
+        `    _log '[elev-ps] Start-Process returned null'`,
+        `}`,
+        `_log '[elev-ps] done'`,
+    ].join('\r\n');
+
+    try {
+        fs.writeFileSync(psPath, psScript, 'utf8');
+        elevLog('script:', psPath);
+        elevLog('ps log:', psLogPath);
+    } catch (e) {
+        elevLog('write script failed:', e.message);
+        return;
+    }
+
+    // 关键：用 spawnSync + timeout 强制卡死也能拿到日志
+    // timeout 10 秒（UAC 弹框用户处理时间；如果自动提权，几百毫秒就完）
+    let psResult = null;
+    try {
+        psResult = spawnSync('powershell.exe', [
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', psPath,
+        ], {
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: 10000,
+        });
+        elevLog('[ps] sync done. status:', psResult.status, 'signal:', psResult.signal);
+        if (psResult.error) elevLog('[ps] error:', psResult.error.message);
+        if (psResult.stdout) elevLog('[ps] stdout:', (psResult.stdout || '').slice(0, 500));
+        if (psResult.stderr) elevLog('[ps] stderr:', (psResult.stderr || '').slice(0, 500));
+    } catch (e) {
+        elevLog('[ps] sync threw:', e.message);
+    }
+
+    // 读 ps 日志（无论同步是否成功 / 超时）
+    try {
+        if (fs.existsSync(psLogPath)) {
+            const psLog = fs.readFileSync(psLogPath, 'utf8');
+            psLog.split(/\r?\n/).filter(Boolean).forEach(line => elevLog('[ps]', line));
+            try { fs.unlinkSync(psLogPath); } catch (_) {}
+        } else {
+            elevLog('[ps] log file does NOT exist (script may not have started)');
+        }
+    } catch (e) {
+        elevLog('[ps] log read failed:', e.message);
+    }
+
+    // 清理
+    try { fs.unlinkSync(psPath); } catch (_) {}
+
+    elevLog('exiting original process');
+    setTimeout(() => app.exit(0), 200);
+}
+
+async function ensureElevated() {
+    elevLog('ensureElevated start, argv:', JSON.stringify(process.argv));
+    const elevated = isElevated();
+    elevLog('isElevated() =', elevated);
+    if (elevated) return true;
+    if (process.argv.includes('--elevated')) {
+        // 防御：理论上是 admin 但 whoami 没识别出来（极少见）。
+        // 不要再次自重启，避免无限循环。
+        elevLog('--elevated 标记存在但 whoami 未识别 High Mandatory Label，按已提权处理');
+        return true;
+    }
+    // D-30：不再弹自定义 dialog。直接触发系统 UAC（PowerShell Start-Process -Verb RunAs）。
+    // 用户取消 UAC → PowerShell Start-Process 返回 null → 原进程 relaunchElevated 内 app.exit(0) 静默退出。
+    // 用户可再次点击图标重新触发 UAC。
+    elevLog('not elevated; calling relaunchElevated to trigger system UAC');
+    relaunchElevated();
+    return false;
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -56,6 +235,23 @@ function createWindow() {
     setComfySender((channel, payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send(channel, payload);
+        }
+    });
+
+    // 显式 show + focus：elevated 模式下默认 show 行为有时不可靠
+    // 关键：elevated 进程的窗口可能跑到 secure desktop / 不同 window station，
+    //       setVisibleOnAllWorkspaces(true) 强制让窗口出现在用户能看到的所有 workspace
+    mainWindow.setVisibleOnAllWorkspaces(true);
+    mainWindow.once('ready-to-show', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.setVisibleOnAllWorkspaces(true);
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.moveTop();
+            // 短暂置顶 1 秒确保抢到焦点
+            mainWindow.setAlwaysOnTop(true);
+            setTimeout(() => { try { mainWindow.setAlwaysOnTop(false); } catch (_) {} }, 1000);
+            elevLog('window ready-to-show, shown & focused');
         }
     });
 
@@ -87,6 +283,14 @@ function getAssetsDir() {
     if (candidate.includes('..')) return defaultAssetsDir();
     try { fs.mkdirSync(candidate, { recursive: true }); return candidate; }
     catch { return defaultAssetsDir(); }
+}
+// 封面图存储：<userData>/loras-covers/。与 assetsDir 平级、用户改 assets 路径也跟不变。
+// 关键：放在 assets 外面，资产扫描器（main.js:680 readdir 递归）才不会把 lora 封面扫进资产界面。
+function getCoversDir() {
+    const base = app.isPackaged ? app.getPath('userData') : __dirname;
+    const dir = path.join(base, 'loras-covers');
+    try { fs.mkdirSync(dir, { recursive: true }); return dir; }
+    catch { return dir; }
 }
 function getAssetsConfig() {
     const cfg = configStore.get(ASSETS_CONFIG_KEY);
@@ -121,6 +325,10 @@ function initStore() {
     ensureNsfwAssociationTables();// D-36: 关联规则 + 场景模板表
     ensureMediaDir();             // ComfyUI: media/ 子目录
     ensureAssetsDir();            // 资产存储目录（用户可在设置改）
+    ensureLorasTable();           // Lora 库表（Phase 1：纯数据层，UI 后续 phase）
+    // lorasStore 需要 store + getAssetsDir + getComfyConfig 三件套；这些在 initStore 内可用
+    lorasStore = new LorasStore({ store, getAssetsDir, getComfyConfig, getCoversDir });
+    // ComfyUI: 加载 workflows + tool schemas（JSON 损坏只 warn，不崩）
     // ComfyUI: 加载 workflows + tool schemas（JSON 损坏只 warn，不崩）
     try { comfyuiWorkflows.loadAll(); }
     catch (e) { console.warn('[comfyui] 加载 workflows 失败:', e.message); }
@@ -475,6 +683,7 @@ function getMediaTypeByExt(ext) {
 }
 
 // 通用：扫描本地目录（递归，BFS）
+// 结果按文件创建时间倒序（最新在前）；同时间走稳定排序，保留原 BFS 顺序作为 tiebreaker。
 async function scanLocalDir(rootDir, maxDepth, imgExts, videoExts, signal) {
     const collected = [];
     const imgSet = new Set(imgExts || []);
@@ -495,10 +704,21 @@ async function scanLocalDir(rootDir, maxDepth, imgExts, videoExts, signal) {
                 console.warn(`[scanLocal] skip ${dir}: ${e.message}`);
                 continue;
             }
-            for (const entry of entries) {
+            // 文件的 stat 并行抓，目录不需要 stat。失败的 stat 视为 createdAt=0（排到末尾）。
+            const fileStats = await Promise.all(
+                entries.map(e => e.isFile() ? fsp.stat(path.join(dir, e.name)).catch(() => null) : null)
+            );
+            for (let i = 0; i < entries.length; i++) {
                 if (signal && signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+                const entry = entries[i];
                 const full = path.join(dir, entry.name);
                 if (entry.isDirectory()) {
+                    // 跳过 loras 封面目录（封面图在 loras 自己的存储里，详见 loras-store.js）。
+                    // 即便 sweep 失败（旧文件被锁、未能搬走），也不会污染资产界面。
+                    const rel = path.relative(rootDir, full);
+                    const skipCovers = rel.toLowerCase() === path.join('loras', 'covers')
+                        || rel.toLowerCase().startsWith(path.join('loras', 'covers') + path.sep);
+                    if (skipCovers) continue;
                     const key = path.resolve(full).toLowerCase();
                     if (!seenDir.has(key)) {
                         seenDir.add(key);
@@ -510,18 +730,24 @@ async function scanLocalDir(rootDir, maxDepth, imgExts, videoExts, signal) {
                     if (type === 'unknown') continue;
                     if (type === 'image' && imgSet.size > 0 && !imgSet.has(ext)) continue;
                     if (type === 'video' && vidSet.size > 0 && !vidSet.has(ext)) continue;
+                    // NTFS 才有 birthtime；ext4/FAT32 等可能为 0，回退到 mtime。
+                    const st = fileStats[i];
+                    const createdAt = st ? (st.birthtimeMs || st.mtimeMs || 0) : 0;
                     // file:// 协议（Electron 主进程读本地文件给 web 用）
                     collected.push({
                         type,
                         src: 'file:///' + full.replace(/\\/g, '/'),
                         id: `local-${stableHash(full)}`,
                         fileName: entry.name,
+                        createdAt,
                     });
                 }
             }
         }
         frontier = nextFrontier;
     }
+    // 按创建时间倒序：最新生成 / 导入的图排在最前
+    collected.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     return collected;
 }
 
@@ -613,8 +839,19 @@ ipcMain.handle('config:pickDir', async () => {
     }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    // 先确保进程已 admin（一次性 UAC）；未提权则 ensureElevated 内已自重启 + exit
+    if (!await ensureElevated()) return;
     initStore();
+    // 启动时扫一次 addLora 残留的 staging 文件（被中断留下的 .tmp-*）
+    // mtime > 1h 才清，避免误删正在跑的 addLora
+    try {
+        const sweep = _ensureLorasStore().sweepStagingFiles();
+        if (sweep.swept > 0) console.log(`[startup] swept ${sweep.swept} stale .tmp-* lora staging file(s)`);
+        if (sweep.errors.length) console.warn('[startup] sweep errors:', sweep.errors);
+    } catch (e) {
+        console.warn('[startup] staging sweep failed:', e.message);
+    }
     createWindow();
 });
 
@@ -1115,6 +1352,17 @@ function ensureNsfwAssociationTables() {
         store.exec("ALTER TABLE scene_templates ADD COLUMN enabled INTEGER DEFAULT 1");
     }
     console.log('[D-36] 关联规则 + 场景模板表已就绪');
+}
+
+// ========== Lora 库（Phase 1：数据层）==========
+function ensureLorasTable() {
+    // 委托给 LorasStore 自身的 ensureTable（保持 SQL 集中在一个文件）
+    if (!lorasStore) {
+        // 极早路径（理论上不会跑到这里，因为 initStore 里 new 在 ensureTable 之后）
+        lorasStore = new LorasStore({ store, getAssetsDir, getComfyConfig, getCoversDir });
+    }
+    lorasStore.ensureTable();
+    console.log('[loras] loras 表已就绪');
 }
 
 ipcMain.handle('prompt:item:list', async (_e, payload) => {
@@ -2220,8 +2468,17 @@ ipcMain.handle('tools:run', async (_e, payload) => {
         if (!schema) return { ok: false, error: `工具 ${toolId} 不存在` };
         const wfr = comfyuiToolStore.getWorkflow(toolId);
         if (!wfr.ok) return { ok: false, error: wfr.error };
-        // 2) 应用 form values
-        const ar = comfyuiApplier.applyFormToWorkflow(wfr.workflow, schema, formValues);
+        // 2) 应用 form values（注入 Lora id → basename lookup，让 applier 能处理 lora/loraMulti 字段类型）
+        const ar = comfyuiApplier.applyFormToWorkflow(wfr.workflow, schema, formValues, {
+            loraLookup: (id) => {
+                if (!id) return null;
+                try {
+                    const l = _ensureLorasStore().getLora(Number(id));
+                    if (!l) return null;
+                    return { basename: l.name, weight: l.recommended_weight };
+                } catch (e) { return null; }
+            },
+        });
         if (!ar.ok) return { ok: false, error: ar.error, warnings: ar.warnings };
         // 3) 没跑就先自动启动
         if (!COMFYUI_STATUS.running) {
@@ -2517,4 +2774,141 @@ ipcMain.handle('prompt:association:template', async () => {
         filename: 'prompt_associations_template.csv',
         content: 'promptA,promptB,relation,reason,weight\nCCTV,8k,exclusive,监控不可能8K画质,100\nPOV,ceiling mirror,strong,偷拍场景强推天花板镜,80\nlove hotel pink room,heart-shaped bed,strong,情人旅馆强推心形床,75\n'
     };
+});
+
+// ========== Lora 库（Phase 1：数据层 + 文件操作 + 工作流辅助）==========
+// 入口：loras:list / loras:get / loras:add / loras:update / loras:delete
+//       loras:pickFile / loras:pickCover / loras:readCover / loras:setCover / loras:clearCover
+//       loras:listByModel / loras:resolveByNames / loras:types
+// lorasStore 在 initStore() 里实例化；调用前再判断一次兜底（防止 app.whenReady 之外的边缘调用）
+function _ensureLorasStore() {
+    if (!lorasStore) {
+        lorasStore = new LorasStore({ store, getAssetsDir, getComfyConfig, getCoversDir });
+    }
+    return lorasStore;
+}
+
+ipcMain.handle('loras:list', async (_e, filter) => {
+    try {
+        return { ok: true, loras: _ensureLorasStore().listLoras(filter || {}) };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('loras:get', async (_e, id) => {
+    try {
+        const lora = _ensureLorasStore().getLora(Number(id));
+        if (!lora) return { ok: false, error: `lora id=${id} 不存在` };
+        return { ok: true, lora };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('loras:add', async (_e, payload) => {
+    try {
+        if (!payload || !payload.srcPath) return { ok: false, error: 'srcPath 必填' };
+        // 不再注入 createLink — 用 loras-store 默认的 createLinkElevated。
+        // app 启动期已一次性 UAC 提权（ensureElevated），cmd.exe /c mklink 直接走，无需再次弹框。
+        const lora = await _ensureLorasStore().addLora({
+            meta: payload.meta || {},
+            srcPath: payload.srcPath,
+        });
+        return { ok: true, lora };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('loras:update', async (_e, payload) => {
+    try {
+        if (!payload || !payload.id) return { ok: false, error: 'id 必填' };
+        const lora = _ensureLorasStore().updateLora(Number(payload.id), payload.patch || {});
+        return { ok: true, lora };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('loras:delete', async (_e, id) => {
+    try {
+        return _ensureLorasStore().deleteLora(Number(id));
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// 选 Lora 文件（renderer 不直接碰 dialog，全走主进程）
+ipcMain.handle('loras:pickFile', async () => {
+    try {
+        const r = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openFile'],
+            title: '选择 Lora 文件',
+            filters: [
+                { name: 'Lora 模型', extensions: ['safetensors', 'pt', 'pth', 'ckpt', 'bin'] },
+                { name: '全部文件', extensions: ['*'] },
+            ],
+        });
+        if (r.canceled || !r.filePaths.length) return { ok: true, canceled: true };
+        const srcPath = r.filePaths[0];
+        const stat = fs.statSync(srcPath);
+        return {
+            ok: true,
+            path: srcPath,
+            name: path.basename(srcPath),
+            size: stat.size,
+        };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('loras:pickCover', async () => {
+    try {
+        const r = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openFile'],
+            title: '选择封面图',
+            filters: [
+                { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+                { name: '全部文件', extensions: ['*'] },
+            ],
+        });
+        if (r.canceled || !r.filePaths.length) return { ok: true, canceled: true };
+        const srcPath = r.filePaths[0];
+        return { ok: true, path: srcPath, name: path.basename(srcPath) };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// 显式设封面图（从已知 srcPath 拷贝到 assets/loras/covers/<id>.<ext>）
+ipcMain.handle('loras:setCover', async (_e, payload) => {
+    try {
+        if (!payload || !payload.id || !payload.srcPath) return { ok: false, error: 'id/srcPath 必填' };
+        const lora = _ensureLorasStore().setCoverImage(Number(payload.id), payload.srcPath);
+        return { ok: true, lora };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('loras:clearCover', async (_e, id) => {
+    try {
+        const lora = _ensureLorasStore().clearCoverImage(Number(id));
+        return { ok: true, lora };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// 返回 cover 的 file:// URL（renderer 用 <img src> 直接加载）
+ipcMain.handle('loras:readCover', async (_e, id) => {
+    try {
+        const url = _ensureLorasStore().readCover(Number(id));
+        return { ok: true, url };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// 按工作流模型 basename 筛选兼容 Lora（comfy:lora picker 用）
+ipcMain.handle('loras:listByModel', async (_e, modelBasename) => {
+    try {
+        return { ok: true, loras: _ensureLorasStore().listCompatibleLoras(modelBasename || '') };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// workflow 完成后反查本次用到的 Lora id（autoSaveAsset 用）
+ipcMain.handle('loras:resolveByNames', async (_e, basenames) => {
+    try {
+        return { ok: true, items: _ensureLorasStore().resolveByNames(basenames || []) };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// 返回 lora_type 枚举（前端新建/筛选下拉用）
+ipcMain.handle('loras:types', async () => {
+    try {
+        return { ok: true, types: require('./loras-store').LORA_TYPES };
+    } catch (e) { return { ok: false, error: e.message }; }
 });

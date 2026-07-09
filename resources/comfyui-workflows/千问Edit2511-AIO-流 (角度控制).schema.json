@@ -1,0 +1,76 @@
+{
+  "id": "千问Edit2511-AIO-流 (角度控制)",
+  "name": "千问 Edit 2511 角度控制",
+  "description": "Qwen-Image-Edit 2511 AIO 角度重渲：通过内置多角度 LoRA 改变相机视角（水平/垂直/缩放），主体内容保持不变",
+  "mode": "nsfw/sfw",
+  "accepts": ["image"],
+  "coverFallback": {
+    "icon": "fa-camera-rotate",
+    "gradient": ["#7c3aed", "#db2777"]
+  },
+  "workflowFile": "千问Edit2511-AIO-流 (角度控制).json",
+  "models": ["Qwen-Image-Edit-2511"],
+  "formFields": [
+    {
+      "id": "image",
+      "label": "上传图片",
+      "type": "image",
+      "nodeId": "55",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持 png/jpg/webp，上传后自动放到 ComfyUI 的 input 目录"
+    },
+    {
+      "id": "horizontal_angle",
+      "label": "水平角度（度）",
+      "type": "number",
+      "nodeId": "58",
+      "field": "horizontal_angle",
+      "default": 180,
+      "min": 0,
+      "max": 360,
+      "step": 1,
+      "note": "0/360 = 正面，90=左侧，180 = 背面，240=右侧"
+    },
+    {
+      "id": "vertical_angle",
+      "label": "垂直角度（度）",
+      "type": "number",
+      "nodeId": "58",
+      "field": "vertical_angle",
+      "default": 0,
+      "min": -90,
+      "max": 90,
+      "step": 1,
+      "note": "0 = 平视，正数 = 俯视，负数 = 仰视，范围：-90至90"
+    },
+    {
+      "id": "zoom",
+      "label": "缩放",
+      "type": "number",
+      "nodeId": "58",
+      "field": "zoom",
+      "default": 5.1,
+      "min": 1,
+      "max": 20,
+      "step": 0.1,
+      "note": "镜头缩放倍数，范围：1-20"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (K采样器)",
+      "type": "number",
+      "nodeId": "2",
+      "field": "seed",
+      "default": -1,
+      "randomizable": true,
+      "min": -1,
+      "max": 4294967295,
+      "note": "-1 = 每次随机（避免 ComfyUI 命中 prompt cache 复用旧结果）"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "13", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}

@@ -1,0 +1,217 @@
+{
+  "599": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "649",
+        0
+      ],
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 4,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "822",
+        0
+      ],
+      "positive": [
+        "627",
+        0
+      ],
+      "negative": [
+        "763",
+        0
+      ],
+      "latent_image": [
+        "698",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "609": {
+    "inputs": {
+      "samples": [
+        "599",
+        0
+      ],
+      "vae": [
+        "757",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "618": {
+    "inputs": {
+      "image": [
+        "609",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸"
+    }
+  },
+  "627": {
+    "inputs": {
+      "text": "masterpiece, best quality, anima style, adult woman, tentacles sucking nipples, tentacles sucking vagina, ahegao, underwater temple, sea monster tentacles, wet hair, torn white dress, glowing blue tentacles, floating pose, fearful expression, mystical horror, eldritch ocean monster, sensual atmosphere, cinematic lighting, no explicit action, no sex",
+      "clip": [
+        "755",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "630": {
+    "inputs": {
+      "value": "(a*b + (96 * 2))/2",
+      "a": [
+        "618",
+        1
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Calculate optimized height"
+    }
+  },
+  "631": {
+    "inputs": {
+      "value": "(a*b + (96 * 2))/2",
+      "a": [
+        "618",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Calculate optimized width"
+    }
+  },
+  "649": {
+    "inputs": {
+      "seed": -1
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (1ST)"
+    }
+  },
+  "698": {
+    "inputs": {
+      "width": 960,
+      "height": 1472,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image (Base Dimensions) 初始大小"
+    }
+  },
+  "755": {
+    "inputs": {
+      "clip_name": "Qwen\\qwen_3_06b_base.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "757": {
+    "inputs": {
+      "vae_name": "Qwen\\qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "761": {
+    "inputs": {
+      "unet_name": "Anima\\moodyAnimaMix_v10.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "763": {
+    "inputs": {
+      "conditioning": [
+        "627",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "775": {
+    "inputs": {
+      "value": [
+        "649",
+        0
+      ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seed (SD) - Keep 0 by default"
+    }
+  },
+  "822": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": true,
+        "lora": "Anima\\anima-highres-aesthetic-boost.safetensors",
+        "strength": 0.5
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "761",
+        0
+      ],
+      "clip": [
+        "755",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "权重Lora加载器"
+    }
+  },
+  "825": {
+    "inputs": {
+      "filename_prefix": "image/2026-07-09/ANIMA-174344",
+      "images": [
+        "609",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  }
+}

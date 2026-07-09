@@ -113,18 +113,54 @@ function getTool(id) {
     const t = _tools.get(id);
     if (!t) return null;
     const cover = resolveCover(t);
+    // 从 workflow JSON 静态值里提取主模型 basename（用于 Lora 字段按模型过滤的 UI 提示）
+    const mainModel = extractMainModel(t);
     // 返回浅拷贝（避免 renderer 改原对象）
     return {
         id: t.id, name: t.name, description: t.description || '',
         mode: t.mode || 'sfw',
         accepts: Array.isArray(t.accepts) ? t.accepts : [],
         placeholders: t.placeholders || {},
+        // schema 显式声明的适配模型（来自 LORA 适配模型枚举：ZIT/ZIB/Krea2/Kelin2/Flux/Flux2/Qwen/Wan2.1/Wan2.2/Anime）
+        // 多模型工作流（如 ZIB+ZIT 双采）传数组；缺省为空数组时回退到 mainModel（按 JSON 静态值提取）
+        models: Array.isArray(t.models) ? t.models.slice() : [],
+        modelField: t.modelField || null,
+        mainModel,
         formFields: (t.formFields || []).map(f => ({ ...f })),
         outputNodes: (t.outputNodes || []).map(o => ({ ...o })),
         broken: !!t._broken, error: t._error,
         coverUrl: cover.url,
         coverFallback: cover.fallback,
     };
+}
+
+// 从 workflow JSON 提取主模型 basename（节点静态值）
+// 优先级：1) schema.modelField 显式声明 2) 第一个 CheckpointLoaderSimple 的 ckpt_name
+function extractMainModel(t) {
+    const wf = _workflows.get(t.id);
+    if (!wf || !wf.json) return '';
+    try {
+        // 1) schema.modelField
+        if (t.modelField && t.modelField.nodeId) {
+            const n = wf.json[t.modelField.nodeId];
+            if (n && n.inputs && n.inputs[t.modelField.field]) {
+                return String(n.inputs[t.modelField.field]).trim();
+            }
+        }
+        // 2) 扫 CheckpointLoaderSimple / CheckpointLoader / UNETLoader (Flux/Wan) / UnetLoaderGGUF
+        for (const [, node] of Object.entries(wf.json)) {
+            if (!node || typeof node !== 'object') continue;
+            const cls = String(node.class_type || '');
+            let modelName = '';
+            if (cls === 'CheckpointLoaderSimple' || cls === 'CheckpointLoader' || cls === 'unCLIPCheckpointLoader') {
+                modelName = node.inputs && node.inputs.ckpt_name;
+            } else if (cls === 'UNETLoader' || cls === 'UnetLoaderGGUF') {
+                modelName = node.inputs && node.inputs.unet_name;
+            }
+            if (modelName && typeof modelName === 'string' && modelName.trim()) return modelName.trim();
+        }
+    } catch (e) { /* ignore */ }
+    return '';
 }
 
 // 解析封面：优先级

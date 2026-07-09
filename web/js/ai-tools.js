@@ -27,6 +27,7 @@
     let _comfyStatus = null;      // { running, port, ... }
     let _unsubs = [];             // comfyui 事件订阅
     let _view = 'gallery';        // 'gallery' | 'detail'
+    let _loraMultiState = {};    // { fieldId: [{id, weight}, ...] } — loraMulti 字段的当前选中列表（每个 item 带 weight 覆盖，undefined = 用 lora.recommended_weight）
 
     // ========== 入口 ==========
     async function open() {
@@ -103,6 +104,7 @@
                             <span id="atRunMeta" style="font-size:12px; color:#6b7280; flex:1;">就绪</span>
                             <button id="atBtnReset" class="btn btn-sm">重置表单</button>
                             <button id="atBtnRun" class="btn btn-primary" disabled><i class="fa-solid fa-play"></i> 运行</button>
+                            <button id="atBtnCancel" class="btn btn-sm" style="display:none; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;" title="中断当前生成任务"><i class="fa-solid fa-stop"></i> 暂停生成</button>
                         </div>
                     </div>
                     <!-- 右：结果区 -->
@@ -148,6 +150,7 @@
         page.querySelector('#atBtnBackToGallery').addEventListener('click', showGallery);
         page.querySelector('#atBtnRun').addEventListener('click', runTool);
         page.querySelector('#atBtnReset').addEventListener('click', () => { if (_currentTool) renderForm(_currentTool); });
+        page.querySelector('#atBtnCancel').addEventListener('click', cancelTool);
         page.querySelector('#atBtnSaveImageAs').addEventListener('click', saveCurrentImageAs);
         page.querySelector('#atBtnCopyText').addEventListener('click', copyCurrentText);
         page.querySelector('#atBtnSaveTextAs').addEventListener('click', saveCurrentTextAs);
@@ -268,6 +271,7 @@
             return;
         }
         _currentTool = r.tool;
+        _loraMultiState = {};  // Phase 3：切换工具时清空 loraMulti 选中
         document.getElementById('atDetailName').textContent = _currentTool.name;
         document.getElementById('atDetailDesc').textContent = _currentTool.description || '';
         renderForm(_currentTool);
@@ -306,7 +310,17 @@
                 ungrouped.push(f);
             }
         }
+        // 顶部 banner：工作流主模型（用于 Lora 字段按模型过滤的提示）
+        // 优先展示 schema.models（声明的适配模型枚举）；缺省时回退到从 workflow JSON 抽出的 basename
         let html = '';
+        const displayModels = (Array.isArray(tool.models) && tool.models.length) ? tool.models : (tool.mainModel ? [tool.mainModel] : []);
+        if (displayModels.length) {
+            html += `<div style="margin-bottom:14px; padding:8px 12px; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:4px; font-size:12px; color:#92400e;">
+                <i class="fa-solid fa-microchip" style="margin-right:4px;"></i>
+                工作流主模型：<strong>${escapeHtml(displayModels.join(' / '))}</strong>
+                <span style="margin-left:8px; color:#a16207; font-size:11px;">（Lora 选择器会自动按这些模型筛选）</span>
+            </div>`;
+        }
         for (const f of ungrouped) html += renderField(f);
         for (const g of Object.keys(groups)) {
             html += `<div style="margin-top:14px; padding:8px 12px; background:#e0f2fe; border-radius:6px; font-size:12px; color:#0c4a6e; font-weight:500;">${escapeHtml(g)}</div>`;
@@ -354,6 +368,53 @@
                 }
             });
         });
+        // Phase 3：lora / loraMulti 字段的渲染与交互
+        // 1) lora 单选：异步加载 Lora 列表填 select
+        const loraFields = fields.filter(f => f.type === 'lora');
+        for (const f of loraFields) {
+            loadLoraOptionsForField(f, displayModels);
+        }
+        // 2) loraMulti：渲染初始空 chip 列表 + 绑定「选择 Lora」按钮
+        const loraMultiFields = fields.filter(f => f.type === 'loraMulti');
+        for (const f of loraMultiFields) {
+            // 渲染默认值的 chip（如果有）
+            renderLoraMultiChips(f);
+        }
+        form.querySelectorAll('[data-action="pick-loras"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const fieldId = btn.dataset.field;
+                const f = fields.find(x => x.id === fieldId && x.type === 'loraMulti');
+                if (!f) return;
+                openLoraMultiPicker(f, displayModels);
+            });
+        });
+        form.querySelectorAll('[data-action="clear-loras"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const fieldId = btn.dataset.field;
+                const f = fields.find(x => x.id === fieldId && x.type === 'loraMulti');
+                if (!f) return;
+                _loraMultiState[f.id] = [];
+                renderLoraMultiChips(f);
+                updateRunButtonState();
+            });
+        });
+        form.querySelectorAll('[data-action="clear-lora"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const fieldId = btn.dataset.field;
+                const el = document.getElementById(`at-field-${fieldId}`);
+                if (el) {
+                    el.value = '';
+                    el.dataset.loraName = '';
+                    // 同步 weight 显示
+                    const wEl = document.getElementById(`at-field-${fieldId}-weight`);
+                    if (wEl) { wEl.value = ''; wEl.disabled = true; }
+                    updateRunButtonState();
+                }
+            });
+        });
         // 监听输入：textarea / input / select 任一变化都重新计算「运行」按钮 enable 状态
         // （之前没监听，导致 default="" 的工具如 Wan2.2，用户输入提示词后按钮仍是 disabled）
         if (!form._atInputBound) {
@@ -395,6 +456,31 @@
             const placeholder = field.placeholder || '（点右侧按钮选图片，或手动输入 ComfyUI input 目录里的文件名）';
             widget = `<input id="${id}" type="text" value="${escapeAttr(initVal)}" placeholder="${escapeAttr(placeholder)}" style="${inputStyle()}; background:#f9fafb; cursor:default;" readonly />`;
             extraWidget = `<button type="button" data-action="pick-image" data-field="${field.id}" style="margin-left:6px; padding:8px 14px; background:#0ea5e9; color:#ffffff; border:1px solid #0284c7; border-radius:6px; cursor:pointer; white-space:nowrap; font-size:13px;"><i class="fa-solid fa-folder-open"></i> 选择图片</button>`;
+        } else if (field.type === 'lora') {
+            // Phase 3：单 Lora 选择器
+            // 渲染为空 select，async loadLoraOptionsForField 会异步填充选项
+            // value 存 lora id（数字）；data-lora-name 存显示名（仅 UI 用，applier 用 id 查 basename）
+            widget = `<select id="${id}" data-lora-type="single" data-field-id="${escapeAttr(field.id)}" style="${inputStyle()}"><option value="">（加载中…）</option></select>`;
+            // 权重显示（只读，会跟随选中 Lora 的 recommended_weight 自动填）
+            const weightId = `${id}-weight`;
+            extraWidget = `<input id="${weightId}" type="number" step="0.05" min="0" max="2" placeholder="权重" style="margin-left:6px; width:80px; padding:8px 10px; background:#f9fafb; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px;" disabled />
+                <button type="button" data-action="clear-lora" data-field="${escapeAttr(field.id)}" title="清除选择" style="margin-left:4px; padding:8px 10px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:6px; cursor:pointer; font-size:12px;"><i class="fa-solid fa-xmark"></i></button>`;
+        } else if (field.type === 'loraMulti') {
+            // Phase 3：多 Lora 选择器
+            // 已选 chip 列表 + 选 Lora / 清空 按钮
+            // _loraMultiState 升级为 [{id, weight}, ...]（每个 item 可选 weight 覆盖）；
+            // field.default 兼容老 schema 的数字数组写法。
+            const initial = Array.isArray(field.default) ? field.default.slice() : [];
+            _loraMultiState[field.id] = initial.map(v => {
+                if (v && typeof v === 'object') {
+                    const w = v.weight;
+                    return { id: Number(v.id), weight: (w != null && w !== '' && !Number.isNaN(Number(w))) ? Number(w) : undefined };
+                }
+                return { id: Number(v), weight: undefined };
+            }).filter(x => x.id && !Number.isNaN(x.id));
+            widget = `<div id="${id}" data-lora-type="multi" data-field-id="${escapeAttr(field.id)}" style="min-height:40px; padding:8px 10px; border:1px solid #d1d5db; border-radius:6px; background:#ffffff; display:flex; flex-wrap:wrap; gap:6px; align-items:center;"></div>`;
+            extraWidget = `<button type="button" data-action="pick-loras" data-field="${escapeAttr(field.id)}" style="margin-left:6px; padding:8px 14px; background:#0ea5e9; color:#ffffff; border:1px solid #0284c7; border-radius:6px; cursor:pointer; white-space:nowrap; font-size:13px;"><i class="fa-solid fa-plus"></i> 选择 Lora</button>
+                <button type="button" data-action="clear-loras" data-field="${escapeAttr(field.id)}" title="清空" style="margin-left:4px; padding:8px 10px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:6px; cursor:pointer; font-size:12px;"><i class="fa-solid fa-trash"></i></button>`;
         } else {
             widget = `<input id="${id}" type="text" value="${escapeAttr(String(value))}" style="${inputStyle()}" />`;
         }
@@ -422,6 +508,28 @@
         if (!_currentTool) return {};
         const values = {};
         for (const field of (_currentTool.formFields || [])) {
+            // Phase 3：lora / loraMulti 从内部 state 取（id 数组 / 单 id），不走 DOM value
+            if (field.type === 'lora') {
+                const el = document.getElementById(`at-field-${field.id}`);
+                const weightEl = document.getElementById(`at-field-${field.id}-weight`);
+                const id = el ? Number(el.value) : NaN;
+                let weight = null;
+                // 仅当 weight 输入可用且填了合法数字才捕获（null = 用 lora.recommended_weight / schema.defaultWeight）
+                if (weightEl && !weightEl.disabled) {
+                    const w = Number(weightEl.value);
+                    if (Number.isFinite(w) && w >= 0) weight = w;
+                }
+                if (id && !Number.isNaN(id)) {
+                    values[field.id] = { id, weight };
+                } else {
+                    values[field.id] = { id: null, weight: null };
+                }
+                continue;
+            }
+            if (field.type === 'loraMulti') {
+                values[field.id] = (_loraMultiState[field.id] || []).slice();
+                continue;
+            }
             const el = document.getElementById(`at-field-${field.id}`);
             if (!el) continue;
             let v = el.value;
@@ -437,6 +545,281 @@
             values[field.id] = v;
         }
         return values;
+    }
+
+    // ========== Phase 3: Lora 字段辅助 ==========
+    // 拉候选 Lora 列表并填充单选 select（按 model 数组过滤；filterModels: 来自 schema.models，
+    // 多模型工作流如 ["ZIB","ZIT"] 会与 LORA.compatible_models 求交集）
+    async function loadLoraOptionsForField(field, filterModels) {
+        const sel = document.getElementById(`at-field-${field.id}`);
+        if (!sel) return;
+        const filterEnabled = field.filterByModel !== false;  // 默认 true
+        const targets = filterEnabled ? (filterModels || []) : [];
+        const r = await api.loras.listByModel(targets);
+        if (!r || !r.ok) {
+            sel.innerHTML = `<option value="">（Lora 库加载失败）</option>`;
+            return;
+        }
+        const loras = r.loras || [];
+        if (!loras.length) {
+            sel.innerHTML = `<option value="">（Lora 库为空）</option>`;
+            return;
+        }
+        // 按 display_name → name 排序
+        const sorted = loras.slice().sort((a, b) => {
+            const an = (a.display_name || a.name || '').toLowerCase();
+            const bn = (b.display_name || b.name || '').toLowerCase();
+            return an.localeCompare(bn, 'zh');
+        });
+        sel.innerHTML = `<option value="">（不选）</option>` +
+            sorted.map(l => {
+                const label = (l.display_name || l.name) + (l.recommended_weight != null ? ` (${formatLoraWeight(l.recommended_weight)})` : '');
+                return `<option value="${l.id}" data-lora-name="${escapeAttr(l.name)}" data-lora-weight="${l.recommended_weight != null ? l.recommended_weight : 1.0}">${escapeHtml(label)}</option>`;
+            }).join('');
+        // 默认选中 schema.default（lora id）
+        if (field.default != null && field.default !== '') {
+            sel.value = String(field.default);
+            const opt = sel.options[sel.selectedIndex];
+            const weightEl = document.getElementById(`at-field-${field.id}-weight`);
+            if (weightEl && opt) {
+                weightEl.value = opt.dataset.loraWeight || '';
+                weightEl.disabled = false;
+            }
+        }
+        // 监听变化：自动填权重
+        sel.addEventListener('change', () => {
+            const opt = sel.options[sel.selectedIndex];
+            const weightEl = document.getElementById(`at-field-${field.id}-weight`);
+            if (weightEl) {
+                if (opt && opt.value) {
+                    weightEl.value = opt.dataset.loraWeight || '';
+                    weightEl.disabled = false;
+                } else {
+                    weightEl.value = '';
+                    weightEl.disabled = true;
+                }
+            }
+            updateRunButtonState();
+        });
+    }
+
+    function formatLoraWeight(w) {
+        if (typeof w !== 'number') return '1';
+        const s = w.toFixed(2).replace(/\.?0+$/, '');
+        return s || '1';
+    }
+
+    // 渲染 loraMulti 字段的 chip 列表（每个 chip 自带权重输入框）
+    function renderLoraMultiChips(field) {
+        const wrap = document.getElementById(`at-field-${field.id}`);
+        if (!wrap) return;
+        const items = _loraMultiState[field.id] || [];
+        if (!items.length) {
+            wrap.innerHTML = '<span style="font-size:12px; color:#9ca3af;">（未选 Lora）</span>';
+            return;
+        }
+        const chipBaseStyle = 'display:inline-flex; align-items:center; gap:4px; padding:3px 8px; background:#f3e8ff; color:#6b21a8; border-radius:3px; font-size:12px;';
+        // chip 用 #id 占位（先），weight 始终保留（用户改了就持久化）
+        wrap.innerHTML = items.map(it => `
+            <span data-lora-chip-id="${it.id}" style="${chipBaseStyle}">
+                <i class="fa-solid fa-puzzle-piece"></i>
+                <span class="chip-label">#${it.id}</span>
+                <input type="number" data-chip-weight-id="${it.id}" value="${it.weight != null ? escapeAttr(String(it.weight)) : ''}" step="0.05" min="0" max="2" placeholder="权" title="权重（覆盖 recommended_weight）" style="width:46px; margin:0 4px; padding:1px 4px; border:1px solid #d1d5db; border-radius:4px; font-size:11px; color:#1f2937;" />
+                <i class="fa-solid fa-xmark" data-remove-lora-multi="${it.id}" style="cursor:pointer; opacity:0.7; margin-left:4px;" title="移除"></i>
+            </span>
+        `).join('');
+        // 移除
+        wrap.querySelectorAll('[data-remove-lora-multi]').forEach(el => {
+            el.addEventListener('click', () => {
+                const rmId = Number(el.dataset.removeLoraMulti);
+                _loraMultiState[field.id] = (_loraMultiState[field.id] || []).filter(x => x.id !== rmId);
+                renderLoraMultiChips(field);
+                updateRunButtonState();
+            });
+        });
+        // 权重变化 → 写回 state（undefined = 清空覆盖，applier 会回退到 recommended_weight）
+        wrap.querySelectorAll('[data-chip-weight-id]').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const id = Number(inp.dataset.chipWeightId);
+                const arr = _loraMultiState[field.id] || [];
+                const item = arr.find(x => x.id === id);
+                if (!item) return;
+                if (inp.value === '' || inp.value == null) {
+                    item.weight = undefined;
+                } else {
+                    const w = Number(inp.value);
+                    if (Number.isFinite(w) && w >= 0) item.weight = w;
+                }
+            });
+        });
+        // 后台异步拉名字刷新（best-effort）—— 同步换上 display_name，weight 保留
+        api.loras.list({ limit: 100000 }).then(r => {
+            if (!r || !r.ok) return;
+            const all = r.loras || [];
+            const map = new Map(all.map(l => [l.id, l]));
+            // 二次渲染前再读一次 state（可能被外部改动）
+            const cur = _loraMultiState[field.id] || [];
+            if (!cur.length) return;
+            wrap.innerHTML = cur.map(it => {
+                const l = map.get(it.id);
+                const label = l ? (l.display_name || l.name) : `#${it.id}`;
+                return `
+                    <span data-lora-chip-id="${it.id}" style="${chipBaseStyle}">
+                        <i class="fa-solid fa-puzzle-piece"></i>
+                        <span class="chip-label">${escapeHtml(label)}</span>
+                        <input type="number" data-chip-weight-id="${it.id}" value="${it.weight != null ? escapeAttr(String(it.weight)) : ''}" step="0.05" min="0" max="2" placeholder="权" title="权重（覆盖 recommended_weight）" style="width:46px; margin:0 4px; padding:1px 4px; border:1px solid #d1d5db; border-radius:4px; font-size:11px; color:#1f2937;" />
+                        <i class="fa-solid fa-xmark" data-remove-lora-multi="${it.id}" style="cursor:pointer; opacity:0.7; margin-left:4px;" title="移除"></i>
+                    </span>
+                `;
+            }).join('');
+            wrap.querySelectorAll('[data-remove-lora-multi]').forEach(el => {
+                el.addEventListener('click', () => {
+                    const rmId = Number(el.dataset.removeLoraMulti);
+                    _loraMultiState[field.id] = (_loraMultiState[field.id] || []).filter(x => x.id !== rmId);
+                    renderLoraMultiChips(field);
+                    updateRunButtonState();
+                });
+            });
+            wrap.querySelectorAll('[data-chip-weight-id]').forEach(inp => {
+                inp.addEventListener('change', () => {
+                    const id = Number(inp.dataset.chipWeightId);
+                    const arr = _loraMultiState[field.id] || [];
+                    const item = arr.find(x => x.id === id);
+                    if (!item) return;
+                    if (inp.value === '' || inp.value == null) {
+                        item.weight = undefined;
+                    } else {
+                        const w = Number(inp.value);
+                        if (Number.isFinite(w) && w >= 0) item.weight = w;
+                    }
+                });
+            });
+        }).catch(() => {});
+    }
+
+    // 打开 loraMulti 选择 modal（可搜索 + 多选）
+    function openLoraMultiPicker(field, filterModels) {
+        const filterEnabled = field.filterByModel !== false;
+        const initial = (_loraMultiState[field.id] || []).slice();
+        // 复用 loras.js 风格的 modal
+        let modal = document.getElementById('atLoraMultiPicker');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'atLoraMultiPicker';
+            modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:420; display:none; align-items:center; justify-content:center; padding:20px;';
+            modal.innerHTML = `
+                <div onclick="event.stopPropagation();" style="background:#ffffff; border-radius:10px; width:min(640px, 100%); max-height:85vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.3); overflow:hidden;">
+                    <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; gap:12px;">
+                        <h3 style="margin:0; flex:1; color:#1f2937; font-size:15px; font-weight:600;">选择 Lora（可多选，顺序即叠加顺序）</h3>
+                        <input id="atLoraMultiSearch" type="text" placeholder="🔍 搜索" style="width:180px; padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:12px;" />
+                        <button id="atLoraMultiClose" class="btn btn-sm"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div id="atLoraMultiList" style="flex:1; overflow-y:auto; padding:8px;"></div>
+                    <div style="padding:10px 18px; border-top:1px solid #e5e7eb; background:#f9fafb; display:flex; justify-content:space-between; align-items:center;">
+                        <span id="atLoraMultiCount" style="font-size:12px; color:#6b7280;"></span>
+                        <button id="atLoraMultiOk" class="btn btn-sm btn-primary"><i class="fa-solid fa-check"></i> 确定</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.addEventListener('click', () => { modal.style.display = 'none'; });
+            modal.querySelector('#atLoraMultiClose').addEventListener('click', () => { modal.style.display = 'none'; });
+            modal.querySelector('#atLoraMultiOk').addEventListener('click', () => {
+                // 把勾选的 checkbox 转成 [{id, weight}]。每个新 item 的默认 weight 取
+                // 该 lora 的 recommended_weight（来自 pool）；对已经在 initial 里的 item
+                // 保留之前的 weight 覆盖。
+                const checkedIds = Array.from(modal.querySelectorAll('input[data-pick-id]:checked')).map(el => Number(el.dataset.pickId));
+                const poolMap = new Map((modal._pool || []).map(l => [l.id, l]));
+                const prevMap = new Map(((modal._prevSelected || [])).map(it => [it.id, it]));
+                const items = checkedIds.map(id => {
+                    const prev = prevMap.get(id);
+                    if (prev) return { id, weight: prev.weight };
+                    const l = poolMap.get(id);
+                    const def = l && l.recommended_weight != null ? l.recommended_weight : undefined;
+                    return { id, weight: def };
+                });
+                const cb = modal._onConfirm;
+                if (cb) cb(items);
+                modal.style.display = 'none';
+            });
+            const searchInput = modal.querySelector('#atLoraMultiSearch');
+            let timer = null;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    const v = searchInput.value.trim().toLowerCase();
+                    renderPickerList(modal._pool, modal._selected, v);
+                }, 100);
+            });
+        }
+        modal._field = field;
+        // 保留原字段名 _modelBasename 但现在存的是数组（schema.models）
+        modal._modelBasename = Array.isArray(filterModels) ? filterModels.slice() : [];
+        modal._filterEnabled = filterEnabled;
+        // _selected 升级成 [{id, weight}] 结构（_prevSelected 在 Ok 时用作「保留之前覆盖」的回查源）
+        modal._prevSelected = initial.slice();
+        modal._selected = initial.slice();
+        // 加载 Lora 列表
+        const targets = filterEnabled ? (Array.isArray(filterModels) ? filterModels : []) : [];
+        api.loras.listByModel(targets).then(r => {
+            const list = (r && r.ok && r.loras) ? r.loras : [];
+            modal._pool = list;
+            renderPickerList(list, modal._selected, '');
+        });
+        modal._onConfirm = (items) => {
+            _loraMultiState[field.id] = items;
+            renderLoraMultiChips(field);
+            updateRunButtonState();
+        };
+        modal.style.display = 'flex';
+    }
+
+    function renderPickerList(pool, selected, filter) {
+        const list = document.getElementById('atLoraMultiList');
+        const modal = document.getElementById('atLoraMultiPicker');
+        if (!list || !modal) return;
+        let items = (pool || []).slice();
+        if (filter) {
+            items = items.filter(l => (l.name || '').toLowerCase().includes(filter) || (l.display_name || '').toLowerCase().includes(filter));
+        }
+        if (!items.length) {
+            list.innerHTML = '<div style="color:#9ca3af; text-align:center; padding:30px; font-size:12px;">' + ((pool || []).length === 0 ? 'Lora 库为空' : '无匹配') + '</div>';
+        } else {
+            list.innerHTML = items.map(l => {
+                // selected 可能是 [{id, weight}]，比较用 .some(x => x.id === id)
+                const checked = (selected || []).some(x => x && x.id === l.id) ? 'checked' : '';
+                const label = l.display_name || l.name;
+                const weight = l.recommended_weight != null ? ` (${formatLoraWeight(l.recommended_weight)})` : '';
+                const model = l.base_model ? ` · ${l.base_model}` : '';
+                return `
+                    <label style="display:flex; align-items:center; padding:8px 10px; border-radius:6px; cursor:pointer; transition:background 0.1s;"
+                           onmouseenter="this.style.background='#f9fafb';"
+                           onmouseleave="this.style.background='transparent';">
+                        <input type="checkbox" data-pick-id="${l.id}" ${checked} style="margin-right:10px; cursor:pointer;" />
+                        <span style="flex:1; font-size:13px; color:#1f2937;">${escapeHtml(label)}${weight}<span style="color:#9ca3af; font-size:11px;">${model}</span></span>
+                    </label>
+                `;
+            }).join('');
+        }
+        const count = document.getElementById('atLoraMultiCount');
+        if (count) count.textContent = `已选 ${(selected || []).length} 个`;
+        list.querySelectorAll('input[data-pick-id]').forEach(el => {
+            el.addEventListener('change', () => {
+                const id = Number(el.dataset.pickId);
+                if (el.checked) {
+                    // 已在 selected 里就不重复添加（即使内部 weight 变了）
+                    if (!modal._selected.some(x => x && x.id === id)) {
+                        const poolMap = new Map((modal._pool || []).map(l => [l.id, l]));
+                        const l = poolMap.get(id);
+                        const def = l && l.recommended_weight != null ? l.recommended_weight : undefined;
+                        modal._selected.push({ id, weight: def });
+                    }
+                } else {
+                    modal._selected = modal._selected.filter(x => x && x.id !== id);
+                }
+                if (count) count.textContent = `已选 ${modal._selected.length} 个`;
+            });
+        });
     }
 
     // 判断一个工具是否为「文生图」工具：
@@ -567,7 +950,43 @@
             mode: (_currentTool && _currentTool.mode) || 'sfw',
         };
         if (meta) { meta.textContent = `jobId=${r.jobId} | 等待结果...`; }
+        // 显示「暂停生成」按钮（运行中可见；结束/错误时再隐藏）
+        const cancelBtn = document.getElementById('atBtnCancel');
+        if (cancelBtn) cancelBtn.style.display = '';
         showImageWaiting();
+    }
+
+    // 暂停生成：调主进程 comfyui:cancel（abort AbortController）+ 重置 UI
+    async function cancelTool() {
+        if (!_currentJobId) return;
+        const jobId = _currentJobId;
+        const cancelBtn = document.getElementById('atBtnCancel');
+        const meta = document.getElementById('atRunMeta');
+        if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 暂停中...'; }
+        try {
+            await api.comfyui.cancel(jobId);
+        } catch (e) {
+            // 即便后端失败也要把 UI 复位
+            console.warn('[ai-tools] cancel 调用失败:', e && e.message);
+        }
+        // 清状态（onComfyError 也会再清一次，但这里是用户主动行为，UI 要立刻响应）
+        _currentJobId = null;
+        _currentJobCtx = null;
+        const runBtn = document.getElementById('atBtnRun');
+        if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> 运行'; }
+        if (cancelBtn) { cancelBtn.style.display = 'none'; cancelBtn.disabled = false; cancelBtn.innerHTML = '<i class="fa-solid fa-stop"></i> 暂停生成'; }
+        if (meta) { meta.textContent = '已暂停生成'; meta.style.color = '#6b7280'; }
+        showToast('已暂停生成', 'info');
+    }
+
+    // 复位取消按钮：让 onComfyComplete / onComfyError 等收尾场景统一隐藏
+    function hideCancelButton() {
+        const cancelBtn = document.getElementById('atBtnCancel');
+        if (cancelBtn) {
+            cancelBtn.style.display = 'none';
+            cancelBtn.disabled = false;
+            cancelBtn.innerHTML = '<i class="fa-solid fa-stop"></i> 暂停生成';
+        }
     }
 
     function showImageWaiting() {
@@ -608,6 +1027,7 @@
         const kind = payload.kind || 'image';   // 旧版 payload 无 kind → 视为 image
         _currentImage = { kind, dataUrl: payload.dataUrl, filename: payload.filename, mime: payload.mime, text: payload.text || null };
         _currentJobId = null;
+        hideCancelButton();
         const metaEl = kind === 'text' ? document.getElementById('atResultTextMeta') : document.getElementById('atResultImageMeta');
         if (kind === 'text') {
             renderTextFromPayload(payload);
@@ -670,12 +1090,62 @@
                     }
                 }
             } catch {}
+            // Phase 4：从 formValues 提取本次用到的 Lora id（lora 单选 + loraMulti 多选）。
+            // formValues 可能是老格式（裸 number）或新格式（{id, weight}），兼容处理。
+            // usedLoras 本地存 [{id, weight}]，weight 是用户覆盖（null = 用 lora 推荐 / schema 默认）。
+            const usedLoras = [];
+            try {
+                const fv = ctx.formValues || {};
+                const ff = (_currentTool && _currentTool.formFields) || [];
+                for (const f of ff) {
+                    if (!f) continue;
+                    if (f.type === 'lora') {
+                        const raw = fv[f.id];
+                        const itemObj = (raw && typeof raw === 'object') ? raw : null;
+                        const id = itemObj ? Number(itemObj.id) : Number(raw);
+                        if (id && !Number.isNaN(id) && !usedLoras.some(x => x.id === id)) {
+                            const weight = itemObj && itemObj.weight != null ? Number(itemObj.weight) : null;
+                            usedLoras.push({ id, weight: (Number.isFinite(weight) ? weight : null) });
+                        }
+                    } else if (f.type === 'loraMulti' && Array.isArray(fv[f.id])) {
+                        for (const raw of fv[f.id]) {
+                            const itemObj = (raw && typeof raw === 'object') ? raw : null;
+                            const id = itemObj ? Number(itemObj.id) : Number(raw);
+                            if (id && !Number.isNaN(id) && !usedLoras.some(x => x.id === id)) {
+                                const weight = itemObj && itemObj.weight != null ? Number(itemObj.weight) : null;
+                                usedLoras.push({ id, weight: (Number.isFinite(weight) ? weight : null) });
+                            }
+                        }
+                    }
+                }
+            } catch {}
+            // 异步查 Lora 详情（basename + 推荐权重 + 用户覆盖的 weight）写入 meta；查不到就只存 id
+            let usedLoraDetails = usedLoras.map(x => ({ id: x.id, weight: x.weight }));
+            try {
+                const all = await api.loras.list({ limit: 100000 });
+                if (all && all.ok && Array.isArray(all.loras)) {
+                    const map = new Map(all.loras.map(l => [l.id, l]));
+                    usedLoraDetails = usedLoras.map(x => {
+                        const l = map.get(x.id);
+                        if (!l) return { id: x.id, weight: x.weight };
+                        return {
+                            id: x.id,
+                            name: l.name,
+                            display_name: l.display_name || '',
+                            lora_type: l.lora_type || '',
+                            recommended_weight: l.recommended_weight != null ? l.recommended_weight : null,
+                            weight: x.weight,  // 用户本次覆盖
+                        };
+                    });
+                }
+            } catch {}
             const meta = {
                 toolId: ctx.toolId || '',
                 toolName: ctx.toolName || '',
                 mode: ctx.mode || (m.mode || null),
                 prompt: promptText,
                 formValues: ctx.formValues || {},
+                usedLoras: usedLoraDetails,
                 workflow: {
                     checkpoints: (m.models && m.models.checkpoints) || [],
                     loras: (m.models && m.models.loras) || [],
@@ -715,6 +1185,7 @@
         if (!payload) return;
         if (payload.jobId && payload.jobId !== _currentJobId) return;
         _currentJobId = null;
+        hideCancelButton();
         const meta = document.getElementById('atRunMeta');
         if (meta) { meta.textContent = 'ComfyUI 错误: ' + (payload.message || '未知'); meta.style.color = '#dc2626'; }
         const btn = document.getElementById('atBtnRun');

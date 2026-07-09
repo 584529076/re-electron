@@ -146,4 +146,23 @@ contextBridge.exposeInMainWorld('api', {
         get: (id) => ipcRenderer.invoke('tools:get', id),
         run: (payload) => ipcRenderer.invoke('tools:run', payload),
     },
+    // ========= Lora 库（Phase 1：数据层）==========
+    loras: {
+        list:         (filter) => ipcRenderer.invoke('loras:list', filter || {}),
+        get:          (id) => ipcRenderer.invoke('loras:get', id),
+        add:          (payload) => ipcRenderer.invoke('loras:add', payload || {}),
+        update:       (payload) => ipcRenderer.invoke('loras:update', payload || {}),
+        delete:       (id) => ipcRenderer.invoke('loras:delete', id),
+        pickFile:     () => ipcRenderer.invoke('loras:pickFile'),
+        pickCover:    () => ipcRenderer.invoke('loras:pickCover'),
+        setCover:     (payload) => ipcRenderer.invoke('loras:setCover', payload || {}),
+        clearCover:   (id) => ipcRenderer.invoke('loras:clearCover', id),
+        readCover:    (id) => ipcRenderer.invoke('loras:readCover', id),
+        // 入参改为 model 数组（schema.models）+ 后向兼容单字符串。
+        // 内部 main.js handler 直接透传给 loras-store.listCompatibleLoras，
+        // 后者会把字符串包成 [str]、数组直接用、空值返回全部。
+        listByModel:  (modelOrArray) => ipcRenderer.invoke('loras:listByModel', modelOrArray || []),
+        resolveByNames: (basenames) => ipcRenderer.invoke('loras:resolveByNames', basenames || []),
+        types:        () => ipcRenderer.invoke('loras:types'),
+    },
 });
