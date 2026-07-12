@@ -1,21 +1,21 @@
 {
-  "id": "千问Edit2511-AIO-流 (角度控制)",
-  "name": "千问 Edit 2511 角度控制",
-  "description": "Qwen-Image-Edit 2511 AIO 角度重渲：通过内置多角度 LoRA 改变相机视角（水平/垂直/缩放），主体内容保持不变",
-  "mode": "nsfw/sfw",
+  "id": "flux-2-klein（角度控制）",
+  "name": "Flux-2 Klein 角度控制",
+  "description": "Flux-2-Klein 9B 角度重渲：通过内置多角度 LoRA（Klein_9B-NSFW）改变相机视角（水平/垂直/缩放），主体内容保持不变",
+  "mode": "nsfw",
   "accepts": ["image"],
   "coverFallback": {
     "icon": "fa-camera-rotate",
     "gradient": ["#7c3aed", "#db2777"]
   },
-  "workflowFile": "千问Edit2511-AIO-流 (角度控制).json",
-  "models": ["Qwen-Image-Edit-2511"],
+  "workflowFile": "flux-2-klein（角度控制）.json",
+  "models": ["Flux-2-Klein-9B"],
   "formFields": [
     {
       "id": "image",
       "label": "上传图片",
       "type": "image",
-      "nodeId": "55",
+      "nodeId": "63",
       "field": "image",
       "required": true,
       "accept": "image/*",
@@ -25,19 +25,19 @@
       "id": "horizontal_angle",
       "label": "水平角度（度）",
       "type": "number",
-      "nodeId": "58",
+      "nodeId": "105",
       "field": "horizontal_angle",
-      "default": 180,
+      "default": 90,
       "min": 0,
       "max": 360,
       "step": 1,
-      "note": "0/360 = 正面，90=左侧，180 = 背面，240=右侧"
+      "note": "0/360 = 正面，90=左侧，180 = 背面，270=右侧"
     },
     {
       "id": "vertical_angle",
       "label": "垂直角度（度）",
       "type": "number",
-      "nodeId": "58",
+      "nodeId": "105",
       "field": "vertical_angle",
       "default": 0,
       "min": -90,
@@ -49,9 +49,9 @@
       "id": "zoom",
       "label": "缩放",
       "type": "number",
-      "nodeId": "58",
+      "nodeId": "105",
       "field": "zoom",
-      "default": 5.1,
+      "default": 5,
       "min": 1,
       "max": 20,
       "step": 0.1,
@@ -61,7 +61,7 @@
       "id": "seed",
       "label": "Seed (K采样器)",
       "type": "number",
-      "nodeId": "2",
+      "nodeId": "95",
       "field": "seed",
       "default": -1,
       "randomizable": true,
@@ -71,6 +71,6 @@
     }
   ],
   "outputNodes": [
-    { "nodeId": "75", "type": "image", "filenamePrefix": "ComfyUI" }
+    { "nodeId": "62", "type": "image", "filenamePrefix": "ComfyUI" }
   ]
 }

@@ -76,7 +76,7 @@
 
             <!-- Gallery 视图（默认） -->
             <div id="atGallery" style="flex:1; overflow-y:auto; padding:24px; background:#f5f6f8; display:none;">
-                <div style="max-width:1200px; margin:0 auto;">
+                <div style="width:100%;">
                     <div style="margin-bottom:20px;">
                         <h3 style="margin:0; color:#1f2937; font-size:18px; font-weight:600;">选择工具</h3>
                         <p style="margin:4px 0 0 0; color:#6b7280; font-size:13px;">点击卡片进入对应工具的配置和生图界面</p>
@@ -244,7 +244,7 @@
                </div>`
             : fallbackDiv;
         return `
-            <div class="at-card" data-id="${escapeAttr(t.id)}" style="background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s; ${broken ? 'opacity:0.5;' : ''}" onmouseenter="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.12)';" onmouseleave="this.style.transform=''; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)';">
+            <div class="at-card${broken ? ' broken' : ''}" data-id="${escapeAttr(t.id)}">
                 <!-- 封面 -->
                 <div class="at-card-cover" style="height:180px; position:relative; overflow:hidden; background:linear-gradient(135deg, ${c1}, ${c2});">
                     ${coverArea}

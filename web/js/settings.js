@@ -1193,6 +1193,7 @@
             const groupDatalistHtml = existingGroups.map(g => '<option value="' + esc(g) + '">').join('');
 
             form.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><span style="font-size:14px;font-weight:500;color:#374151;">' + (id ? '编辑分类' : (keepCreating ? '新增分类 <span style="font-size:11px;color:#059669;font-weight:400;margin-left:6px;">· 连续新增模式</span>' : '新增分类')) + '</span>' + (id ? '<button id="setMenuDelBtn" class="btn btn-sm" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;margin-left:auto;"><i class="fa-solid fa-trash"></i> 删除</button>' : '') + '</div>' +
+                '<div style="display:flex;gap:8px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid #e5e7eb;"><button id="setMenuSaveBtn" class="btn btn-sm" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-floppy-disk"></i> 保存' + (keepCreating ? '并继续' : '') + '</button><button id="setMenuCancelBtn" class="btn btn-sm">取消</button></div>' +
                 '<div style="margin-bottom:10px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">分类名称 *</label><input id="setMenuNameInp" type="text" value="' + esc((id || !keepCreating) ? (it ? it.category_name : '') : '') + '" placeholder="如：人物、场景、风格' + (keepCreating ? '（保存后保持此位置，可连着输入下一个）' : '') + '" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;' + (keepCreating ? 'border-color:#10b981;' : '') + '"></div>' +
                 // 上级分类：显示框 + 「选择分类」按钮（点开后内联展开 picker，非弹框）
                 '<div style="margin-bottom:10px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">上级分类</label>' +
@@ -1236,8 +1237,7 @@
                             '· 不继承祖先：要在子分类也设上组名才生效' +
                         '</div>' +
                     '</div>' +
-                '</div>' +
-                '<div style="display:flex;gap:8px;"><button id="setMenuSaveBtn" class="btn btn-sm" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-floppy-disk"></i> 保存' + (keepCreating ? '并继续' : '') + '</button><button id="setMenuCancelBtn" class="btn btn-sm">取消</button></div>';
+                '</div>';
 
             const parentSel = form.querySelector('#setMenuParentSel');
             const parentDisplay = form.querySelector('#setMenuParentDisplay');
@@ -1861,14 +1861,14 @@
                 const defaultSort = id ? (it.sort_order || 0) : defaultSortForItem(defaultCatId);
 
                 wrap.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;border-top:1px solid #f3f4f6;padding-top:12px;"><span style="font-size:14px;font-weight:500;color:#374151;">' + (id ? '编辑提示词' : (keepCreating ? '新增提示词 <span style="font-size:11px;color:#059669;font-weight:400;margin-left:6px;">· 连续新增模式</span>' : '新增提示词')) + '</span>' + (id ? '<button id="setItemDelBtn" class="btn btn-sm" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;margin-left:auto;"><i class="fa-solid fa-trash"></i> 删除</button>' : '') + '</div>' +
+                    '<div style="display:flex;gap:8px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid #e5e7eb;"><button id="setItemSaveBtn" class="btn btn-sm" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-floppy-disk"></i> 保存' + (keepCreating ? '并继续' : '') + '</button><button id="setItemCancelBtn" class="btn btn-sm">取消</button></div>' +
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">所属分类 *</label><select id="setItemCatSel" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;background:#fff;font-family:inherit;">' + catOptionsHtml + '</select>' + (keepCreating ? '<div style="font-size:11px;color:#059669;margin-top:3px;">· 保持上次选择的分类；改这里会重算排序</div>' : '') + '</div>' +
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">提示词名称 *</label><input id="setItemNameInp" type="text" value="' + esc((id || !keepCreating) ? (it.name || '') : '') + '" placeholder="如：柔光、暖色调' + (keepCreating ? '（保存后保持此位置，可连着输入下一个）' : '') + '" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;' + (keepCreating ? 'border-color:#10b981;' : '') + '"></div>' +
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">内容</label><textarea id="setItemContentInp" rows="2" placeholder="提示词正文内容" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;resize:vertical;box-sizing:border-box;">' + esc((id || !keepCreating) ? (it.content || '') : '') + '</textarea></div>' +
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">说明</label><textarea id="setItemDescInp" rows="2" placeholder="可选，说明此提示词的用途或效果" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;resize:vertical;box-sizing:border-box;">' + esc((id || !keepCreating) ? (it.description || '') : '') + '</textarea></div>' +
                     '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">敏感度</label><select id="setItemSensSel" style="width:160px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;background:#fff;"><option value="sfw"' + (((id || !keepCreating) ? (it.sensitivity || 'nsfw') : 'nsfw') === 'sfw' ? ' selected' : '') + '>SFW （安全）</option><option value="nsfw"' + (((id || !keepCreating) ? (it.sensitivity || 'nsfw') : 'nsfw') === 'nsfw' ? ' selected' : '') + '>NSFW （成人）</option></select><span style="font-size:11px;color:#9ca3af;margin-left:8px;">默认 NSFW</span></div>' +
                     '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">排序权重</label><input id="setItemSortInp" type="number" value="' + defaultSort + '" min="0" style="width:120px;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;' + (keepCreating ? 'border-color:#10b981;' : '') + '"><span style="font-size:11px;color:#9ca3af;margin-left:6px;">越小越靠前' + (id ? '' : ' · 新增自动取同级最大 +1') + '</span></div>' +
-                    '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">预览图 <span style="color:#9ca3af;font-weight:400;">（可选，仅 1 张，jpg/png/webp，≤2MB）</span></label><div style="display:flex;gap:10px;align-items:center;"><div id="setItemPvThumb" style="width:160px;height:90px;border:1px dashed #d1d5db;border-radius:6px;background:#f9fafb center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:11px;">暂无预览图</div><div style="display:flex;flex-direction:column;gap:6px;"><input id="setItemPvFile" type="file" accept="image/jpeg,image/png,image/webp" style="font-size:12px;max-width:220px;"><button id="setItemPvClearBtn" type="button" class="btn btn-sm" style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;"><i class="fa-solid fa-xmark"></i> 清除预览图</button></div></div></div>' +
-                    '<div style="display:flex;gap:8px;"><button id="setItemSaveBtn" class="btn btn-sm" style="background:#6366f1;color:#fff;border:none;"><i class="fa-solid fa-floppy-disk"></i> 保存' + (keepCreating ? '并继续' : '') + '</button><button id="setItemCancelBtn" class="btn btn-sm">取消</button></div>';
+                    '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:3px;">预览图 <span style="color:#9ca3af;font-weight:400;">（可选，仅 1 张，jpg/png/webp，≤2MB）</span></label><div style="display:flex;gap:10px;align-items:center;"><div id="setItemPvThumb" style="width:160px;height:90px;border:1px dashed #d1d5db;border-radius:6px;background:#f9fafb center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:11px;">暂无预览图</div><div style="display:flex;flex-direction:column;gap:6px;"><input id="setItemPvFile" type="file" accept="image/jpeg,image/png,image/webp" style="font-size:12px;max-width:220px;"><button id="setItemPvClearBtn" type="button" class="btn btn-sm" style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;"><i class="fa-solid fa-xmark"></i> 清除预览图</button></div></div></div>';
 
                 // ---- 预览图：编辑模式拉已有；新增模式清空 ----
                 const pvThumb = wrap.querySelector('#setItemPvThumb');
@@ -2074,7 +2074,12 @@
                     const sensitivity = sensEl ? String(sensEl.value) : 'sfw';
                     submitBtn.disabled = true;
                     submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 添加中...';
-                    const result = await doBatchAdd(list, catId, sensitivity);
+                    // 修复 stale closure bug：弹框是单例复用，submit 监听器在首次创建弹框时
+                    // 注册一次，闭包捕获的是「首次打开时的 catId」。后续切换分类再开弹框时，
+                    // badge.innerHTML 是新分类（DOM 实时刷新），但 catId 仍是旧值，导致视觉显示
+                    // 与实际写入不一致。改为读 dataset 上每次覆盖的最新值。
+                    const liveCatId = Number(overlay.dataset.catId) || 0;
+                    const result = await doBatchAdd(list, liveCatId, sensitivity);
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> 确定添加';
                     if (result.success > 0) {
@@ -2091,7 +2096,9 @@
                     }
                 });
             }
-            // 弹框显示前：刷新 catBadge + 清空输入
+            // 弹框显示前：刷新 catBadge + catId dataset + 清空输入
+            // dataset.catId 是 submit 时实际读取的分类 id（避免闭包捕获旧值）
+            overlay.dataset.catId = String(catId);
             const badge = overlay.querySelector('#setBatchAddCatBadge');
             if (badge) badge.innerHTML = `目标分类：<strong style="color:#6366f1;">${esc(catName)}</strong>`;
             const input = overlay.querySelector('#setBatchAddInput');

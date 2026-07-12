@@ -15,6 +15,16 @@
     padding: 0;
 }
 
+html, body {
+    /* 兜底：禁止横向滚动条。
+       - 候选元凶：`<input type="file" webkitdirectory>`（display:none 浏览器差异）、
+         `.preview-content { width:1400px }`（media preview 弹框未激活时仍参与布局计算）、
+         其它意外的子元素宽度溢出
+       - 不影响垂直滚动条（main / settings 内部容器各自的 overflow-y:auto 仍生效）
+       - body:has(.lock-overlay:not(.lock-hidden)) { overflow:hidden } 这条规则仍可叠加（垂直方向需要锁滚动条时） */
+    overflow-x: hidden;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: var(--bg-color);
@@ -721,6 +731,43 @@ main {
     flex-wrap: wrap;
     gap: 0.4rem;
     align-items: center;
+}
+
+/* AI 工具卡片（gallery 网格）—— 用 CSS :hover 替代 inline onmouseenter，避免主线程抖动 */
+.at-card {
+    background: #ffffff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    position: relative;
+    /* 时长压到 150ms（之前 200ms 偏慢）；曲线用 Material 标准 ease，
+       进出对称，移入移出都不会拖尾 */
+    transition:
+        transform 150ms cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+}
+.at-card:hover {
+    /* 轻微上移 + 微缩放，营造卡片"浮起"感 */
+    transform: translateY(-4px) scale(1.015);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+/* 封面图视差缩放：时长跟卡片同步，仅多 30ms 做轻微层次差，避免视觉错位 */
+.at-card-cover img {
+    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.at-card:hover .at-card-cover img {
+    transform: scale(1.05);
+}
+.at-card.broken {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.at-card.broken:hover {
+    /* 损坏的卡片不响应悬浮视觉反馈，避免误导用户 */
+    transform: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* ========== Module 2: 元信息 ========== */

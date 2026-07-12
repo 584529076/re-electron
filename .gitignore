@@ -5,5 +5,6 @@ build/
 assets/
 tmp/
 prompts/previews/
-previews/media/
+prompts/media/
+loras-covers/
 smoke-electron.log

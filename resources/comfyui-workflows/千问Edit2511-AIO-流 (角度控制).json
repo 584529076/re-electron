@@ -10,7 +10,7 @@
   },
   "2": {
     "inputs": {
-      "seed": 65454653,
+      "seed": 373049470324819,
       "steps": 4,
       "cfg": 1,
       "sampler_name": "euler_ancestral",
@@ -106,19 +106,6 @@
       "title": "Final Image Size"
     }
   },
-  "13": {
-    "inputs": {
-      "filename_prefix": "ComfyUI",
-      "images": [
-        "59",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "保存图像"
-    }
-  },
   "15": {
     "inputs": {
       "upscale_method": "lanczos",
@@ -175,9 +162,9 @@
   },
   "58": {
     "inputs": {
-      "horizontal_angle": 180,
+      "horizontal_angle": 90,
       "vertical_angle": 0,
-      "zoom": 5.1,
+      "zoom": 5,
       "default_prompts": true,
       "camera_view": false,
       "image": [
@@ -212,6 +199,321 @@
     "class_type": "easy cleanGpuUsed",
     "_meta": {
       "title": "清理显存占用"
+    }
+  },
+  "61": {
+    "inputs": {
+      "samples": [
+        "63",
+        0
+      ],
+      "vae": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "62": {
+    "inputs": {
+      "width": [
+        "80",
+        2
+      ],
+      "height": [
+        "80",
+        3
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "空Latent图像（Flux2）"
+    }
+  },
+  "63": {
+    "inputs": {
+      "anything": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "清理显存占用"
+    }
+  },
+  "64": {
+    "inputs": {
+      "text": "保持画面任何元素都不变化，保持色调不变，修复画质，高清画质，4K画质",
+      "clip": [
+        "82",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "65": {
+    "inputs": {
+      "unet_name": "Klein\\flux-2-klein-9b.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "66": {
+    "inputs": {
+      "seed": 37392697471185,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "81",
+        0
+      ],
+      "positive": [
+        "67",
+        0
+      ],
+      "negative": [
+        "71",
+        0
+      ],
+      "latent_image": [
+        "62",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "67": {
+    "inputs": {
+      "conditioning": [
+        "69",
+        0
+      ],
+      "latent": [
+        "68",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "68": {
+    "inputs": {
+      "pixels": [
+        "80",
+        0
+      ],
+      "vae": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "69": {
+    "inputs": {
+      "conditioning": [
+        "78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "70": {
+    "inputs": {
+      "clean_file_cache": true,
+      "clean_processes": true,
+      "clean_dlls": true,
+      "retry_times": 3,
+      "anything": [
+        "61",
+        0
+      ]
+    },
+    "class_type": "RAMCleanup",
+    "_meta": {
+      "title": "🎈RAM-Cleanup"
+    }
+  },
+  "71": {
+    "inputs": {
+      "conditioning": [
+        "73",
+        0
+      ],
+      "latent": [
+        "68",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "72": {
+    "inputs": {
+      "conditioning": [
+        "74",
+        0
+      ],
+      "latent": [
+        "77",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "73": {
+    "inputs": {
+      "conditioning": [
+        "72",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "74": {
+    "inputs": {
+      "conditioning": [
+        "64",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "75": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "70",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "76": {
+    "inputs": {
+      "vae_name": "FLUX\\flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "77": {
+    "inputs": {
+      "pixels": [
+        "80",
+        0
+      ],
+      "vae": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "78": {
+    "inputs": {
+      "conditioning": [
+        "64",
+        0
+      ],
+      "latent": [
+        "77",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "80": {
+    "inputs": {
+      "SD1.5": "关",
+      "SDXL": "关",
+      "FLUX": "关",
+      "WAN": "关",
+      "QWEN": "关",
+      "裁剪方式": "中心裁剪",
+      "缩放算法": "lanczos",
+      "启用边长缩放": true,
+      "缩放至边": "最长边",
+      "缩放长度": 1280,
+      "图像": [
+        "59",
+        0
+      ]
+    },
+    "class_type": "EasySizeSimpleImage",
+    "_meta": {
+      "title": "简单图像尺寸"
+    }
+  },
+  "81": {
+    "inputs": {
+      "lora_name": "Klein\\Klein_9B-NSFW.safetensors",
+      "strength_model": 0.9,
+      "model": [
+        "65",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "82": {
+    "inputs": {
+      "clip_name": "Qwen\\qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
     }
   }
 }

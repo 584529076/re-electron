@@ -1,0 +1,30 @@
+{
+  "id": "Llama_自动翻译",
+  "name": "Llama 自动翻译",
+  "description": "中英双向翻译：输入中文则译为英文，输入其他语言则译为中文。基于本地 llama.cpp 模型（Qwen3-VL Instruct 的纯文本模式），输出文本。",
+  "mode": "sfw",
+  "accepts": ["text"],
+  "coverFallback": {
+    "icon": "fa-language",
+    "gradient": ["#06b6d4", "#3b82f6"]
+  },
+  "workflowFile": "Llama自动翻译.json",
+  "models": ["Qwen"],
+  "formFields": [
+    {
+      "id": "text_input",
+      "label": "待翻译文本",
+      "type": "textarea",
+      "nodeId": "16",
+      "field": "text",
+      "default": "",
+      "rows": 8,
+      "required": true,
+      "placeholder": "在此粘贴或输入需要翻译的文本...",
+      "note": "支持任意长度。自动判断方向：含中文则译为英文，反之译为中文。"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "10", "type": "text" }
+  ]
+}
