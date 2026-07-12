@@ -71,6 +71,6 @@
     }
   ],
   "outputNodes": [
-    { "nodeId": "13", "type": "image", "filenamePrefix": "ComfyUI" }
+    { "nodeId": "75", "type": "image", "filenamePrefix": "ComfyUI" }
   ]
 }
