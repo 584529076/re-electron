@@ -1,0 +1,222 @@
+{
+  "1": {
+    "inputs": {
+      "clip_name": "boogu\\qwen3vl_8b_fp8_scaled.safetensors",
+      "type": "boogu",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "2": {
+    "inputs": {
+      "unet_name": "boogu\\boogu_Anything2RealCharactersV1int8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "4": {
+    "inputs": {
+      "vae_name": "FLUX\\flux1_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "7": {
+    "inputs": {
+      "image": "ComfyUI_00181_.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "24",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "17": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "18": {
+    "inputs": {
+      "image": [
+        "44",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸"
+    }
+  },
+  "23": {
+    "inputs": {
+      "scheduler": "sgm_uniform",
+      "steps": 8,
+      "denoise": 1,
+      "model": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基本调度器"
+    }
+  },
+  "24": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 985650296368652,
+      "cfg": 1,
+      "model": [
+        "2",
+        0
+      ],
+      "positive": [
+        "31",
+        0
+      ],
+      "negative": [
+        "31",
+        1
+      ],
+      "sampler": [
+        "25",
+        0
+      ],
+      "sigmas": [
+        "23",
+        0
+      ],
+      "latent_image": [
+        "47",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "自定义采样器"
+    }
+  },
+  "25": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "31": {
+    "inputs": {
+      "prompt": "transform the image to realistic photograph",
+      "negative_prompt": "4-view split screen,realistic photograph,1.close-up face,2.front view full body,3.side view full body,4.back view full body.",
+      "clip": [
+        "1",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ],
+      "images.image_1": [
+        "44",
+        0
+      ]
+    },
+    "class_type": "TextEncodeBooguEdit",
+    "_meta": {
+      "title": "TextEncodeBooguEdit"
+    }
+  },
+  "44": {
+    "inputs": {
+      "temperature": 0,
+      "hue": 0,
+      "brightness": 0,
+      "contrast": 0,
+      "saturation": -20,
+      "gamma": 1,
+      "image": [
+        "45",
+        0
+      ]
+    },
+    "class_type": "ColorCorrect",
+    "_meta": {
+      "title": "Color Correct"
+    }
+  },
+  "45": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "nearest",
+      "round_to_multiple": "None",
+      "scale_to_side": "longest",
+      "scale_to_length": 1536,
+      "background_color": "#000000",
+      "image": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "图层工具：按宽高比缩放 V2"
+    }
+  },
+  "47": {
+    "inputs": {
+      "width": [
+        "18",
+        0
+      ],
+      "height": [
+        "18",
+        1
+      ],
+      "batch_size": [
+        "18",
+        2
+      ]
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  }
+}

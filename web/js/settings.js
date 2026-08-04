@@ -747,6 +747,7 @@
             { tab: 'rule',  icon: 'fa-arrow-down-1-9',  name: '拼装规则',   desc: '选择要拼装的一级分类并设置顺序',                  available: true  },
             { tab: 'scene', icon: 'fa-image',           name: '场景模板',   desc: 'md 导入的场景模板，启用/禁用/编辑/删除',          available: true  },
             { tab: 'assoc', icon: 'fa-link',            name: '关联管理',   desc: '提示词之间的强联动/弱联动/互斥规则、Excel 批量导入', available: true },
+            { tab: 'nsfw-import', icon: 'fa-file-import', name: 'NSFW 模板导入', desc: '一键解析并导入 nsfw-prompt-templates-asian 模板库（约 935 分类 / 10375 词条 / 23 关联 / 77 范例）', available: true },
         ];
 
         let view = 'cards';      // 'cards' | 'sub'
@@ -758,6 +759,7 @@
             item: renderSubModuleItem,
             menu: renderSubModuleMenu,
             assoc: renderSubModuleAssoc,
+            'nsfw-import': renderSubModuleNsfwImport,
         };
 
         function paintCards() {
@@ -828,21 +830,29 @@
         function paintSub() {
             container.innerHTML = '';
             const wrap = document.createElement('div');
-            wrap.style.cssText = 'background:#ffffff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); max-width:1100px; display:flex; flex-direction:column; min-height:560px; overflow:visible;';
+            // 关键：把 wrap 高度锁到 settingsContent 的可视高度内（height:100% + max-height:100%），
+            //  否则 wrap 会跟着内容一起长高，把内层的 overflow 全部顶回外层 settingsContent 接管滚动，
+            //  内两栏的 overflow-y:auto 永远激活不了。
+            //  overflow:hidden 兜底：如果有子模块内容真的超出，不会再把外层挤出来出滚动条。
+            wrap.style.cssText = 'background:#ffffff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); width:100%; max-width:1100px; display:flex; flex-direction:column; height:100%; max-height:100%; min-height:0; overflow:hidden;';
 
             const mod = SUB_MODULES.find(x => x.tab === currentSub);
             const subName = mod ? mod.name : currentSub;
             const inModalFn = window.promptGenOpenConfigModal;
 
             wrap.innerHTML = `
-                <div style="padding:10px 16px; border-bottom:1px solid #e5e7eb; background:#f9fafb; display:flex; align-items:center; gap:8px; flex-shrink:0; position:sticky; top:0; z-index:5;">
-                    <button id="setPromptsBackBtn" class="btn btn-sm" type="button" style="font-size:12px;"><i class="fa-solid fa-arrow-left"></i> 提示词管理</button>
-                    <span style="color:#9ca3af;">/</span>
-                    <span style="font-size:14px; font-weight:500; color:#1f2937;">${escapeHtml(subName)}</span>
-                    <div style="flex:1;"></div>
-                    <button id="setPromptsOpenInModal" class="btn btn-sm" type="button" title="在原弹框中打开（兜底）" style="font-size:12px;"><i class="fa-solid fa-up-right-from-square"></i> 在弹框中打开</button>
+                <!-- 顶部区 = 面包屑 + 子模块自己的 toolbar，整体作为一个 sticky 块，永远不互相叠加 -->
+                <div id="setPromptsStickyHeader" style="position:sticky; top:0; z-index:5; background:#f9fafb; flex-shrink:0;">
+                    <div style="padding:10px 16px; border-bottom:1px solid #e5e7eb; background:#f9fafb; display:flex; align-items:center; gap:8px;">
+                        <button id="setPromptsBackBtn" class="btn btn-sm" type="button" style="font-size:12px;"><i class="fa-solid fa-arrow-left"></i> 提示词管理</button>
+                        <span style="color:#9ca3af;">/</span>
+                        <span style="font-size:14px; font-weight:500; color:#1f2937;">${escapeHtml(subName)}</span>
+                        <div style="flex:1;"></div>
+                        <button id="setPromptsOpenInModal" class="btn btn-sm" type="button" title="在原弹框中打开（兜底）" style="font-size:12px;"><i class="fa-solid fa-up-right-from-square"></i> 在弹框中打开</button>
+                    </div>
+                    <div id="setPromptsStickyBarSlot"></div>
                 </div>
-                <div id="setPromptsSubBody" style="flex:1; overflow:auto; background:#f9fafb;"></div>
+                <div id="setPromptsSubBody" style="flex:1; min-height:0; overflow:hidden; background:#f9fafb;"></div>
             `;
             container.appendChild(wrap);
 
@@ -860,9 +870,12 @@
             });
 
             const body = wrap.querySelector('#setPromptsSubBody');
+            const stickyBarSlot = wrap.querySelector('#setPromptsStickyBarSlot');
             const renderer = SUB_RENDERERS[currentSub];
             if (typeof renderer === 'function') {
-                renderer(body);
+                // 把 sticky 槽位传给子模块；需要固定置顶的子模块（如 提示词配置）把 toolbar 放进 stickyBarSlot，
+                // 就不必自己再写 position:sticky，跟面包屑一起被外层 sticky 容器整体吸顶。
+                renderer(body, { stickyBarSlot });
             } else {
                 body.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:80px 0;font-size:13px;">该子模块尚未迁移到本页</div>';
             }
@@ -1641,12 +1654,14 @@
     // ===== 提示词配置子页面（阶段 3）=====
     // 复制自 prompt-gen.js:2922-3108 + Excel 导入逻辑（2171-2266）
     // cfg* 前缀 → setItem* 避免冲突；用模块共享 state；新增 / 导入按钮内联。
-    function renderSubModuleItem(container) {
+    function renderSubModuleItem(container, opts) {
+        opts = opts || {};
         container.innerHTML = '';
         const root = document.createElement('div');
         root.style.cssText = 'display:flex; flex-direction:column; height:100%; background:#ffffff;';
 
-        // 顶部 toolbar
+        // 顶部 toolbar：粘到外部 sticky 容器里（与面包屑同一 sticky 块，整体吸顶，不互相叠加）。
+        // 如果调用方没传 stickyBarSlot（老调用方式），退回到原来的 root 内 inline 行为。
         const toolbar = document.createElement('div');
         toolbar.style.cssText = 'padding:10px 16px; border-bottom:1px solid #e5e7eb; background:#f9fafb; display:flex; align-items:center; gap:8px; flex-shrink:0;';
         toolbar.innerHTML = `
@@ -1657,16 +1672,22 @@
             <input type="file" id="setItemImportFile" accept=".xlsx,.xls,.csv" style="display:none;">
             <span id="setItemImportStatus" style="margin-left:auto; font-size:11px; color:#6b7280; align-self:center;"></span>
         `;
-        root.appendChild(toolbar);
+        if (opts.stickyBarSlot) {
+            opts.stickyBarSlot.appendChild(toolbar);
+        } else {
+            root.appendChild(toolbar);
+        }
 
         // 主体：左树 + 右内容
+        // 关键：左右两栏都加 min-height:0，让它们在 row-flex body 里允许缩到 flex:1 分配的高度，
+        //  这样 overflow-y:auto 才会真正激活成"内部滚动"，而不会把内容挤到外层让 settingsContent 跟着滚
         const body = document.createElement('div');
         body.style.cssText = 'display:flex; flex:1; min-height:0; overflow:hidden;';
         body.innerHTML = `
-            <div style="width:220px; border-right:1px solid #e5e7eb; overflow-y:auto; padding:10px 0; background:#fafafa;">
+            <div style="width:220px; border-right:1px solid #e5e7eb; overflow-y:auto; min-height:0; padding:10px 0; background:#fafafa;">
                 <div id="setItemTree" style="font-size:13px; padding:0 8px;"></div>
             </div>
-            <div style="flex:1; overflow-y:auto; padding:14px 18px;">
+            <div style="flex:1; overflow-y:auto; min-height:0; padding:14px 18px;">
                 <div id="setItemList" style="margin-bottom:14px;"></div>
                 <div id="setItemFormWrap" style="display:none;"></div>
             </div>
@@ -2766,6 +2787,303 @@
             return;
         }
         fn({ container });
+    }
+
+    // ========== D-NSFW-D：NSFW 模板导入向导 ==========
+    // 4 步：选路径/解析 → 预览 → 配置+执行 → 结果
+    function renderSubModuleNsfwImport(container) {
+        container.innerHTML = '';
+        const root = document.createElement('div');
+        root.style.cssText = 'display:flex; flex-direction:column; height:100%; padding:0;';
+
+        // 顶部 banner
+        const banner = document.createElement('div');
+        banner.style.cssText = 'padding:14px 22px; border-bottom:1px solid #e5e7eb; background:#ffffff; display:flex; align-items:center; gap:10px;';
+        banner.innerHTML = `
+            <i class="fa-solid fa-file-import" style="color:#7c3aed; font-size:16px;"></i>
+            <div style="font-size:13px; color:#1f2937; font-weight:600; flex:1;">NSFW 模板导入向导</div>
+            <button id="nsfwImpBackBtn" class="btn btn-sm" type="button" style="font-size:11px;"><i class="fa-solid fa-arrow-left"></i> 返回</button>
+        `;
+        root.appendChild(banner);
+        container.appendChild(root);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'flex:1; min-height:0; overflow-y:auto; padding:24px; background:#f9fafb;';
+        root.appendChild(body);
+        root.querySelector('#nsfwImpBackBtn').addEventListener('click', () => { view = 'cards'; paintCards(); });
+
+        // ---- 共享状态 ----
+        const state = {
+            step: 1,
+            srcDir: 'D:\\nsfw-prompt-templates-asian',     // 默认（用户可改）
+            parsed: null,           // { ok, summary, categories, items, ..., preview }
+            modules: null,          // [{key, name, items, assoc, examples, checked}]
+            selectedModules: new Set(),
+            options: { includeNeutral: false, batch: 500 },
+            importing: false,
+            importResult: null,
+        };
+
+        function paintStepIndicator() {
+            const labels = ['① 解析模板库', '② 预览统计', '③ 配置 + 执行', '④ 完成'];
+            const html = labels.map((lbl, idx) => {
+                const n = idx + 1;
+                const active = state.step === n;
+                const done = state.step > n;
+                const bg = active ? '#7c3aed' : done ? '#a78bfa' : '#e5e7eb';
+                const fg = (active || done) ? '#ffffff' : '#6b7280';
+                return `<div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:28px; height:28px; border-radius:14px; background:${bg}; color:${fg}; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">${n}</div>
+                    <div style="font-size:13px; color:${active ? '#1f2937' : (done ? '#7c3aed' : '#6b7280')}; font-weight:${active ? 600 : 500};">${lbl}</div>
+                </div>${n < 4 ? '<div style="flex:1; height:2px; background:' + (done ? '#a78bfa' : '#e5e7eb') + ';"></div>' : ''}`;
+            }).join('');
+            return `<div style="display:flex; align-items:center; gap:12px; max-width:880px; margin:0 auto 24px auto; padding:18px 20px; background:#ffffff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">${html}</div>`;
+        }
+
+        function card(title, subtitle) {
+            return `<div style="max-width:880px; margin:0 auto 16px auto; background:#ffffff; border-radius:10px; padding:18px 22px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                <div style="font-size:15px; font-weight:600; color:#1f2937; margin-bottom:${subtitle ? '6px' : '12px'};"><i class="fa-solid fa-circle-info" style="color:#7c3aed;"></i> ${escapeHtml(title)}</div>
+                ${subtitle ? `<div style="font-size:12px; color:#6b7280; line-height:1.6; margin-bottom:14px;">${escapeHtml(subtitle)}</div>` : ''}
+            </div>`;
+        }
+
+        // ---- Step 1: parse ----
+        function renderStep1() {
+            body.innerHTML = paintStepIndicator() + card('第一步：解析模板库', '读取目录内 14 个 .md（范例 / 场景 / 景别 / 裸露 / 服装 ... / 人格卡片）→ 输出 6 个 JSON 到 scripts/parsed-nsfw-asian/') + `
+            <div style="max-width:880px; margin:0 auto; background:#ffffff; border-radius:10px; padding:22px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                    <div style="font-size:13px; color:#374151; font-weight:500; min-width:90px;">模板库目录</div>
+                    <input id="nsfwImpSrcDir" type="text" value="${escapeHtml(state.srcDir)}" style="flex:1; padding:8px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:12px; font-family:monospace;" placeholder="D:\\nsfw-prompt-templates-asian" />
+                    <button id="nsfwImpPickBtn" type="button" class="btn btn-sm" style="font-size:11px;"><i class="fa-solid fa-folder-open"></i> 选择</button>
+                </div>
+                <div style="font-size:11px; color:#6b7280; margin-bottom:20px;">如使用 pickle 选择，将自动填充路径。</div>
+                <div style="display:flex; gap:10px;">
+                    <button id="nsfwImpParseBtn" type="button" class="btn" style="background:#7c3aed; color:#fff; border:none; padding:8px 22px; font-size:13px;"><i class="fa-solid fa-play"></i> 开始解析</button>
+                    <button id="nsfwImpUseExistingBtn" type="button" class="btn btn-sm" style="font-size:11px; margin-left:auto;"><i class="fa-solid fa-clock-rotate-left"></i> 使用已解析结果</button>
+                </div>
+                <div id="nsfwImpParseStatus" style="margin-top:18px; font-size:12px;"></div>
+            </div>
+            `;
+            body.querySelector('#nsfwImpSrcDir').addEventListener('input', e => { state.srcDir = e.target.value; });
+            body.querySelector('#nsfwImpPickBtn').addEventListener('click', async () => {
+                const dir = await window.api.config.pickDir();
+                if (dir) {
+                    state.srcDir = dir;
+                    body.querySelector('#nsfwImpSrcDir').value = dir;
+                }
+            });
+            body.querySelector('#nsfwImpParseBtn').addEventListener('click', async () => {
+                const status = body.querySelector('#nsfwImpParseStatus');
+                status.innerHTML = '<div style="color:#7c3aed;"><i class="fa-solid fa-spinner fa-spin"></i> 正在解析（可能需要 10-30 秒）…</div>';
+                const r = await window.api.promptNsfwImportRunParse({ src_dir: state.srcDir });
+                if (!r.ok) {
+                    status.innerHTML = '<div style="color:#dc2626;"><i class="fa-solid fa-xmark"></i> ' + escapeHtml(r.error) + '</div>';
+                    return;
+                }
+                state.parsed = r;
+                status.innerHTML = '<div style="color:#059669;"><i class="fa-solid fa-check"></i> 解析完成：分类 ' + r.categories.length + '，词条 ' + r.items.length + '，关联 ' + r.associations.length + '，范例 ' + r.examples.length + '（' + (r.duration_ms/1000).toFixed(1) + 's）</div>';
+                setTimeout(() => { state.step = 2; renderStep2(); }, 800);
+            });
+            body.querySelector('#nsfwImpUseExistingBtn').addEventListener('click', () => {
+                // 不重新解析，直接跳到 step 2（前提是已用 smoke / npm run parse 离线跑过）
+                const summaryEl = body.querySelector('#nsfwImpParseStatus');
+                summaryEl.innerHTML = '<div style="color:#6b7280;"><i class="fa-solid fa-circle-info"></i> 需要先解析一次以拿到 JSON 数据。请点击「开始解析」。</div>';
+            });
+        }
+
+        // ---- Step 2: preview ----
+        function renderStep2() {
+            if (!state.parsed) { state.step = 1; return renderStep1(); }
+            const p = state.parsed;
+            const summary = p.summary || {};
+            const dup = p.dupReport || {};
+            const topReps = (dup.top_repetitions || []).slice(0, 12);
+            const levelsHtml = (p.preview.categoryLevels || []).map(lv => `<span style="display:inline-block; padding:3px 10px; background:#ede9fe; color:#5b21b6; border-radius:10px; font-size:11px; margin-right:6px;">L${lv.level} × ${lv.count}</span>`).join('');
+            const modulesHtml = (p.preview.moduleStats || []).map(m => {
+                const total = Number(m.items_raw || 0) + Number(m.assoc_raw || 0);
+                return `<tr><td style="padding:6px 8px;">${escapeHtml(m.module)}</td><td style="padding:6px 8px; text-align:right;">${m.items_raw || 0}</td><td style="padding:6px 8px; text-align:right;">${m.assoc_raw || 0}</td><td style="padding:6px 8px; text-align:right;">${m.examples || 0}</td><td style="padding:6px 8px;">${m.status === 'missing' ? '<span style="color:#dc2626;">missing</span>' : '<span style="color:#059669;">ok</span>'}</td></tr>`;
+            }).join('');
+            body.innerHTML = paintStepIndicator() + card('第二步：预览统计', '以下为本次解析结果，请确认无误后再执行导入') + `
+            <div style="max-width:880px; margin:0 auto 16px auto; background:#ffffff; border-radius:10px; padding:22px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:18px;">
+                    ${[
+                        {label:'分类',  v: p.categories.length,   color:'#7c3aed'},
+                        {label:'词条',  v: p.items.length,        color:'#2563eb'},
+                        {label:'关联',  v: p.associations.length, color:'#db2777'},
+                        {label:'范例',  v: p.examples.length,     color:'#059669'},
+                    ].map(s => `<div style="background:#faf5ff; border-radius:8px; padding:14px; border:1px solid #e9d5ff;">
+                        <div style="font-size:11px; color:#6b7280;">${s.label}</div>
+                        <div style="font-size:22px; font-weight:700; color:${s.color}; margin-top:4px;">${s.v.toLocaleString()}</div>
+                    </div>`).join('')}
+                </div>
+                <div style="font-size:12px; color:#374151; margin-bottom:6px;">分类层级分布</div>
+                <div style="margin-bottom:16px;">${levelsHtml || '<span style="color:#9ca3af;">—</span>'}</div>
+                <div style="font-size:12px; color:#374151; margin-bottom:6px;">按模块明细</div>
+                <table style="width:100%; font-size:12px; border-collapse:collapse; margin-bottom:8px;">
+                    <thead><tr style="background:#f3f4f6; color:#374151;"><th style="text-align:left; padding:6px 8px;">模块</th><th style="padding:6px 8px;">词条</th><th style="padding:6px 8px;">关联</th><th style="padding:6px 8px;">范例</th><th style="padding:6px 8px;">状态</th></tr></thead>
+                    <tbody>${modulesHtml}</tbody>
+                </table>
+            </div>
+            <div style="max-width:880px; margin:0 auto 16px auto; background:#ffffff; border-radius:10px; padding:18px 22px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                <div style="font-size:13px; font-weight:600; color:#374151; margin-bottom:8px;"><i class="fa-solid fa-copy" style="color:#f59e0b;"></i> 重复短语 Top 12（已通过 aliases 字段合并）</div>
+                ${topReps.length ? `<table style="width:100%; font-size:11px; border-collapse:collapse;">
+                    <thead><tr style="color:#6b7280;"><th style="text-align:left; padding:4px 6px;">短语</th><th style="padding:4px 6px;">出现次数</th></tr></thead>
+                    <tbody>${topReps.map(r => `<tr><td style="padding:4px 6px; font-family:monospace;">${escapeHtml(r.phrase)}</td><td style="padding:4px 6px; text-align:right;">${r.count}</td></tr>`).join('')}</tbody>
+                </table>` : '<div style="color:#9ca3af;">—</div>'}
+            </div>
+            <div style="max-width:880px; margin:0 auto; display:flex; justify-content:space-between;">
+                <button id="nsfwImpBack" type="button" class="btn btn-sm" style="font-size:12px;"><i class="fa-solid fa-arrow-left"></i> 上一步</button>
+                <button id="nsfwImpNext" type="button" class="btn" style="background:#7c3aed; color:#fff; border:none; padding:8px 22px; font-size:13px;">下一步 <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            `;
+            body.querySelector('#nsfwImpBack').addEventListener('click', () => { state.step = 1; renderStep1(); });
+            body.querySelector('#nsfwImpNext').addEventListener('click', () => { state.step = 3; renderStep3(); });
+        }
+
+        // ---- Step 3: config + execute ----
+        function renderStep3() {
+            if (!state.parsed) { state.step = 1; return renderStep1(); }
+            const p = state.parsed;
+            const modules = (p.preview.moduleStats || []).filter(m => m.status !== 'missing');
+            state.modules = modules;
+            state.selectedModules = new Set(modules.map(m => m.module));
+            const totalItems = modules.reduce((s, m) => s + Number(m.items_raw || 0), 0);
+            const totalAssocs = modules.reduce((s, m) => s + Number(m.assoc_raw || 0), 0);
+            const totalExamples = modules.reduce((s, m) => s + Number(m.examples || 0), 0);
+
+            body.innerHTML = paintStepIndicator() + card('第三步：勾选模块 + 执行', `默认全选 14 模块，将导入 ${totalItems.toLocaleString()} 词条 + ${totalAssocs} 关联 + ${totalExamples} 范例`) + `
+            <div style="max-width:880px; margin:0 auto 16px auto; background:#ffffff; border-radius:10px; padding:18px 22px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="font-size:13px; font-weight:600; color:#374151;">模块选择（共 ${modules.length}）</div>
+                    <div style="display:flex; gap:8px;">
+                        <button id="nsfwImpSelAll" type="button" class="btn btn-sm" style="font-size:11px;">全选</button>
+                        <button id="nsfwImpSelNone" type="button" class="btn btn-sm" style="font-size:11px;">全不选</button>
+                    </div>
+                </div>
+                <div id="nsfwImpModList" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px;">
+                    ${modules.map(m => `<label style="display:flex; align-items:center; gap:6px; padding:6px 10px; background:#fafafa; border:1px solid #e5e7eb; border-radius:6px; font-size:12px; cursor:pointer;">
+                        <input type="checkbox" data-mod="${escapeAttr(m.module)}" checked style="margin:0;" />
+                        <span style="flex:1;">${escapeHtml(m.module)}</span>
+                        <span style="color:#6b7280; font-size:11px;">${m.items_raw || 0} 词 / ${m.assoc_raw || 0} 关联</span>
+                    </label>`).join('')}
+                </div>
+                <div style="margin-top:14px; padding-top:14px; border-top:1px solid #e5e7eb;">
+                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#374151; margin-bottom:6px;">
+                        <input type="checkbox" id="nsfwImpNeutral" />
+                        包含中性（非 NSFW）条目
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#374151;">
+                        <span>每批插入条数</span>
+                        <input type="number" id="nsfwImpBatch" value="500" min="50" max="5000" step="50" style="width:80px; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:12px;" />
+                    </label>
+                </div>
+            </div>
+            <div style="max-width:880px; margin:0 auto; display:flex; justify-content:space-between;">
+                <button id="nsfwImpBack3" type="button" class="btn btn-sm" style="font-size:12px;"><i class="fa-solid fa-arrow-left"></i> 上一步</button>
+                <button id="nsfwImpRunBtn" type="button" class="btn" style="background:#dc2626; color:#fff; border:none; padding:10px 26px; font-size:13px; font-weight:600;"><i class="fa-solid fa-rocket"></i> 开始导入</button>
+            </div>
+            <div id="nsfwImpRunStatus" style="max-width:880px; margin:14px auto 0 auto;"></div>
+            `;
+            body.querySelector('#nsfwImpBack3').addEventListener('click', () => { state.step = 2; renderStep2(); });
+            body.querySelector('#nsfwImpSelAll').addEventListener('click', () => {
+                body.querySelectorAll('#nsfwImpModList input[type=checkbox]').forEach(c => c.checked = true);
+            });
+            body.querySelector('#nsfwImpSelNone').addEventListener('click', () => {
+                body.querySelectorAll('#nsfwImpModList input[type=checkbox]').forEach(c => c.checked = false);
+            });
+            body.querySelector('#nsfwImpRunBtn').addEventListener('click', async () => {
+                if (state.importing) return;
+                const sel = new Set();
+                body.querySelectorAll('#nsfwImpModList input[type=checkbox]').forEach(c => { if (c.checked) sel.add(c.dataset.mod); });
+                if (!sel.size) { showToast('请至少勾选 1 个模块', 'error'); return; }
+                const includeNeutral = body.querySelector('#nsfwImpNeutral').checked;
+                const batch = Math.max(50, Math.min(5000, Number(body.querySelector('#nsfwImpBatch').value) || 500));
+                state.importing = true;
+                const status = body.querySelector('#nsfwImpRunStatus');
+                status.innerHTML = '<div style="background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:14px 18px; color:#92400e;"><i class="fa-solid fa-spinner fa-spin"></i> 正在导入（分类+词条+关联+范例）— 10000+ 行可能要 30-60 秒…</div>';
+                // 过滤仅选中的模块
+                const modFilter = new Set(sel);
+                const filtered = {
+                    categories:   state.parsed.categories,
+                    items:        state.parsed.items.filter(it => modFilter.has(it.module)),
+                    associations: state.parsed.associations.filter(a => modFilter.has(a.source_module)),
+                    examples:     state.parsed.examples.filter(e => {
+                        const m = (e.source || e.source_module || '').slice(0, 5);
+                        return modFilter.has(m) || modFilter.has('00-范例');
+                    }),
+                };
+                // 过滤非 NSFW（如需要）
+                const finalItems = includeNeutral ? filtered.items : filtered.items.filter(it => (it.sensitivity || 'nsfw') === 'nsfw');
+                const payload = {
+                    version: (state.parsed.summary && state.parsed.summary.version) || 'v3.0',
+                    categories: filtered.categories,
+                    items: finalItems,
+                    associations: filtered.associations,
+                    examples: filtered.examples,
+                    config: { batch, includeNeutral, modules: Array.from(modFilter) },
+                };
+                try {
+                    const r = await window.api.promptNsfwImportExecute(payload);
+                    if (!r.ok) {
+                        status.innerHTML = '<div style="background:#fee2e2; border:1px solid #fecaca; border-radius:8px; padding:14px 18px; color:#991b1b;"><i class="fa-solid fa-xmark"></i> 失败：' + escapeHtml(r.error || '') + '</div>';
+                        state.importing = false;
+                        return;
+                    }
+                    state.importResult = r;
+                    state.importing = false;
+                    state.step = 4;
+                    renderStep4();
+                } catch (e) {
+                    status.innerHTML = '<div style="background:#fee2e2; border:1px solid #fecaca; border-radius:8px; padding:14px 18px; color:#991b1b;"><i class="fa-solid fa-xmark"></i> 异常：' + escapeHtml(e.message) + '</div>';
+                    state.importing = false;
+                }
+            });
+        }
+
+        // ---- Step 4: result ----
+        function renderStep4() {
+            const r = state.importResult;
+            if (!r) { state.step = 1; return renderStep1(); }
+            const s = r.stats || {};
+            const cards = [
+                { label:'新增分类', v: s.categories_created, color:'#7c3aed' },
+                { label:'跳过分类', v: s.categories_skipped, color:'#9ca3af' },
+                { label:'新增词条', v: s.items_created, color:'#2563eb' },
+                { label:'更新词条', v: s.items_updated, color:'#0891b2' },
+                { label:'跳过词条', v: s.items_skipped, color:'#9ca3af' },
+                { label:'新增关联', v: s.associations_created, color:'#db2777' },
+                { label:'导入范例', v: s.examples_imported, color:'#059669' },
+            ];
+            body.innerHTML = paintStepIndicator() + `
+            <div style="max-width:880px; margin:0 auto 16px auto; background:#ffffff; border-radius:10px; padding:24px 28px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                    <i class="fa-solid fa-circle-check" style="color:#059669; font-size:22px;"></i>
+                    <div style="font-size:16px; font-weight:600; color:#1f2937;">导入完成</div>
+                </div>
+                <div style="font-size:12px; color:#6b7280; margin-bottom:18px;">耗时 ${(r.duration_ms/1000).toFixed(1)} 秒。新数据已写入 prompt_menu / prompt_items / prompt_associations / prompt_examples，并在 prompt_import_history 留有记录。</div>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px;">${cards.map(c => `<div style="background:#faf5ff; border-radius:8px; padding:14px; border:1px solid #e9d5ff;">
+                    <div style="font-size:11px; color:#6b7280;">${c.label}</div>
+                    <div style="font-size:20px; font-weight:700; color:${c.color}; margin-top:4px;">${Number(c.v || 0).toLocaleString()}</div>
+                </div>`).join('')}</div>
+                <div style="display:flex; gap:10px; margin-top:22px;">
+                    <button id="nsfwImpGotoMenu" type="button" class="btn btn-sm" style="font-size:12px;"><i class="fa-solid fa-folder-tree"></i> 查看分类</button>
+                    <button id="nsfwImpGotoItem" type="button" class="btn btn-sm" style="font-size:12px;"><i class="fa-solid fa-tags"></i> 查看词条</button>
+                    <button id="nsfwImpGotoAssoc" type="button" class="btn btn-sm" style="font-size:12px;"><i class="fa-solid fa-link"></i> 查看关联</button>
+                    <button id="nsfwImpAgain" type="button" class="btn btn-sm" style="font-size:12px; margin-left:auto;"><i class="fa-solid fa-rotate"></i> 再来一次</button>
+                </div>
+            </div>
+            `;
+            body.querySelector('#nsfwImpGotoMenu').addEventListener('click', () => { currentSub = 'menu'; paintSub(); });
+            body.querySelector('#nsfwImpGotoItem').addEventListener('click', () => { currentSub = 'item'; paintSub(); });
+            body.querySelector('#nsfwImpGotoAssoc').addEventListener('click', () => { currentSub = 'assoc'; paintSub(); });
+            body.querySelector('#nsfwImpAgain').addEventListener('click', () => {
+                state.step = 1; state.parsed = null; state.importResult = null; state.importing = false;
+                renderStep1();
+            });
+        }
+
+        // 首次渲染
+        renderStep1();
     }
 
     // ========== 工具 ==========

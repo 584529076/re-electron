@@ -106,6 +106,16 @@ contextBridge.exposeInMainWorld('api', {
     sceneTemplateUpdate: (payload) => ipcRenderer.invoke('scene:template:update', payload),
     sceneTemplateToggleEnabled: (payload) => ipcRenderer.invoke('scene:template:toggleEnabled', payload),
     sceneTemplateDelete: (payload) => ipcRenderer.invoke('scene:template:delete', payload),
+    // ========= D-NSFW-A: NSFW 模板导入（向导）==========
+    promptItemFindDuplicates: (names) => ipcRenderer.invoke('prompt:item:findDuplicates', { names }),
+    promptItemMerge: (targetId, srcIds) => ipcRenderer.invoke('prompt:item:merge', { target_id: targetId, src_ids: srcIds }),
+    promptAssociationPreviewImport: (assocs) => ipcRenderer.invoke('prompt:association:previewImport', { associations: assocs }),
+    promptExampleList: (categoryId) => ipcRenderer.invoke('prompt:example:list', { category_id: categoryId || null }),
+    promptExampleImport: (examples) => ipcRenderer.invoke('prompt:example:import', { examples }),
+    promptImportHistoryList: () => ipcRenderer.invoke('prompt:importHistory:list'),
+    promptImportHistoryAdd: (record) => ipcRenderer.invoke('prompt:importHistory:add', record || {}),
+    promptNsfwImportExecute: (payload) => ipcRenderer.invoke('prompt:nsfwImport:execute', payload || {}),
+    promptNsfwImportRunParse: (payload) => ipcRenderer.invoke('prompt:nsfwImport:runParse', payload || {}),
     // ========= ComfyUI（AI 生图）=========
     comfyui: {
         configGet: () => ipcRenderer.invoke('comfyui:config:get'),

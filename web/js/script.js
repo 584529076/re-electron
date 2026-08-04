@@ -288,6 +288,7 @@ async function writeNasCache(tabId, media) {
 
 const els = {
     gallery: document.getElementById('gallery'),
+    main: document.querySelector('main'), /* 瀑布流滚动监听挂到 main（body 已锁 100vh，window 不再滚动） */
     sentinel: document.getElementById('sentinel'),
     slider: document.getElementById('widthSlider'),
     widthValue: document.getElementById('widthValue'),
@@ -1783,8 +1784,10 @@ function bindEvents() {
     });
 
     // 滚动加载 — D-33: 加 rAF 节流，原实现滚动时每帧都调 checkScrollAndLoad（内部 getBoundingClientRect 同步 reflow）
+    // body 已锁 100vh，主页滚动发生在 main 内部，所以监听 main（fallback 到 window 以防 main 不存在）
     let _scrollTick = false;
-    window.addEventListener('scroll', () => {
+    const _scrollTarget = els.main || window;
+    _scrollTarget.addEventListener('scroll', () => {
         if (_scrollTick) return;
         _scrollTick = true;
         requestAnimationFrame(() => {

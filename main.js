@@ -1297,6 +1297,13 @@ function ensurePromptItemsTable() {
         )
     `);
     store.exec(`CREATE INDEX IF NOT EXISTS idx_prompt_items_cat ON prompt_items(category_id)`);
+
+    // D-NSFW-A: 补 aliases 列（JSON 数组，记录此条目在哪些分类下也出现过）
+    const cols = store.query("PRAGMA table_info(prompt_items)");
+    if (cols.length && !cols.some(c => c.name === 'aliases')) {
+        store.exec("ALTER TABLE prompt_items ADD COLUMN aliases TEXT DEFAULT ''");
+        store.exec(`CREATE INDEX IF NOT EXISTS idx_prompt_items_aliases ON prompt_items(aliases) WHERE aliases != ''`);
+    }
 }
 // 原 try 块已删：在脚本加载期 store 还是 null，会抛 "Cannot read properties of null"
 // 改在 initStore() 里统一调
@@ -1321,6 +1328,50 @@ function ensureNsfwAssociationTables() {
     store.exec(`CREATE INDEX IF NOT EXISTS idx_assoc_a   ON prompt_associations(prompt_a_id)`);
     store.exec(`CREATE INDEX IF NOT EXISTS idx_assoc_b   ON prompt_associations(prompt_b_id)`);
     store.exec(`CREATE INDEX IF NOT EXISTS idx_assoc_rel ON prompt_associations(relation)`);
+
+    // D-NSFW-A: 补 scope 列（'item' 或 'category'；category 关联时 prompt_a_id/b_id 指向 prompt_menu.id）
+    const assocCols = store.query("PRAGMA table_info(prompt_associations)");
+    if (assocCols.length && !assocCols.some(c => c.name === 'scope')) {
+        store.exec("ALTER TABLE prompt_associations ADD COLUMN scope TEXT DEFAULT 'item'");
+        store.exec(`CREATE INDEX IF NOT EXISTS idx_assoc_scope ON prompt_associations(scope)`);
+    }
+
+    // D-NSFW-A: prompt_examples（完整范例表，不入 prompt_items 避免污染检索）
+    store.exec(`
+        CREATE TABLE IF NOT EXISTS prompt_examples (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id         INTEGER DEFAULT NULL,   -- 可空（典型归到大类，如 类别 范例-C01）
+            title               TEXT    NOT NULL,
+            english_content     TEXT    NOT NULL,
+            chinese_description TEXT    DEFAULT '',
+            style               TEXT    DEFAULT '',
+            keywords            TEXT    DEFAULT '[]',  -- JSON 数组
+            source              TEXT    DEFAULT 'md-import-00',
+            created_at          INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at          INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+        )
+    `);
+    store.exec(`CREATE INDEX IF NOT EXISTS idx_prompt_examples_cat ON prompt_examples(category_id)`);
+    store.exec(`CREATE INDEX IF NOT EXISTS idx_prompt_examples_source ON prompt_examples(source)`);
+
+    // D-NSFW-A: prompt_import_history（导入批次）
+    store.exec(`
+        CREATE TABLE IF NOT EXISTS prompt_import_history (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            source               TEXT    NOT NULL,        -- 'nsfw-asian' / 'manual' / ...
+            version              TEXT    DEFAULT '',      -- 模板库版本
+            imported_at          INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            categories_created   INTEGER DEFAULT 0,
+            categories_skipped   INTEGER DEFAULT 0,
+            items_created        INTEGER DEFAULT 0,
+            items_updated        INTEGER DEFAULT 0,
+            items_skipped        INTEGER DEFAULT 0,
+            associations_created INTEGER DEFAULT 0,
+            examples_imported    INTEGER DEFAULT 0,
+            duration_ms          INTEGER DEFAULT 0,
+            config_json          TEXT    DEFAULT '{}'
+        )
+    `);
 
     store.exec(`
         CREATE TABLE IF NOT EXISTS scene_templates (
@@ -1351,7 +1402,7 @@ function ensureNsfwAssociationTables() {
     if (stCols.length && !stCols.some(c => c.name === 'enabled')) {
         store.exec("ALTER TABLE scene_templates ADD COLUMN enabled INTEGER DEFAULT 1");
     }
-    console.log('[D-36] 关联规则 + 场景模板表已就绪');
+    console.log('[D-NSFW-A] 关联规则 + 场景模板 + 范例 + 导入历史表已就绪');
 }
 
 // ========== Lora 库（Phase 1：数据层）==========
@@ -2912,3 +2963,429 @@ ipcMain.handle('loras:types', async () => {
         return { ok: true, types: require('./loras-store').LORA_TYPES };
     } catch (e) { return { ok: false, error: e.message }; }
 });
+
+// ============================================================
+// D-NSFW-A/C: NSFW 模板导入 IPC（向导用）
+// ============================================================
+//
+// 设计：
+//   - 旧版 IPC 用 name 作为关联键（prompt_items.name），新 IPC 用 id
+//   - 因为新版本可能存在多个同名 item（aliases），所以 item 级关联直接传 id
+//   - 导入器在 wizard 拿到 prepared list 后，调用 importAllSteps 一次性写入
+//   - categories 用 prepareCategories 预解析 + lookupMenuId 提供 id 映射
+
+// 工具：把 "a,b,c" 形式的字符串转成 id 数组（filter 掉不存在的）
+function _resolveIdsByName(nameOrIdList) {
+    const out = [];
+    for (const x of (nameOrIdList || [])) {
+        if (typeof x === 'number') {
+            const row = store.query('SELECT id FROM prompt_items WHERE id = ?', x);
+            if (row.length) out.push(row[0].id);
+        } else {
+            const row = store.query('SELECT id FROM prompt_items WHERE name = ? LIMIT 1', String(x));
+            if (row.length) out.push(row[0].id);
+        }
+    }
+    return out;
+}
+
+// 工具：按 name 数组列出已存在的 item ids（用于 dedup 报告）
+ipcMain.handle('prompt:item:findDuplicates', async (_e, payload) => {
+    try {
+        const names = (payload && payload.names) || [];
+        if (!Array.isArray(names) || !names.length) return { ok: false, error: 'names 不能为空' };
+        const dupes = [];
+        for (const n of names) {
+            const rows = store.query('SELECT id, name, category_id FROM prompt_items WHERE name = ?', String(n));
+            if (rows.length > 1) {
+                dupes.push({ name: n, ids: rows });
+            }
+        }
+        return { ok: true, duplicates: dupes };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// 工具：把 srcIds 的引用合并到 targetId（content/description 取 target 的；aliases 取并集；删除 srcIds）
+ipcMain.handle('prompt:item:merge', async (_e, payload) => {
+    try {
+        const targetId = Number(payload && payload.target_id);
+        const srcIds = (payload && payload.src_ids || []).map(Number).filter(n => n && n !== targetId);
+        if (!targetId || !srcIds.length) return { ok: false, error: '需要 target_id 与 src_ids' };
+        const targetRow = store.query('SELECT * FROM prompt_items WHERE id = ?', targetId);
+        if (!targetRow.length) return { ok: false, error: `target id=${targetId} 不存在` };
+        const target = targetRow[0];
+        // 收集 src aliases
+        let aliases = [];
+        try { aliases = JSON.parse(target.aliases || '[]'); } catch {}
+        for (const sid of srcIds) {
+            const sr = store.query('SELECT id, aliases FROM prompt_items WHERE id = ?', sid);
+            if (!sr.length) continue;
+            try {
+                const a = JSON.parse(sr[0].aliases || '[]');
+                for (const x of a) if (!aliases.includes(x)) aliases.push(x);
+            } catch {}
+            // 删除 src 行（关联表的 a/b 引用也删除）
+            store.exec('DELETE FROM prompt_associations WHERE prompt_a_id = ? OR prompt_b_id = ?', sid, sid);
+            store.exec('DELETE FROM prompt_items WHERE id = ?', sid);
+        }
+        // 写回 target.aliases
+        store.exec('UPDATE prompt_items SET aliases = ?, updated_at = strftime(\'%s\',\'now\') WHERE id = ?',
+            JSON.stringify(aliases), targetId);
+        return { ok: true, target_id: targetId, src_deleted: srcIds, aliases };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// 关联预检：检查 associations-preview JSON 里所有 a/b 是否能命中 items
+ipcMain.handle('prompt:association:previewImport', async (_e, payload) => {
+    try {
+        const assocs = (payload && payload.associations) || [];
+        if (!Array.isArray(assocs)) return { ok: false, error: 'associations 应为数组' };
+        const ready = [];
+        const missing = [];
+        const seen = new Set();
+        for (const a of assocs) {
+            const aRow = store.query('SELECT id FROM prompt_items WHERE name = ? LIMIT 1', String(a.a || ''));
+            const bRow = store.query('SELECT id FROM prompt_items WHERE name = ? LIMIT 1', String(a.b || ''));
+            const aId = aRow.length ? aRow[0].id : null;
+            const bId = bRow.length ? bRow[0].id : null;
+            const k = (a.type || 'exclusive') + '|' + (a.source || '') + '|' + aId + '||' + bId;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            if (aId && bId && aId !== bId) ready.push({ ...a, aId, bId });
+            else missing.push({ ...a, missingA: !aId, missingB: !bId });
+        }
+        return { ok: true, ready, missing, ready_count: ready.length, missing_count: missing.length };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// prompt_examples 列表（带可选 category 过滤）
+ipcMain.handle('prompt:example:list', async (_e, payload) => {
+    try {
+        const categoryId = payload && payload.category_id;
+        let rows;
+        if (categoryId) {
+            rows = store.query('SELECT * FROM prompt_examples WHERE category_id = ? ORDER BY id', Number(categoryId));
+        } else {
+            rows = store.query('SELECT * FROM prompt_examples ORDER BY id');
+        }
+        // 解析 keywords JSON
+        for (const r of rows) {
+            try { r.keywords = JSON.parse(r.keywords || '[]'); } catch { r.keywords = []; }
+        }
+        return { ok: true, items: rows };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// prompt_examples 批量导入
+ipcMain.handle('prompt:example:import', async (_e, payload) => {
+    try {
+        const list = (payload && payload.examples) || [];
+        if (!Array.isArray(list) || !list.length) return { ok: false, error: 'examples 为空' };
+        let imported = 0, skipped = 0;
+        for (const ex of list) {
+            const english = String(ex.english_content || '').trim();
+            const title = String(ex.title || '').trim();
+            if (!english || !title) { skipped++; continue; }
+            const keywords = Array.isArray(ex.keywords) ? JSON.stringify(ex.keywords) : (ex.keywords || '[]');
+            store.exec(`INSERT INTO prompt_examples
+                (category_id, title, english_content, chinese_description, style, keywords, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                ex.category_id || null, title, english,
+                ex.chinese_description || '',
+                ex.style || '',
+                keywords,
+                ex.source || 'md-import-00');
+            imported++;
+        }
+        return { ok: true, imported, skipped };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// prompt_import_history 列表
+ipcMain.handle('prompt:importHistory:list', async () => {
+    try {
+        const rows = store.query('SELECT * FROM prompt_import_history ORDER BY imported_at DESC LIMIT 50');
+        for (const r of rows) {
+            try { r.config_json = JSON.parse(r.config_json || '{}'); } catch { r.config_json = {}; }
+        }
+        return { ok: true, items: rows };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// prompt_import_history 写入一条
+ipcMain.handle('prompt:importHistory:add', async (_e, payload) => {
+    try {
+        const p = payload || {};
+        const cfg = typeof p.config_json === 'string' ? p.config_json : JSON.stringify(p.config_json || {});
+        store.exec(`INSERT INTO prompt_import_history
+            (source, version, categories_created, categories_skipped, items_created, items_updated, items_skipped, associations_created, examples_imported, duration_ms, config_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            p.source || 'manual',
+            p.version || '',
+            Number(p.categories_created) || 0,
+            Number(p.categories_skipped) || 0,
+            Number(p.items_created) || 0,
+            Number(p.items_updated) || 0,
+            Number(p.items_skipped) || 0,
+            Number(p.associations_created) || 0,
+            Number(p.examples_imported) || 0,
+            Number(p.duration_ms) || 0,
+            cfg);
+        const id = store.query('SELECT last_insert_rowid() AS id')[0].id;
+        return { ok: true, id };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// 一站式 NSFW 导入（向导执行时调用）
+// payload: {
+//   categories: [{path,name,title,description,parent_code,level,module,module_code,is_required,exclusive_group}],
+//   items: [{phrase,category_path,module,sensitivity,description,aliases}],
+//   associations: [{type,a,b,weight,source,reason}],
+//   examples: [{title,english_content,chinese_description,keywords}],
+//   config: {batch:1, ...}
+// }
+ipcMain.handle('prompt:nsfwImport:execute', async (_e, payload) => {
+    try {
+        const p = payload || {};
+        const startMs = Date.now();
+        const stats = {
+            categories_created: 0, categories_skipped: 0,
+            items_created: 0, items_updated: 0, items_skipped: 0,
+            associations_created: 0, examples_imported: 0,
+        };
+
+        // 1. categories: 按层次插入（先根后子，用 name 匹配避免重复）
+        //   path 形如 "00-范例" / "00-范例 / 完整 Prompt 范例" 等
+        const categories = Array.isArray(p.categories) ? p.categories : [];
+        const pathToId = new Map();   // path → id
+
+        // 先按 level 排序：根先入（level=1）
+        const sortedCats = categories.slice().sort((x, y) => (x.level || 1) - (y.level || 1));
+        for (const c of sortedCats) {
+            const path = String(c.path || c.name || '').trim();
+            const name = String(c.name || path).trim();
+            if (!path) continue;
+            // 查是否已存在（按 name + parent_id + 模块路径精确匹配）
+            const parentId = pathToId.get(deriveParentPath(path)) || 0;
+            const existRow = store.query(
+                'SELECT id FROM prompt_menu WHERE category_name = ? AND (parent_id = ? OR (parent_id = 0 AND ? = 0))',
+                name, parentId, parentId
+            );
+            if (existRow.length) {
+                pathToId.set(path, existRow[0].id);
+                stats.categories_skipped++;
+                continue;
+            }
+            const isReq = c.is_required ? 1 : 0;
+            const desc = String(c.description || '').slice(0, 4000);
+            const r = store.exec(`INSERT INTO prompt_menu
+                (category_name, parent_id, description, sort_order, is_required, tag_required, tag_exclusive_group, exclusive_with, exclusive_group)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                name, parentId, desc, 0, isReq,
+                String(c.tag_required || ''), String(c.tag_exclusive_group || ''),
+                String(c.exclusive_with || ''), String(c.exclusive_group || ''));
+            const newId = r.lastInsertRowid;
+            // 计算 pid_list
+            const pid = parentId === 0 ? '/' : (store.query('SELECT pid_list FROM prompt_menu WHERE id = ?', parentId)[0].pid_list || '/');
+            const pidList = pid + newId + '/';
+            store.exec('UPDATE prompt_menu SET pid_list = ? WHERE id = ?', pidList, newId);
+            pathToId.set(path, newId);
+            stats.categories_created++;
+        }
+
+        // 2. items: 按 category_path 找到 category_id，name = phrase(content)
+        const items = Array.isArray(p.items) ? p.items : [];
+        const phraseToId = new Map();   // 内容 → id（用于后续 associations 解析）
+
+        // 把 path → name 映射提出来（path 是从 JSON 来的，可能用「 / 」也可能是「/」）
+        const pathNorm = new Map();     // normalizedPath → lookup-path
+        for (const path of pathToId.keys()) {
+            pathNorm.set(normPath(path), path);
+        }
+
+        for (const it of items) {
+            const content = String(it.phrase || '').trim();
+            if (!content) { stats.items_skipped++; continue; }
+            const catPath = normPath(it.category_path || '');
+            const lookupPath = pathNorm.get(catPath);
+            const catId = lookupPath ? pathToId.get(lookupPath) : null;
+            if (!catId) {
+                stats.items_skipped++;
+                continue;
+            }
+            // 查重：同 name + 同 category_id 视为同一行（更新 content + aliases）
+            const existRow = store.query(
+                'SELECT id, aliases FROM prompt_items WHERE name = ? AND category_id = ?',
+                content, catId
+            );
+            const aliases = Array.isArray(it.aliases) ? JSON.stringify(it.aliases) : (it.aliases || '[]');
+            const desc = String(it.description || '').slice(0, 4000);
+            const sens = String(it.sensitivity || 'nsfw');
+            if (existRow.length) {
+                store.exec(`UPDATE prompt_items SET content = ?, description = ?, sensitivity = ?,
+                    aliases = ?, updated_at = strftime('%s','now') WHERE id = ?`,
+                    content, desc, sens, aliases, existRow[0].id);
+                phraseToId.set(content, existRow[0].id);
+                stats.items_updated++;
+                continue;
+            }
+            const r = store.exec(`INSERT INTO prompt_items
+                (category_id, name, content, description, sensitivity, aliases)
+                VALUES (?, ?, ?, ?, ?, ?)`,
+                catId, content, content, desc, sens, aliases);
+            const newId = r.lastInsertRowid;
+            phraseToId.set(content, newId);
+            stats.items_created++;
+        }
+
+        // 3. associations: 按 phrase name 查 id 列表
+        const associations = Array.isArray(p.associations) ? p.associations : [];
+        for (const a of associations) {
+            const aId = phraseToId.get(String(a.a || '')) || (() => {
+                const r = store.query('SELECT id FROM prompt_items WHERE name = ? LIMIT 1', String(a.a || ''));
+                return r.length ? r[0].id : null;
+            })();
+            const bId = phraseToId.get(String(a.b || '')) || (() => {
+                const r = store.query('SELECT id FROM prompt_items WHERE name = ? LIMIT 1', String(a.b || ''));
+                return r.length ? r[0].id : null;
+            })();
+            if (!aId || !bId || aId === bId) continue;
+            const rel = (a.type === 'strong' || a.type === 'weak') ? a.type : 'exclusive';
+            const w = Number(a.weight) || 100;
+            try {
+                store.exec(`INSERT OR IGNORE INTO prompt_associations
+                    (prompt_a_id, prompt_b_id, relation, weight, source, reason)
+                    VALUES (?, ?, ?, ?, ?, ?)`,
+                    aId, bId, rel, w,
+                    String(a.source || 'md-import').slice(0, 100),
+                    String(a.reason || '').slice(0, 4000));
+                stats.associations_created++;
+            } catch {}
+        }
+
+        // 4. examples
+        const examples = Array.isArray(p.examples) ? p.examples : [];
+        for (const ex of examples) {
+            const title = String(ex.title || '').trim();
+            const english = String(ex.english_content || '').trim();
+            if (!title || !english) continue;
+            const keywords = Array.isArray(ex.keywords) ? JSON.stringify(ex.keywords) : (typeof ex.keywords === 'string' ? ex.keywords : '[]');
+            store.exec(`INSERT INTO prompt_examples
+                (category_id, title, english_content, chinese_description, style, keywords, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                null, title, english,
+                String(ex.chinese_description || '').slice(0, 4000),
+                String(ex.style || '').slice(0, 200),
+                keywords,
+                String(ex.source || 'md-import-00').slice(0, 100));
+            stats.examples_imported++;
+        }
+
+        const durationMs = Date.now() - startMs;
+        // 5. 写一条 import_history
+        const cfg = typeof p.config === 'string' ? p.config : JSON.stringify(p.config || {});
+        store.exec(`INSERT INTO prompt_import_history
+            (source, version, categories_created, categories_skipped, items_created, items_updated, items_skipped, associations_created, examples_imported, duration_ms, config_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            'nsfw-asian', String(p.version || 'v3.0'),
+            stats.categories_created, stats.categories_skipped,
+            stats.items_created, stats.items_updated, stats.items_skipped,
+            stats.associations_created, stats.examples_imported,
+            durationMs, cfg);
+
+        return { ok: true, stats, duration_ms: durationMs };
+    } catch (e) {
+        return { ok: false, error: e.message, stack: e.stack };
+    }
+});
+
+// helpers
+function deriveParentPath(path) {
+    // 用 normPath 后的 ' / ' 分隔符切，避免 category name 含 '/' 时 lastIndexOf 误判
+    const parts = String(path || '').split(' / ').filter(Boolean);
+    if (parts.length <= 1) return '';
+    return parts.slice(0, -1).join(' / ');
+}
+function normPath(p) {
+    return String(p || '').replace(/\s*\/\s*/g, ' / ').trim();
+}
+
+// ========== D-NSFW-D: NSFW 模板导入（parser 触发 + 解析结果回读）==========
+// 调用 scripts/parse-nsfw-asian/index.js，把模板库 .md 转成 JSON 后读回前端。
+ipcMain.handle('prompt:nsfwImport:runParse', async (_e, payload) => {
+    const { spawnSync } = require('child_process');
+    const fsp = require('fs');
+    const pathMod = require('path');
+    try {
+        const p = payload || {};
+        const srcDir = p.src_dir || pathMod.join('D:', 'nsfw-prompt-templates-asian');
+        const outDir = p.out_dir || pathMod.join(__dirname, 'scripts', 'parsed-nsfw-asian');
+        const scriptPath = pathMod.join(__dirname, 'scripts', 'parse-nsfw-asian', 'index.js');
+        if (!fsp.existsSync(srcDir)) {
+            return { ok: false, error: '模板库目录不存在：' + srcDir };
+        }
+        if (!fsp.existsSync(scriptPath)) {
+            return { ok: false, error: '解析脚本不存在：' + scriptPath };
+        }
+        const t0 = Date.now();
+        const res = spawnSync(process.execPath, [scriptPath, srcDir, outDir], {
+            encoding: 'utf-8',
+            timeout: 180000,
+            cwd: pathMod.join(__dirname),
+        });
+        if (res.status !== 0) {
+            return { ok: false, error: 'parser 退出码 ' + res.status + '\n' + (res.stderr || res.stdout || '').slice(-2000) };
+        }
+        if (!fsp.existsSync(pathMod.join(outDir, 'summary.json'))) {
+            return { ok: false, error: 'parser 完成但未产出 summary.json' };
+        }
+        const summary      = JSON.parse(fsp.readFileSync(pathMod.join(outDir, 'summary.json'), 'utf-8'));
+        const categories   = JSON.parse(fsp.readFileSync(pathMod.join(outDir, 'categories.json'), 'utf-8'));
+        const items        = JSON.parse(fsp.readFileSync(pathMod.join(outDir, 'items.json'), 'utf-8'));
+        const associations = JSON.parse(fsp.readFileSync(pathMod.join(outDir, 'associations-preview.json'), 'utf-8'));
+        const examples     = JSON.parse(fsp.readFileSync(pathMod.join(outDir, 'examples.json'), 'utf-8'));
+        const dupReport    = JSON.parse(fsp.readFileSync(pathMod.join(outDir, 'dup-report.json'), 'utf-8'));
+        return {
+            ok: true,
+            src_dir: srcDir,
+            out_dir: outDir,
+            duration_ms: Date.now() - t0,
+            summary,
+            categories,
+            items,
+            associations,
+            examples,
+            dupReport,
+            preview: {
+                topRepetitions: (dupReport.top_repetitions || []).slice(0, 20),
+                categoryLevels: countByLevel(categories),
+                moduleStats: summary.module_stats || [],
+            },
+        };
+    } catch (e) {
+        return { ok: false, error: e.message, stack: e.stack };
+    }
+});
+
+function countByLevel(cats) {
+    const m = new Map();
+    for (const c of cats) {
+        const lv = c.level || 1;
+        m.set(lv, (m.get(lv) || 0) + 1);
+    }
+    return Array.from(m.entries()).map(([level, count]) => ({ level, count })).sort((a, b) => a.level - b.level);
+}

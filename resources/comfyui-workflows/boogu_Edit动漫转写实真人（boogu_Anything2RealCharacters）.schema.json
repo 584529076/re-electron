@@ -1,0 +1,126 @@
+{
+  "id": "boogu_Edit动漫转写实真人（boogu_Anything2RealCharacters）",
+  "name": "Boogu 动漫转写实真人",
+  "description": "Anything2RealCharacters V1 + Qwen3-VL 8B：将动漫/二次元图转写为写实真人风格。Qwen3-VL 8B 看懂图片与编辑指令，Anything2RealCharacters V1 作为 UNet 执行生成；输出 1536 长边写实照片",
+  "mode": "nsfw",
+  "accepts": ["image"],
+  "coverFallback": {
+    "icon": "fa-magic",
+    "gradient": ["#ec4899", "#8b5cf6"]
+  },
+  "workflowFile": "boogu_Edit动漫转写实真人（boogu_Anything2RealCharacters）.json",
+  "models": ["Anything2RealCharacters", "Qwen3-VL-8B", "FLUX.1-VAE"],
+  "formFields": [
+    {
+      "id": "image",
+      "label": "原图（动漫/二次元）",
+      "type": "image",
+      "nodeId": "7",
+      "field": "image",
+      "required": true,
+      "accept": "image/*",
+      "note": "支持单张动漫/二次元人物图；上传后会自动按宽高比缩放到最长边 1536（nearest 裁切）"
+    },
+    {
+      "id": "prompt",
+      "label": "编辑指令",
+      "type": "textarea",
+      "nodeId": "31",
+      "field": "prompt",
+      "default": "transform the image to realistic photograph",
+      "rows": 4,
+      "note": "描述希望生成什么样的写实效果；模型使用 Qwen3-VL 8B 理解原图与指令"
+    },
+    {
+      "id": "negative_prompt",
+      "label": "负面提示词",
+      "type": "textarea",
+      "nodeId": "31",
+      "field": "negative_prompt",
+      "default": "4-view split screen,realistic photograph,1.close-up face,2.front view full body,3.side view full body,4.back view full body.",
+      "rows": 3,
+      "note": "用于排除不希望出现的画面（如分屏四视图、过度写实）"
+    },
+    {
+      "id": "seed",
+      "label": "Seed (K采样器)",
+      "type": "number",
+      "nodeId": "24",
+      "field": "noise_seed",
+      "default": 985650296368652,
+      "randomizable": true,
+      "min": 0,
+      "max": 18446744073709551615,
+      "note": "-1 表示每次随机（建议随机以获得不同结果）"
+    },
+    {
+      "id": "steps",
+      "label": "采样步数",
+      "type": "number",
+      "nodeId": "23",
+      "field": "steps",
+      "default": 8,
+      "min": 1,
+      "max": 50,
+      "note": "sgm_uniform 调度下 8 步即可（Anything2RealCharacters 推荐设置）"
+    },
+    {
+      "id": "cfg",
+      "label": "CFG",
+      "type": "number",
+      "nodeId": "24",
+      "field": "cfg",
+      "default": 1,
+      "min": 0,
+      "max": 20,
+      "step": 0.1,
+      "note": "Anything2RealCharacters 推荐 CFG=1（依赖 VLM 引导，无需高 CFG）"
+    },
+    {
+      "id": "sampler",
+      "label": "采样器",
+      "type": "select",
+      "nodeId": "25",
+      "field": "sampler_name",
+      "default": "euler",
+      "options": ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_sde", "uni_pc"],
+      "note": "Anything2RealCharacters V1 训练用 euler"
+    },
+    {
+      "id": "scheduler",
+      "label": "调度器",
+      "type": "select",
+      "nodeId": "23",
+      "field": "scheduler",
+      "default": "sgm_uniform",
+      "options": ["sgm_uniform", "normal", "karras", "exponential", "simple"],
+      "note": "Anything2RealCharacters V1 训练用 sgm_uniform（流模型）"
+    },
+    {
+      "id": "saturation",
+      "label": "饱和度 (色彩校正)",
+      "type": "number",
+      "nodeId": "44",
+      "field": "saturation",
+      "default": -20,
+      "min": -100,
+      "max": 100,
+      "note": "默认 -20，去动漫感 + 偏写实肤色"
+    },
+    {
+      "id": "scale_to_length",
+      "label": "长边像素",
+      "type": "number",
+      "nodeId": "45",
+      "field": "scale_to_length",
+      "default": 1536,
+      "min": 512,
+      "max": 4096,
+      "step": 64,
+      "note": "原图按宽高比缩放的最长边目标像素（推荐 1536）"
+    }
+  ],
+  "outputNodes": [
+    { "nodeId": "17", "type": "image", "filenamePrefix": "ComfyUI" }
+  ]
+}

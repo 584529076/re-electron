@@ -1,0 +1,2932 @@
+{
+  "total_unique_phrases": 10375,
+  "duplicated_phrases": 1512,
+  "repetitions": 1854,
+  "top_repetitions": [
+    {
+      "normalized": "kneeling",
+      "phrase": "kneeling",
+      "count": 47,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 束缚跪姿",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第二阶段：爱抚/探索",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "tongue out",
+      "phrase": "tongue out",
+      "count": 9,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 表情词库 / 俏皮/调皮",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ️ 眼神专项 / 八大眼神分类 / 放空虚无",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 嘴部状态专项 / 舌头状态",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第四阶段：高潮/崩溃",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第四阶段：高潮/崩溃",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第五阶段：射精/释放",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第三层：表情专项 / 高潮脸专项 / 高潮嘴巴",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "hidden camera",
+      "phrase": "hidden camera",
+      "count": 8,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/️ 痴汉/NTR系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/场景生成规则/️ 露出/偷窥系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 针孔/偷拍画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "03-裸露液体 / 场景适配 / 特殊场景",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / ️ 监控系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / ️ 监控系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "looking down",
+      "phrase": "looking down",
+      "count": 7,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / ️ 眼神方向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ️ 眼神专项 / 规则一：方向匹配",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 自信/支配型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 自信/支配型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "ink embedded in dermis",
+      "phrase": "ink embedded in dermis",
+      "count": 7,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 核心融合",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 🀄 文字版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 🀄 文字类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "follows body contours",
+      "phrase": "follows body contours",
+      "count": 7,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 核心融合",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 🀄 文字版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 🀄 文字类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "film grain",
+      "phrase": "film grain",
+      "count": 6,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 胶片画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 索引",
+          "module": "09-妆容专项",
+          "source_kind": "table"
+        },
+        {
+          "category": "11-瑕疵细节 / 11-瑕疵细节.md — 瑕疵·细节·真实感·生命感 / ️ 摄影时代感扩展 / 年代风格",
+          "module": "11-瑕疵细节",
+          "source_kind": "code"
+        },
+        {
+          "category": "11-瑕疵细节 / 11-瑕疵细节.md — 瑕疵·细节·真实感·生命感 / 年龄感扩展 / 随机瑕疵生成规则",
+          "module": "11-瑕疵细节",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "slightly faded edges",
+      "phrase": "slightly faded edges",
+      "count": 6,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 核心融合",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 🀄 文字类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "no sticker",
+      "phrase": "no sticker",
+      "count": 6,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 负面排除",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "no decal",
+      "phrase": "no decal",
+      "count": 6,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 负面排除",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "no flat tattoo",
+      "phrase": "no flat tattoo",
+      "count": 6,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 负面排除",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "no illegible scribble",
+      "phrase": "no illegible scribble",
+      "count": 6,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 负面排除",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "surveillance footage",
+      "phrase": "surveillance footage",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/️ 露出/偷窥系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / ️ 监控系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / ️ 监控系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "looking up",
+      "phrase": "looking up",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / ⬆️ 跳跃·攀爬系列 / 攀爬",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ️ 眼神专项 / 规则一：方向匹配",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第五阶段：射精/释放",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "hands behind back",
+      "phrase": "hands behind back",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 站姿系列 / 身体动态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 服从/顺从型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 服从/顺从型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "mouth open",
+      "phrase": "mouth open",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ️ 眼神专项 / 八大眼神分类 / 放空虚无",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第二阶段：爱抚/探索",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第五阶段：射精/释放",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "leaning forward",
+      "phrase": "leaning forward",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / ↕️ 弯腰/起身",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / ↕️ 弯腰/起身",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 魅惑/诱惑型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 魅惑/诱惑型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第二阶段：爱抚/探索",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "overwhelmed",
+      "phrase": "overwhelmed",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 窒息反应链",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 3P / 三人行专项 / 三人动态力学",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 3P / 三人行专项 / 三人面部/情绪",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第三阶段：进入/抽插",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第五阶段：射精/释放",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "pores visible through ink",
+      "phrase": "pores visible through ink",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 核心融合",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "no computer font",
+      "phrase": "no computer font",
+      "count": 5,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 负面排除",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 🀄 书写模板",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 🀄 文字版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 🀄 文字类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "mascara running",
+      "phrase": "mascara running",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/口交深喉系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 被迫口交/粗暴口交",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第一层：基础组件 / ️ 2. 眼妆 / 卧蚕/眼下",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第二层：风格方向 / 方向三：被支配/顺从 / 被支配感细节",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "ruined makeup",
+      "phrase": "ruined makeup",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/口交深喉系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 脸部物理状态",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 索引",
+          "module": "09-妆容专项",
+          "source_kind": "table"
+        },
+        {
+          "category": "09-妆容专项 / 第二层：风格方向 / 方向三：被支配/顺从",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "barefoot",
+      "phrase": "barefoot",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/恋足/特殊部位系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "03-裸露液体 / 部位裸露 / 下半身",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 奔跑系列 / 场景化奔跑",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 舞蹈·旋转系列 / 舞蹈场景",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "pleading",
+      "phrase": "pleading",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/SM/支配与臣服系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第五阶段：射精/释放",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "low angle",
+      "phrase": "low angle",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 口交角度/构图",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 口交角度/构图",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "front camera",
+      "phrase": "front camera",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 手机 / 便携",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 手机 / 便携",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 手机/自拍系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 手机/自拍系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "light leak",
+      "phrase": "light leak",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 构图与焦点 / 光影构图",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 胶片画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "timestamp overlay",
+      "phrase": "timestamp overlay",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / CCTV/监控画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "11-瑕疵细节 / 11-瑕疵细节.md — 瑕疵·细节·真实感·生命感 / ️ 摄影时代感扩展 / 年代风格",
+          "module": "11-瑕疵细节",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "softbox",
+      "phrase": "softbox",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 补光/照明设备",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 补光/照明设备",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "ring light",
+      "phrase": "ring light",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 补光/照明设备",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 补光/照明设备",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "shallow depth of field",
+      "phrase": "shallow depth of field",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 焦段",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 焦段",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 构图与焦点 / 焦点控制",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 单反/专业画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "symmetrical",
+      "phrase": "symmetrical",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 构图与焦点 / 基础构图法则",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 构图与焦点 / 基础构图法则",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 构图与焦点 / 基础构图法则",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 构图与焦点 / 基础构图法则",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "high contrast",
+      "phrase": "high contrast",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 构图与焦点 / 光影构图",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "05-光影氛围 / 05-光影氛围.md — 布光·色温·氛围 / 索引 / 专业布光技法库 / 硬光 / 直射光",
+          "module": "05-光影氛围",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / ️ 2. 胶片模拟与色彩风格 / 高饱和鲜艳系 — 色彩浓烈、视觉冲击",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / ️ 2. 胶片模拟与色彩风格 / 高饱和鲜艳系 — 色彩浓烈、视觉冲击",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "creamy bokeh",
+      "phrase": "creamy bokeh",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 构图与焦点 / 焦点控制",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 单反/专业画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / 电影镜头风格 / 暖柔电影感",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / 电影镜头风格 / 通用人像",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "completely naked",
+      "phrase": "completely naked",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "03-裸露液体 / 裸露分级 / Level 5 — 完全裸露",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 🀄 文字类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "opaque",
+      "phrase": "opaque",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "03-裸露液体 / 女性生殖器 / 男性生殖器 / 液体专项 / 液体专项 / .2 乳液/母乳 / 负面提示",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "03-裸露液体 / 女性生殖器 / 男性生殖器 / 液体专项 / 液体专项 / .3 淫水/爱液 / 负面提示",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "03-裸露液体 / 女性生殖器 / 男性生殖器 / 液体专项 / 液体专项 / .4 尿液 / 负面提示",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 十三、袜子专项 / 材质质感",
+          "module": "04-服装专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "barely there",
+      "phrase": "barely there",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "03-裸露液体 / 女性生殖器 / 男性生殖器 / 液体专项 / 附录 A：液体真实感检查清单",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 面部/口部过渡",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 面部/口部过渡",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第一阶段：挑逗/前戏",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "glistening",
+      "phrase": "glistening",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "03-裸露液体 / 女性生殖器 / 男性生殖器 / 液体专项 / 附录 A：液体真实感检查清单",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        },
+        {
+          "category": "05-光影氛围 / 05-光影氛围.md — 布光·色温·氛围 / 索引 / 光影选择原则",
+          "module": "05-光影氛围",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 体液在脸上的状态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 索引",
+          "module": "09-妆容专项",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "ankle socks",
+      "phrase": "ankle socks",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 十三、袜子专项 / 长度分类",
+          "module": "04-服装专项",
+          "source_kind": "code"
+        },
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 十三、袜子专项 / 长度分类",
+          "module": "04-服装专项",
+          "source_kind": "code"
+        },
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 十三、袜子专项 / 长度分类",
+          "module": "04-服装专项",
+          "source_kind": "table"
+        },
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 十三、袜子专项 / 长度分类",
+          "module": "04-服装专项",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "head bowed",
+      "phrase": "head bowed",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 臣服姿态",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 服从/顺从型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 服从/顺从型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "knees together",
+      "phrase": "knees together",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 腿部分开度",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 害羞/清纯型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 害羞/清纯型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "lips parted",
+      "phrase": "lips parted",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 嘴部状态专项 / 张开状态",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第二阶段：爱抚/探索",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "leaning in",
+      "phrase": "leaning in",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 跪姿系列 / 口交前奏",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 性爱过渡",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 性爱过渡",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "arms above head",
+      "phrase": "arms above head",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 站姿系列 / 身体动态",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 日常动态 / 弯腰·伸展",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / ️ 束缚系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / ️ 束缚系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "gasping",
+      "phrase": "gasping",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 游泳·水中系列",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 表情词库 / 愉悦/高潮",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第五阶段：射精/释放",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第三层：表情专项 / 高潮脸专项 / 高潮嘴巴",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "looking back over shoulder",
+      "phrase": "looking back over shoulder",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 身体转向",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 身体转向",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 位置关系词",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第三层：表情专项 / 高潮脸专项 / 高潮眼神",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "knuckles white",
+      "phrase": "knuckles white",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / ️ 手部过渡",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / ️ 手部过渡",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 手部协作",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "11-瑕疵细节 / 11-瑕疵细节.md — 瑕疵·细节·真实感·生命感 / 手部细节 / 手部情色化",
+          "module": "11-瑕疵细节",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "body tensing",
+      "phrase": "body tensing",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 性爱过渡",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 性爱过渡",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第三阶段：进入/抽插",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第三层：表情专项 / 高潮脸专项 / 高潮肢体配合",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "catching breath",
+      "phrase": "catching breath",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 性爱过渡",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 性爱过渡",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第四阶段：高潮/崩溃",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第六阶段：事后/余韵",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "nose touching pelvis",
+      "phrase": "nose touching pelvis",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 空间关系",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 深喉分级",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 深喉分级",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 深喉专属",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "messy",
+      "phrase": "messy",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 口交连续动作",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 用途/功能 — 你是干什么的",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 侮辱/贬低 — 你算什么",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 身体部位标注 — 这是干什么的",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "sheets tangled",
+      "phrase": "sheets tangled",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 场景化口交",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第六阶段：事后/余韵",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 高级技巧 / 技巧一：道具叙事链",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 高级技巧 / 技巧一：道具叙事链",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "blushing cheeks",
+      "phrase": "blushing cheeks",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 表情词库 / 害羞/羞涩",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 害羞/清纯型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 害羞/清纯型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        },
+        {
+          "category": "09-妆容专项 / 第一层：基础组件 / 腮红 / 腮红色系",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "embarrassed smile",
+      "phrase": "embarrassed smile",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 表情词库 / 害羞/羞涩",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 害羞/清纯型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 害羞/清纯型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ⏱️ 性爱阶段×表情流变 / 第二阶段：爱抚/探索",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "pleading eyes",
+      "phrase": "pleading eyes",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 表情词库 / 服从/顺从",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 服从/顺从型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 服从/顺从型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        },
+        {
+          "category": "09-妆容专项 / 第二层：风格方向 / 方向五：色情场景 / 色情场景通用细节",
+          "module": "09-妆容专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "devouring stare",
+      "phrase": "devouring stare",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ️ 眼神专项 / ️ 翻车词黑名单",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / ️ 眼神专项 / ️ 翻车词黑名单",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 魅惑/诱惑型",
+          "module": "07-表情眼神",
+          "source_kind": "code"
+        },
+        {
+          "category": "07-表情眼神 / 07-表情眼神.md — 表情·眼神·嘴部·性格 / 性格视觉化词库 / 魅惑/诱惑型",
+          "module": "07-表情眼神",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "fine grain",
+      "phrase": "fine grain",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "08-风格胶片 / ️ 2. 胶片模拟与色彩风格 / 暖调人像系 — 皮肤金黄、氛围亲密",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / ️ 2. 胶片模拟与色彩风格 / 低饱和纪实系 — 冷淡、记录感、疏离",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / ️ 2. 胶片模拟与色彩风格 / 黑白/单色系 — 质感、艺术、压抑",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        },
+        {
+          "category": "08-风格胶片 / ️ 2. 胶片模拟与色彩风格 / 冷调/特殊系 — 冷淡、科技、病态",
+          "module": "08-风格胶片",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "no garbled text",
+      "phrase": "no garbled text",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 皮肤融合词 / 负面排除",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 最小版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 标准版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "[字体风格词]",
+      "phrase": "[字体风格词]",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 🀄 书写模板",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 🀄 书写模板",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 🀄 书写模板",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 快速模板 / 🀄 文字版",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "marker",
+      "phrase": "marker",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 所有权/归属 — 你是谁的",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 指令/请求 — 告诉别人怎么做",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / 状态/标签 — 你现在的状态",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / — 文字纹身 / ️ CJK 下贱短语",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "beautiful asian woman",
+      "phrase": "beautiful asian woman",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 图案类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 烙印类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 成套标记",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        },
+        {
+          "category": "12-纹身标记 / ️ 纹身标记词库 / 使用示例 / 🀄 文字类",
+          "module": "12-纹身标记",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "full ashtray",
+      "phrase": "full ashtray",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 使用原则 / 铁律三：状态交代",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 使用原则 / 铁律三：状态交代",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 烟火系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 烟火系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "scattered rose petals",
+      "phrase": "scattered rose petals",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 使用原则 / 铁律三：状态交代",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 使用原则 / 铁律三：状态交代",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 花瓣植物系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 花瓣植物系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "overturned glass",
+      "phrase": "overturned glass",
+      "count": 4,
+      "occurrences": [
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 酒饮系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 酒饮系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 高级技巧 / 技巧一：道具叙事链",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 高级技巧 / 技巧一：道具叙事链",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "hallway",
+      "phrase": "hallway",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/索引/学校场景",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/️ 居住/社区场景",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/学校/教育设施系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "school rooftop",
+      "phrase": "school rooftop",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/索引/学校场景",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/公共场所/街头系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/学校/教育设施系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "camera on tripod",
+      "phrase": "camera on tripod",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/索引/AV拍摄/制作场景",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 摄像机系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / 摄像机系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "poolside",
+      "phrase": "poolside",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/索引/️ 户外/露出场景",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/娱乐场所系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "03-裸露液体 / 场景适配 / 暧昧/挑逗场景",
+          "module": "03-裸露液体",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "electrical room",
+      "phrase": "electrical room",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/索引/公共场所/街头系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/都市建筑/写字楼系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/索引/特殊空间/不可能空间",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "submissive",
+      "phrase": "submissive",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/️ 凌辱/调教系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 她的表情反应",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 索引",
+          "module": "09-妆容专项",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "spanking",
+      "phrase": "spanking",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/️ 凌辱/调教系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/场景生成规则/恋足/特殊部位系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/场景生成规则/SM/支配与臣服系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "sleep sex",
+      "phrase": "sleep sex",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/特殊状态系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/主题/角色词库/媚药/迷奸系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/场景生成规则/睡眠/无意识系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "throat bulging",
+      "phrase": "throat bulging",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/口交深喉系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 深喉分级",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 深喉分级",
+          "module": "06-姿势动作",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "tears streaming",
+      "phrase": "tears streaming",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/主题/角色词库/口交深喉系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "06-姿势动作 / ═══════════════════════════════════════ / 被迫口交/粗暴口交",
+          "module": "06-姿势动作",
+          "source_kind": "code"
+        },
+        {
+          "category": "09-妆容专项 / 第三层：表情专项 / 高潮脸专项 / 高潮阶段梯度",
+          "module": "09-妆容专项",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "spy cam",
+      "phrase": "spy cam",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/️ 露出/偷窥系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / ️ 监控系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 影像设备 / ️ 监控系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "anal beads",
+      "phrase": "anal beads",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/恋足/特殊部位系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 性道具 / 肛门玩具系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 性道具 / 肛门玩具系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "butt plug",
+      "phrase": "butt plug",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/恋足/特殊部位系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 性道具 / 肛门玩具系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 性道具 / 肛门玩具系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "lactation fetish",
+      "phrase": "lactation fetish",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/恋足/特殊部位系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/场景生成规则/身体改造/特殊状态系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "01-场景主题/场景生成规则/身体改造/特殊状态系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "spreader bar",
+      "phrase": "spreader bar",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/SM/支配与臣服系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / 脚镣张开系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / 脚镣张开系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "cane",
+      "phrase": "cane",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/SM/支配与臣服系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / 鞭打拍击系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / 鞭打拍击系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "whipped cream on body",
+      "phrase": "whipped cream on body",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/食物/食用系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 食物系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / 日常氛围道具 / 食物系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "mirror selfie",
+      "phrase": "mirror selfie",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/远程/影像系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 手机 / 便携",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 手机 / 便携",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "bodysuit",
+      "phrase": "bodysuit",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/角色扮演/职业扮演系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 三、情趣内衣 / 连体内衣",
+          "module": "04-服装专项",
+          "source_kind": "code"
+        },
+        {
+          "category": "04-服装专项 / 04-服装专项.md — 东亚情色服装词库 / 七、SM捆绑服装",
+          "module": "04-服装专项",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "hood",
+      "phrase": "hood",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "01-场景主题/场景生成规则/角色扮演/职业扮演系列",
+          "module": "01-场景主题",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / ️ 视觉剥夺系列",
+          "module": "13-道具宠物",
+          "source_kind": "code"
+        },
+        {
+          "category": "13-道具宠物 / 13-道具宠物.md — 道具·宠物·氛围物件 / SM 道具 / ️ 视觉剥夺系列",
+          "module": "13-道具宠物",
+          "source_kind": "table"
+        }
+      ]
+    },
+    {
+      "normalized": "dutch angle",
+      "phrase": "dutch angle",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 视角 / 基础视角",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 构图与焦点 / 动态与运动暗示",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "smartphone photo",
+      "phrase": "smartphone photo",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 手机 / 便携",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 手机 / 便携",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 手机画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "raw photo",
+      "phrase": "RAW photo",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 单反/专业画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "polaroid",
+      "phrase": "polaroid",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 拍立得画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "instant film",
+      "phrase": "instant film",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 拍立得画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "fuji instax",
+      "phrase": "Fuji Instax",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 拍立得画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "polaroid border",
+      "phrase": "polaroid border",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 拍立得画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "faded polaroid",
+      "phrase": "faded polaroid",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 拍立得画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "laptop camera",
+      "phrase": "laptop camera",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 专业相机",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 网络摄像头画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "security camera",
+      "phrase": "security camera",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / CCTV/监控画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "pinhole camera",
+      "phrase": "pinhole camera",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 针孔/偷拍画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "secret recording",
+      "phrase": "secret recording",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 监控 / 特殊",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 针孔/偷拍画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "cinema camera",
+      "phrase": "cinema camera",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 电影机画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "cinema lens",
+      "phrase": "cinema lens",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 电影机画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "anamorphic lens",
+      "phrase": "anamorphic lens",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 电影机画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    },
+    {
+      "normalized": "35mm cinema film",
+      "phrase": "35mm cinema film",
+      "count": 3,
+      "occurrences": [
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        },
+        {
+          "category": "02-景别构图 / 设备 / 电影级",
+          "module": "02-景别构图",
+          "source_kind": "table"
+        },
+        {
+          "category": "02-景别构图 / 画质强化 / 电影机画质",
+          "module": "02-景别构图",
+          "source_kind": "code"
+        }
+      ]
+    }
+  ]
+}
