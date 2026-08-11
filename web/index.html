@@ -3,44 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>瀑布流媒体加载器（图片+视频）</title>
+    <title>RxAi工作台</title>
     <!-- 2026-06-08：bootcdn 上 FA 7.x 404，改用 jsDelivr 同步 npm 官方包 -->
     <script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.1.0/js/all.min.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.1.0/css/all.min.css" crossorigin="anonymous">
     <!-- D-38: SheetJS CDN（用于关联规则 Excel/CSV 导入） -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/novel.css">
 </head>
 <body>
     <header>
         <div class="header-left">
-            <!-- 移除原有文字，替换为Tab菜单 -->
-            <div class="tab-container" role="tablist" aria-label="媒体库分类">
-                <div class="tab-item active" role="tab" aria-selected="true" tabindex="0" data-tab="ai-image">AI出图</div>
-                <div class="tab-item" role="tab" aria-selected="false" tabindex="0" data-tab="ai-video">AI视频</div>
-                <div class="tab-item" role="tab" aria-selected="false" tabindex="0" data-tab="nsfw-gallery">NSFW图库</div>
-                <div class="tab-item" role="tab" aria-selected="false" tabindex="0" data-tab="more-gallery">更多图库</div>
+            <!-- D-NAVBAR：公共顶部导航栏（全平台持久化）。按钮互斥 active，资产库 / 提示词库 / 工作台 / 设置 -->
+            <nav class="main-nav" role="navigation" aria-label="主视图切换">
+                <button id="navAssets" class="main-nav-item active" type="button" data-view="assets" aria-pressed="true" title="瀑布流媒体库">
+                    <i class="fa-solid fa-images" aria-hidden="true"></i>
+                    <span>资产库</span>
+                </button>
+                <button id="navPromptLibrary" class="main-nav-item" type="button" data-view="promptLibrary" aria-pressed="false" title="个人提示词库：自定义分类 + 增删改查">
+                    <i class="fa-solid fa-bookmark" aria-hidden="true"></i>
+                    <span>提示词库</span>
+                </button>
+                <button id="navWorkbench" class="main-nav-item" type="button" data-view="workbench" aria-pressed="false" title="AI 工具 / 提示词生成 / 资产生成历史 / Lora 库">
+                    <i class="fa-solid fa-toolbox" aria-hidden="true"></i>
+                    <span>工作台</span>
+                </button>
+                <button id="navNovel" class="main-nav-item" type="button" data-view="novel" aria-pressed="false" title="AI 小说创作（大纲 / 章节 / 多本隔离）">
+                    <i class="fa-solid fa-book" aria-hidden="true"></i>
+                    <span>AI 小说</span>
+                </button>
+                <button id="navSettings" class="main-nav-item" type="button" data-view="settings" aria-pressed="false" title="资源管理 / 提示词管理 / LORA 库 / ComfyUI / LLM">
+                    <i class="fa-solid fa-gear" aria-hidden="true"></i>
+                    <span>设置</span>
+                </button>
+            </nav>
+        </div>
+        <!-- D-NAVBAR-COMFY：右侧 ComfyUI 启动状态指示
+             4 态：idle（未启动）/ starting（启动中）/ running（已启动）/ failed（启动失败）
+             由 web/js/script.js 的 refreshNavComfyStatus() 周期性轮询 + 事件即时刷新 -->
+        <div class="header-right">
+            <!-- D-QUEUE：任务队列徽章（pill 形态，仿 ComfyUI 状态条样式）
+                 文字「任务 N」= pending + running 总条数。
+                 4 态：idle(0) / pending(>0 无 running) / running(有 running，含脉冲) / drawer-open(active) -->
+            <button id="navTaskQueue" class="nav-task-btn nav-task-status nav-task-status-idle" type="button"
+                    aria-label="任务队列" aria-pressed="false" aria-controls="taskQueueDrawer"
+                    title="任务队列（点击查看 / 关闭）">
+                <i class="fa-solid fa-list-check nav-task-icon" aria-hidden="true"></i>
+                <span class="nav-task-text">任务 0</span>
+            </button>
+            <span id="navComfyStatus" class="nav-comfy-status nav-comfy-status-idle" role="status" aria-live="polite" title="ComfyUI 启动状态">
+                <i class="fa-solid fa-microchip nav-comfy-icon" aria-hidden="true"></i>
+                <span class="nav-comfy-text">ComfyUI 未启动</span>
+            </span>
+            <!-- D-NAVBAR-TERM：控制台图标按钮，点击切换右侧浮层终端 -->
+            <button id="navConsoleToggle" class="nav-console-toggle" type="button" title="打开/关闭终端日志" aria-pressed="false" aria-controls="consoleDrawer">
+                <i class="fa-solid fa-terminal" aria-hidden="true"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- D-NAVBAR-TERM：右侧浮层终端面板（显示 ComfyUI stdout/stderr）
+         top 从 var(--header-height) 起，不挡导航栏；z-index 250 高于 workbench/settings 浮层 -->
+    <aside id="consoleDrawer" class="console-drawer" aria-label="ComfyUI 终端日志">
+        <div class="console-drawer-head">
+            <span class="console-drawer-title">
+                <i class="fa-solid fa-terminal" aria-hidden="true"></i>
+                <span>ComfyUI 终端日志</span>
+            </span>
+            <div class="console-drawer-actions">
+                <button id="consoleClearBtn" class="btn btn-sm" type="button" title="清空日志">
+                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                </button>
+                <button id="consoleCloseBtn" class="btn btn-sm" type="button" title="关闭">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
             </div>
         </div>
-        
-        <div class="controls">
-            <!-- 2026-06-10 D-31: 隐藏「选择媒体目录」「选择网络媒体库」按钮（保留逻辑） -->
-            <!-- <button id="btnLocal" class="btn btn-primary" title="选择本地或NAS文件夹"><i class="fa-solid fa-folder-open"></i> 选择媒体目录</button> -->
-            <!-- <button id="btnNet" class="btn" title="输入网络图片/视频地址"><i class="fa-solid fa-globe"></i> 选择网络媒体库</button> -->
-            <!-- D-31: 写死「配置」「提示词生成」按钮（不再依赖 config-ui.js 动态创建） -->
-            <button id="btnConfig" class="btn" title="管理 Tab 配置（增删改 + 切换资源路径）"><i class="fa-solid fa-gear"></i> 配置</button>
-            <button id="btnPromptGen" class="btn" title="提示词自动生成（Ollama 本地 LLM）"><i class="fa-solid fa-wand-magic-sparkles"></i> 提示词生成</button>
-            <button id="btnAiTools" class="btn" title="AI 工具（声明式 ComfyUI workflow 表单）"><i class="fa-solid fa-toolbox"></i> AI 工具</button>
-            <button id="btnLoras" class="btn" title="Lora 库（管理 Lora 并在工作流中插入）"><i class="fa-solid fa-puzzle-piece"></i> Lora 库</button>
+        <div id="consoleDrawerBody" class="console-drawer-body" role="log" aria-live="polite" aria-atomic="false"></div>
+    </aside>
+
+    <!-- D-QUEUE：右侧任务队列浮层
+         复用 console-drawer 模式：top/bottom 撑满、transform 滑入。
+         z-index 240：低于 console-drawer (250)，避免两者同时开时被覆盖。 -->
+    <aside id="taskQueueDrawer" class="task-drawer" aria-label="任务队列">
+        <div class="task-drawer-head">
+            <span class="task-drawer-title">
+                <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+                <span>任务队列</span>
+                <span class="task-drawer-count">0</span>
+            </span>
+            <div class="task-drawer-actions">
+                <button id="taskClearDoneBtn" class="btn btn-sm" type="button" title="清除已完成">
+                    <i class="fa-solid fa-broom" aria-hidden="true"></i>
+                </button>
+                <button id="taskCloseBtn" class="btn btn-sm" type="button" title="关闭">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+        <!-- 队列总进度（首个 running 有 progress 时显示） -->
+        <div id="taskQueueTotalProgress" class="task-drawer-progress" hidden>
+            <div class="task-drawer-progress-bar"><span class="task-drawer-progress-bar-fill"></span></div>
+            <span class="task-drawer-progress-text">0%</span>
+        </div>
+        <div id="taskQueueList" class="task-drawer-list"></div>
+    </aside>
+
+    <main>
+        <!-- D-LAYOUT：资产库子工具栏（tab 切换 + 宽度缩放）；position: sticky 顶在 main 内 -->
+        <div class="subToolbar" role="toolbar" aria-label="资产库工具栏">
+            <div id="subToolbarTabContainer" class="tab-container" role="tablist" aria-label="媒体库分类">
+                <!-- 4 个 tab 由 config-ui.js 动态渲染 -->
+            </div>
             <div class="slider-container">
                 <span class="slider-label">宽度</span>
                 <input type="range" id="widthSlider" min="200" max="600" value="300" step="10">
                 <span class="slider-label" id="widthValue">300px</span>
             </div>
         </div>
-    </header>
 
-    <main>
         <div id="gallery" role="list" aria-label="媒体瀑布流">
             <!-- 列容器动态生成 -->
         </div>
@@ -109,7 +191,7 @@
                         <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
                     </button>
                 </div>
-                <div class="preview-prompt-pane">
+                <div class="preview-prompt-pane theme-light">
 
                     <!-- Module 1: 文件名 + AI 工具入口（动态渲染）；删除资产按钮放到标题右侧 -->
                     <section class="pane-module pane-module-file" aria-labelledby="modFileTitle">
@@ -217,11 +299,363 @@
     </div>
     <input type="file" id="fallbackInput" webkitdirectory directory multiple style="display: none;">
 
+    <!-- 三栏 AI 创作工作台：输入 / 当前输出 / 参数 -->
+    <div id="workbench" class="workbench dwp-shell" role="dialog" aria-modal="false" hidden>
+        <div class="dwp-topbar">
+            <label class="dwp-tool-label" for="dwpToolSelect">当前工具</label>
+            <select id="dwpToolSelect" class="dwp-tool-select" aria-label="选择 AI 工具">
+                <option value="">加载工具中…</option>
+            </select>
+            <button id="dwpBtnHistory" class="btn btn-sm" type="button"><i class="fa-solid fa-clock-rotate-left"></i> 查看历史</button>
+        </div>
+
+        <div class="dwp-canvas">
+            <section class="dwp-column dwp-input-column" aria-labelledby="dwpInputTitle">
+                <div class="dwp-column-head">
+                    <span class="dwp-step">1</span>
+                    <div><h2 id="dwpInputTitle">主输入</h2><p>工具需要的提示词 / 图片 / 视频</p></div>
+                </div>
+                <!-- 左栏顶部：提示词生成器入口（始终可见；点开后在左栏内覆盖打开 prompt-gen） -->
+                <div class="dwp-prompt-gen-bar">
+                    <button id="dwpBtnPromptGen" class="dwp-prompt-gen-btn" type="button">
+                        <i class="fa-solid fa-wand-magic"></i> 提示词生成器
+                    </button>
+                </div>
+                <div class="dwp-column-body">
+                    <div id="dwpFormPrimary" class="dwp-form-primary">
+                        <div class="dwp-form-empty"><i class="fa-solid fa-keyboard"></i><span>请先在顶部选择工具</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="dwp-column dwp-output-column" aria-labelledby="dwpOutputTitle">
+                <div class="dwp-column-head">
+                    <span class="dwp-step">2</span>
+                    <div><h2 id="dwpOutputTitle">输出</h2><p id="dwpOutputSubtitle">生成结果会显示在这里</p></div>
+                    <!-- D-MID-COMPARE：预览 / 对比 模式切换；仅当输出是图片 + 输入有图时才可点对比 -->
+                    <div id="dwpMidModeToggle" class="dwp-mode-toggle" role="tablist" aria-label="输出查看模式">
+                        <button id="dwpModePreview" class="dwp-mode-btn active" type="button" role="tab" data-mode="preview" aria-selected="true">
+                            <i class="fa-solid fa-eye" aria-hidden="true"></i> 预览
+                        </button>
+                        <button id="dwpModeCompare" class="dwp-mode-btn" type="button" role="tab" data-mode="compare" aria-selected="false" disabled title="需要输入图才能对比">
+                            <i class="fa-solid fa-columns" aria-hidden="true"></i> 对比
+                        </button>
+                    </div>
+                </div>
+                <div class="dwp-output-stage" id="dwpOutputStage">
+                    <div id="dwpOutputEmpty" class="dwp-output-empty">
+                        <div class="dwp-output-icon"><i class="fa-regular fa-image"></i></div>
+                        <h3>准备开始创作</h3>
+                        <p>左侧填写输入、右侧调整参数，然后点击「立即生成」</p>
+                    </div>
+                    <div id="dwpOutputRunning" class="dwp-output-running" hidden>
+                        <div class="dwp-running-orbit"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                        <h3>正在生成</h3>
+                        <p id="dwpProgressText">正在提交任务…</p>
+                        <div class="dwp-progress-track"><div id="dwpProgressBar" class="dwp-progress-bar"></div></div>
+                        <button id="dwpBtnCancel" class="btn btn-sm" type="button"><i class="fa-solid fa-stop"></i> 暂停生成</button>
+                    </div>
+                    <div id="dwpOutputMedia" class="dwp-output-media" hidden>
+                        <div class="dwp-media-host">
+                            <img id="dwpResultImage" alt="生成结果" />
+                            <video id="dwpResultVideo" controls hidden></video>
+                        </div>
+                        <textarea id="dwpResultText" class="dwp-result-text" readonly hidden></textarea>
+                        <div class="dwp-result-footer">
+                            <span id="dwpResultMeta"></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 中栏底部：尺寸控件（仅当工具有 width + height 字段时填充） -->
+                <div id="dwpFormSize" class="dwp-form-size" hidden>
+                    <div class="dwp-form-size-body"></div>
+                </div>
+            </section>
+
+            <section class="dwp-column dwp-params-column" aria-labelledby="dwpParamsTitle">
+                <div class="dwp-column-head">
+                    <span class="dwp-step">3</span>
+                    <div><h2 id="dwpParamsTitle">详细参数</h2><p id="dwpToolDescription">选择工具后配置工作流</p></div>
+                </div>
+                <div id="dwpFormParams" class="dwp-form-params">
+                    <div class="dwp-form-empty"><i class="fa-solid fa-sliders"></i><span>请先在顶部选择工具</span></div>
+                </div>
+                <div class="dwp-generate-bar">
+                    <span id="dwpRunMeta"></span>
+                    <button id="dwpBtnReset" class="btn btn-sm" type="button"><i class="fa-solid fa-rotate-left"></i> 重置</button>
+                    <button id="dwpBtnSaveAs" class="btn btn-sm" type="button" hidden><i class="fa-solid fa-download"></i> 另存为</button>
+                    <button id="dwpBtnReuse" class="btn btn-sm dwp-generate-btn" type="button" hidden><i class="fa-solid fa-rotate-right"></i> 重新生成</button>
+                    <button id="dwpBtnRun" class="btn btn-sm dwp-generate-btn" type="button" disabled><i class="fa-solid fa-palette"></i> 立即生成</button>
+                </div>
+            </section>
+        </div>
+        <div id="dwpPromptGenHost" class="dwp-prompt-host" hidden></div>
+    </div>
+
+    <!-- ========== AI 小说模块（独立模块，body 级容器，hidden 切换）========== -->
+    <div id="novel" class="novel-shell" role="dialog" aria-modal="false" aria-label="AI 小说" hidden>
+        <div class="novel-topbar">
+            <span class="novel-topbar-title"><i class="fa-solid fa-book" aria-hidden="true"></i> AI 小说</span>
+            <div class="novel-topbar-meta" id="novelTopbarMeta">
+                <span id="novelProviderBadge" class="novel-provider-badge">未配置 LLM</span>
+                <span id="novelWordProgress" class="novel-word-progress" hidden>
+                    <span class="novel-word-progress-label">总字数</span>
+                    <span id="novelWordCurrent">0</span> / <span id="novelWordTarget">0</span>
+                </span>
+            </div>
+            <div class="novel-topbar-actions">
+                <button id="novelBtnExportTxt" class="btn btn-sm" type="button" disabled title="导出整本为 TXT">
+                    <i class="fa-solid fa-file-export"></i> 导出 TXT
+                </button>
+            </div>
+        </div>
+        <div class="novel-canvas">
+            <aside class="novel-sidebar" aria-label="小说列表">
+                <button id="novelBtnNew" class="novel-new-btn" type="button">
+                    <i class="fa-solid fa-plus"></i> 新建小说
+                </button>
+                <div id="novelList" class="novel-list" role="list"></div>
+            </aside>
+            <section class="novel-main" aria-label="主区">
+                <div id="novelEmpty" class="novel-empty">
+                    <i class="fa-regular fa-book"></i>
+                    <h3>选择一本小说开始</h3>
+                    <p>左侧列表选择已有小说，或点击「+ 新建小说」开始</p>
+                </div>
+                <div id="novelDetail" class="novel-detail" hidden>
+                    <div class="novel-tabs" role="tablist">
+                        <!-- Sprint W: 工作面板（实时时间线，放在工作台之前 — 看 AI 做事的主舞台） -->
+                        <button class="novel-tab" type="button" data-tab="workflow" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-timeline"></i> 工作面板
+                        </button>
+                        <!-- Phase 3: 5 个 tab：工作台（默认）/ 成果 / 知识库 / 章节 / 日志 -->
+                        <button class="novel-tab active" type="button" data-tab="workspace" role="tab" aria-selected="true">
+                            <i class="fa-solid fa-robot"></i> 工作台
+                        </button>
+                        <button class="novel-tab" type="button" data-tab="artifacts" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-landmark"></i> 成果
+                        </button>
+                        <button class="novel-tab" type="button" data-tab="knowledge" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-book-open"></i> 知识库
+                        </button>
+                        <button class="novel-tab" type="button" data-tab="chapters" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-list-ol"></i> 章节
+                        </button>
+                        <button class="novel-tab" type="button" data-tab="log" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-receipt"></i> 日志
+                        </button>
+                        <!-- Sprint H: LLM-driven 调度器（黑板 / 任务图 / 收件箱 / 编剧） -->
+                        <button class="novel-tab" type="button" data-tab="scheduler" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-sitemap"></i> 调度器
+                        </button>
+                        <!-- Phase 3: 保留旧「大纲」tab 作为可点击入口（仍走 edit 视图）。hidden 默认折叠 -->
+                        <button class="novel-tab" type="button" data-tab="outline" role="tab" aria-selected="false" hidden id="novelTabOutlineBtn">
+                            <i class="fa-solid fa-diagram-project"></i> 大纲编辑
+                        </button>
+                        <div class="novel-tabs-spacer"></div>
+                        <button id="novelBtnDelete" class="novel-danger-btn" type="button" title="删除整本小说">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                    <div id="novelTabWorkflow" class="novel-tab-pane"></div>
+                    <div id="novelTabWorkspace" class="novel-tab-pane active"></div>
+                    <div id="novelTabArtifacts" class="novel-tab-pane"></div>
+                    <div id="novelTabKnowledge" class="novel-tab-pane"></div>
+                    <div id="novelTabChapters" class="novel-tab-pane"></div>
+                    <div id="novelTabLog" class="novel-tab-pane"></div>
+                    <div id="novelTabScheduler" class="novel-tab-pane"></div>
+                    <div id="novelTabOutline" class="novel-tab-pane"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- 新建小说表单 modal -->
+    <div id="novelNewModal" class="media-preview-overlay" style="z-index:2000; display:none; background:rgba(15,23,42,.55);">
+        <div class="novel-modal-card">
+            <div class="novel-modal-head">
+                <span><i class="fa-solid fa-feather-pointed"></i> 新建小说</span>
+                <button id="novelNewCancel" class="btn btn-sm" type="button"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="novel-modal-body">
+                <div class="novel-form-row">
+                    <label>标题 <span class="req">*</span></label>
+                    <input id="novelFormTitle" type="text" maxlength="80" placeholder="例如：星河纪元">
+                </div>
+                <div class="novel-form-row">
+                    <label>核心创意 <span class="req">*</span></label>
+                    <textarea id="novelFormCoreIdea" rows="3" placeholder="一两句话描述故事核心：主角是谁 / 要做什么 / 主要冲突是什么"></textarea>
+                </div>
+                <div class="novel-form-row novel-form-grid">
+                    <div>
+                        <label>风格</label>
+                        <select id="novelFormStyle">
+                            <option value="玄幻">玄幻</option>
+                            <option value="都市">都市</option>
+                            <option value="科幻">科幻</option>
+                            <option value="言情">言情</option>
+                            <option value="历史">历史</option>
+                            <option value="悬疑">悬疑</option>
+                            <option value="军事">军事</option>
+                            <option value="自定义">自定义</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>视角</label>
+                        <select id="novelFormPov">
+                            <option value="第三人称">第三人称</option>
+                            <option value="第一人称">第一人称</option>
+                            <option value="全知">全知视角</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>基调</label>
+                        <select id="novelFormTone">
+                            <option value="热血">热血</option>
+                            <option value="轻松">轻松</option>
+                            <option value="沉重">沉重</option>
+                            <option value="悬疑">悬疑</option>
+                            <option value="幽默">幽默</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="novel-form-row" id="novelFormCustomStyleRow" hidden>
+                    <label>自定义风格描述</label>
+                    <textarea id="novelFormCustomStyle" rows="2" placeholder="例：赛博朋克 + 武侠混合风格，冷硬叙事，类似《雪崩》"></textarea>
+                </div>
+                <div class="novel-form-row novel-form-grid">
+                    <div>
+                        <label>目标字数</label>
+                        <input id="novelFormTargetWords" type="number" min="10000" max="5000000" step="10000" value="1000000">
+                        <div class="hint">范围 1万 ~ 500万</div>
+                    </div>
+                    <div>
+                        <label>预计章节数</label>
+                        <input id="novelFormChapterCount" type="number" min="5" max="2000" step="1" value="30">
+                    </div>
+                </div>
+            </div>
+            <div class="novel-modal-foot">
+                <button id="novelNewCancel2" class="btn btn-sm" type="button">取消</button>
+                <button id="novelNewSubmit" class="btn btn-sm btn-primary" type="button">
+                    <i class="fa-solid fa-check"></i> 创建并生成大纲
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 章节查看/编辑 modal -->
+    <div id="novelChapterModal" class="media-preview-overlay" style="z-index:2000; display:none; background:rgba(15,23,42,.55);">
+        <div class="novel-modal-card novel-modal-card-wide">
+            <div class="novel-modal-head">
+                <span id="novelChapterModalTitle"><i class="fa-regular fa-file-lines"></i> 章节</span>
+                <button id="novelChapterClose" class="btn btn-sm" type="button"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="novel-modal-body">
+                <div id="novelChapterView">
+                    <pre id="novelChapterContent" class="novel-chapter-content"></pre>
+                </div>
+                <div id="novelChapterEdit" hidden>
+                    <textarea id="novelChapterTextarea" rows="20" placeholder="编辑章节正文..."></textarea>
+                </div>
+            </div>
+            <div class="novel-modal-foot">
+                <button id="novelChapterCancel" class="btn btn-sm" type="button">关闭</button>
+                <button id="novelChapterEditBtn" class="btn btn-sm" type="button"><i class="fa-solid fa-pen"></i> 编辑</button>
+                <button id="novelChapterSaveBtn" class="btn btn-sm btn-primary" type="button" hidden><i class="fa-solid fa-check"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日志详情弹窗（点击日志行查看 raw 输入/输出） -->
+    <div id="novelLogModal" class="media-preview-overlay" style="z-index:2000; display:none; background:rgba(15,23,42,.55);">
+        <div class="novel-modal-card novel-modal-card-wide">
+            <div class="novel-modal-head">
+                <span id="novelLogModalTitle"><i class="fa-regular fa-receipt"></i> 日志详情</span>
+                <button id="novelLogClose" class="btn btn-sm" type="button"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="novel-modal-body">
+                <div id="novelLogMeta" class="novel-log-meta"></div>
+                <div class="novel-log-section">
+                    <div class="novel-log-section-head">
+                        <i class="fa-solid fa-paper-plane"></i> 输入（raw_request）
+                        <button id="novelLogCopyReq" class="btn btn-sm" type="button"><i class="fa-regular fa-copy"></i> 复制</button>
+                    </div>
+                    <pre id="novelLogRequest" class="novel-log-raw"></pre>
+                </div>
+                <div class="novel-log-section">
+                    <div class="novel-log-section-head">
+                        <i class="fa-solid fa-reply"></i> 输出（raw_response）
+                        <button id="novelLogCopyRes" class="btn btn-sm" type="button"><i class="fa-regular fa-copy"></i> 复制</button>
+                    </div>
+                    <pre id="novelLogResponse" class="novel-log-raw"></pre>
+                </div>
+                <div id="novelLogErrorWrap" class="novel-log-section" hidden>
+                    <div class="novel-log-section-head">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 错误信息
+                    </div>
+                    <pre id="novelLogError" class="novel-log-raw novel-log-error"></pre>
+                </div>
+                <!-- OpenClaw 模式：用户反馈 + Agent 配置入口 -->
+                <div class="novel-log-section novel-feedback-section">
+                    <div class="novel-log-section-head">
+                        <i class="fa-solid fa-thumbs-up"></i> 用户反馈
+                        <span class="novel-feedback-current" id="novelLogFeedbackCurrent"></span>
+                    </div>
+                    <div class="novel-feedback-row">
+                        <button class="btn btn-sm novel-feedback-btn" data-vote="up" type="button"><i class="fa-solid fa-thumbs-up"></i> 👍 好</button>
+                        <button class="btn btn-sm novel-feedback-btn" data-vote="down" type="button"><i class="fa-solid fa-thumbs-down"></i> 👎 不行</button>
+                        <button class="btn btn-sm novel-feedback-config" id="novelLogOpenAgentConfig" type="button"><i class="fa-solid fa-folder-open"></i> 查看 Agent 配置</button>
+                        <button class="btn btn-sm novel-feedback-flush" id="novelLogFlushMemory" type="button"><i class="fa-solid fa-compress"></i> 立即提炼 MEMORY</button>
+                    </div>
+                    <textarea id="novelLogFeedbackComment" class="novel-feedback-comment" placeholder="（可选）写一句反馈：例如「女主人设漂移」「节奏不错」"></textarea>
+                    <div class="novel-feedback-actions">
+                        <button class="btn btn-sm btn-primary" id="novelLogSubmitFeedback" type="button">提交反馈</button>
+                        <span class="novel-feedback-hint">提交后该 agent 下次生成会读取此反馈</span>
+                    </div>
+                </div>
+            </div>
+            <div class="novel-modal-foot">
+                <button id="novelLogCloseFoot" class="btn btn-sm" type="button">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OpenClaw 模式：Agent 配置编辑 modal -->
+    <div id="novelAgentConfigModal" class="media-preview-overlay" style="z-index:2100; display:none; background:rgba(15,23,42,.55);">
+        <div class="novel-modal-card novel-modal-card-wide">
+            <div class="novel-modal-head">
+                <span id="novelAgentConfigTitle"><i class="fa-solid fa-folder-open"></i> Agent 配置</span>
+                <button id="novelAgentConfigClose" class="btn btn-sm" type="button"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="novel-modal-body">
+                <div class="novel-config-tabs" id="novelConfigTabs">
+                    <button class="novel-config-tab active" data-file="SOUL.md">SOUL 人格</button>
+                    <button class="novel-config-tab" data-file="IDENTITY.md">IDENTITY 身份</button>
+                    <button class="novel-config-tab" data-file="AGENTS.md">AGENTS SOP</button>
+                    <button class="novel-config-tab" data-file="MEMORY.md">MEMORY 经验</button>
+                </div>
+                <textarea id="novelConfigEditor" class="novel-config-editor" spellcheck="false" placeholder="编辑中…"></textarea>
+                <div class="novel-config-actions">
+                    <button class="btn btn-sm" id="novelConfigReload" type="button"><i class="fa-solid fa-rotate"></i> 重新加载</button>
+                    <button class="btn btn-sm btn-primary" id="novelConfigSave" type="button"><i class="fa-solid fa-save"></i> 保存</button>
+                    <span class="novel-config-hint" id="novelConfigHint"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="js/script.js"></script>
+    <script src="js/util/path.js"></script> <!-- 共享工具：escapeHtml/escapeAttr/toFileUri -->
     <script src="js/config-ui.js"></script> <!-- D-25 配置管理 UI -->
     <script src="js/settings.js"></script> <!-- 统一设置页（resources / prompts / comfyui / llm） -->
     <script src="js/prompt-gen.js"></script> <!-- D-27 提示词生成 -->
     <script src="js/ai-tools.js"></script> <!-- AI 工具（声明式 ComfyUI workflow 表单） -->
     <script src="js/loras.js"></script> <!-- Lora 库（管理 / 插入工作流）-->
+    <script src="js/workbench-loras.js"></script> <!-- D-WORKBENCH-LORA-MODULE：工作台 LORA 独立模块 -->
+    <script src="js/workbench.js"></script> <!-- D-LAYOUT：工作台（4 菜单 + 资产生成历史）-->
+    <script src="js/task-queue.js"></script> <!-- D-QUEUE：任务队列 drawer / 角标 / 拖拽重排 -->
+    <script src="js/prompt-library.js"></script> <!-- 提示词库（自定义分类 + 提示词 CRUD）-->
+    <script src="js/novel.js"></script> <!-- AI 小说模块（独立 UI）-->
 </body>
 </html>

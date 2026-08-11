@@ -22,6 +22,7 @@
 
     // ========== 状态 ==========
     let _currentTab = 'resources';
+    let _pendingPromptsSub = null; // D-LAYOUT：open({tab:'prompts', sub:'loras'}) 时记录，renderPromptsPane 内消费后清空
 
     // ---- 提示词管理子页面共享 state（4 个子模块共用）----
     let menuItems = [];             // 分类树数据
@@ -84,28 +85,45 @@
         const wantTab = opts.tab;
         if (wantTab && TAB_DEFS.some(t => t.id === wantTab)) _currentTab = wantTab;
         else _currentTab = 'resources';
+        // D-LAYOUT：记录外部期望跳转的提示词管理子模块（renderPromptsPane 首次渲染时消费并清空）
+        _pendingPromptsSub = opts.sub || null;
         if (!document.getElementById('settingsPage')) createPage();
         showPage();
         renderMenu();
         renderContent();
+        // D-NAVBAR：通知 nav active 态同步
+        try {
+            window.dispatchEvent(new CustomEvent('settings:opened'));
+        } catch (e) {}
     }
 
     function close() {
         const page = document.getElementById('settingsPage');
-        if (page) page.style.display = 'none';
-        // 恢复主页和 header
+        if (page) page.hidden = true;
+        // D-NAVBAR：只恢复 main，不再碰 header（header 全平台持久可见）
         const main = document.querySelector('main');
-        const header = document.querySelector('header');
         if (main) main.style.display = '';
-        if (header) header.style.display = '';
+        // D-NAVBAR：通知 nav active 态同步
+        try {
+            window.dispatchEvent(new CustomEvent('settings:closed'));
+        } catch (e) {}
+    }
+
+    // D-NAVBAR：暴露 isOpen() 给 switchMainView 用
+    function isOpen() {
+        const page = document.getElementById('settingsPage');
+        return !!(page && !page.hidden);
     }
 
     // ========== tab 定义 ==========
     const TAB_DEFS = [
         { id: 'resources', icon: 'fa-folder-tree',   label: '资源管理' },
         { id: 'prompts',   icon: 'fa-tags',          label: '提示词管理' },
+        { id: 'loras',     icon: 'fa-puzzle-piece',  label: 'LORA 库管理' },
         { id: 'comfyui',   icon: 'fa-image',         label: 'ComfyUI 服务' },
         { id: 'llm',       icon: 'fa-microchip',     label: 'LLM 服务' },
+        { id: 'ainovel',   icon: 'fa-book',          label: 'AI 小说' },
+        { id: 'systeminfo', icon: 'fa-circle-info',  label: '系统信息' },
     ];
 
     function tabDef(id) { return TAB_DEFS.find(t => t.id === id) || TAB_DEFS[0]; }
@@ -114,34 +132,36 @@
     function createPage() {
         const page = document.createElement('div');
         page.id = 'settingsPage';
-        page.style.cssText = 'position:fixed; inset:0; background:#f5f6f8; z-index:200; display:none; flex-direction:column; color:#1a1a1a; font-family:system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;';
+        // DWP 视觉基线：class-based 外层骨架（与工作台三栏对齐），内联控件/表单保持原状。
+        page.className = 'settings-page';
+        page.hidden = true;
+        page.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
         page.innerHTML = `
             <!-- 顶部 bar -->
-            <div style="display:flex; align-items:center; padding:14px 20px; border-bottom:1px solid #e5e7eb; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.04); flex-shrink:0;">
-                <button id="setBtnBack" class="btn" style="margin-right:14px;"><i class="fa-solid fa-arrow-left"></i> 返回</button>
-                <h2 id="setHeaderTitle" style="margin:0; flex:1; color:#1f2937; font-size:18px; font-weight:600;"><i class="fa-solid fa-gear" style="color:#6366f1;"></i> 设置</h2>
-                <span id="setHeaderSub" style="margin-right:12px; font-size:12px; color:#6b7280;"></span>
+            <div class="set-topbar">
+                <h2 id="setHeaderTitle" class="set-topbar-title"><i class="fa-solid fa-gear" style="color:#6366f1;"></i> 设置</h2>
+                <span id="setHeaderSub" class="set-topbar-sub"></span>
+                <span class="set-topbar-spacer"></span>
+                <span class="set-topbar-actions"></span>
             </div>
 
             <!-- 两列主体 -->
-            <div style="display:flex; flex:1; min-height:0;">
+            <div class="set-body">
                 <!-- 左：菜单 -->
-                <div id="settingsMenu" style="width:220px; flex-shrink:0; border-right:1px solid #e5e7eb; background:#ffffff; overflow-y:auto; padding:14px 0;"></div>
+                <div id="settingsMenu" class="set-menu"></div>
                 <!-- 右：内容 -->
-                <div id="settingsContent" style="flex:1; overflow:auto; background:#f9fafb;"></div>
+                <div id="settingsContent" class="set-content"></div>
             </div>
         `;
         document.body.appendChild(page);
-        page.querySelector('#setBtnBack').addEventListener('click', close);
     }
 
     function showPage() {
         const page = document.getElementById('settingsPage');
-        if (page) page.style.display = 'flex';
+        if (page) page.hidden = false;
+        // D-NAVBAR：main 仍然隐藏（settings 是全屏 overlay 覆盖 main），但 header 保持可见
         const main = document.querySelector('main');
-        const header = document.querySelector('header');
         if (main) main.style.display = 'none';
-        if (header) header.style.display = 'none';
     }
 
     // ========== 左菜单渲染 ==========
@@ -152,8 +172,8 @@
         for (const t of TAB_DEFS) {
             const isActive = t.id === _currentTab;
             const row = document.createElement('div');
-            row.style.cssText = 'padding:9px 18px; cursor:pointer; font-size:14px; display:flex; align-items:center; gap:10px; border-left:3px solid ' + (isActive ? '#6366f1' : 'transparent') + '; background:' + (isActive ? '#eef2ff' : 'transparent') + '; color:' + (isActive ? '#4338ca' : '#374151') + '; font-weight:' + (isActive ? '500' : '400') + ';';
-            row.innerHTML = '<i class="fa-solid ' + t.icon + '" style="width:16px; text-align:center; color:' + (isActive ? '#6366f1' : '#9ca3af') + ';"></i><span>' + escapeHtml(t.label) + '</span>';
+            row.className = 'set-menu-item' + (isActive ? ' active' : '');
+            row.innerHTML = '<i class="fa-solid ' + t.icon + '"></i><span>' + escapeHtml(t.label) + '</span>';
             row.addEventListener('click', () => {
                 if (_currentTab === t.id) return;
                 _currentTab = t.id;
@@ -179,9 +199,43 @@
     const CONTENT_RENDERERS = {
         resources: renderResourcesPane,
         prompts: renderPromptsPane,
+        loras: renderLorasPane,
         comfyui: renderComfyuiPane,
         llm: renderLlmPane,
+        ainovel: renderAiNovelPane,
+        systeminfo: renderSysteminfoPane,
     };
+
+    // ===== LORA 库管理顶级 tab（D-LAYOUT：原 fullscreen overlay lorasPage 嵌入到 settings content 区）=====
+    // 与资源管理 / 提示词管理 / ComfyUI / LLM 服务 平级，位于 提示词管理 和 ComfyUI 服务 中间
+    async function renderLorasPane(container) {
+        // settingsContent 是 flex:1; overflow:auto（line 135），无固定高度。
+        // Lora root 要求 height:100% + min-height:0 才能让侧栏 + grid 正确铺满 + grid 自带 overflow-y:auto 滚动。
+        // setLorasWrap 是真正的内容区域：position:absolute 占满整个 settingsContent（避开灰色外层）。
+        // 10px 留白交给 lorasModuleRoot（外层大盒子）处理，避免 setLorasWrap 出现灰色空隙。
+        const wrap = document.createElement('div');
+        wrap.id = 'setLorasWrap';
+        wrap.style.cssText = 'position:absolute; top:0; left:0; right:0; bottom:0; display:flex; flex-direction:column; min-height:0; background:#ffffff;';
+        container.style.position = 'relative';
+        container.appendChild(wrap);
+
+        if (window.lorasModule && typeof window.lorasModule.renderInto === 'function') {
+            try {
+                await window.lorasModule.renderInto(wrap);
+                return;
+            } catch (e) {
+                console.error('[settings] lorasModule.renderInto 失败:', e);
+                wrap.innerHTML = `<div style="padding:60px 20px; text-align:center; color:#dc2626; font-size:13px;">加载 Lora 模块失败，请刷新页面或重启应用后重试。</div>`;
+                return;
+            }
+        }
+        // 兜底：loras.js 未加载（用户文案不暴露源文件名，仅记录到 console 供排查）
+        console.warn('[settings] LORA 模块未加载：window.lorasModule.renderInto 不可用');
+        wrap.innerHTML = `<div style="padding:60px 20px; text-align:center; color:#9ca3af; font-size:13px;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:48px; color:#e5e7eb; display:block; margin-bottom:12px;"></i>
+            Lora 模块暂不可用，请刷新页面或重启应用后重试。
+        </div>`;
+    }
 
     // ========== 各 tab 渲染 ==========
 
@@ -541,12 +595,10 @@
                 <button id="setComfySave" class="btn btn-sm" type="button" style="background:#10b981; color:#fff;"><i class="fa-solid fa-check"></i> 保存配置</button>
                 <button id="setComfyOpenOutput" class="btn btn-sm" type="button"><i class="fa-solid fa-folder-tree"></i> 打开输出</button>
             </div>
-            <div id="setComfyWfList" style="font-size:11px; color:#6b7280; margin-top:14px; padding-top:12px; border-top:1px dashed #e5e7eb;"></div>
         `;
         container.appendChild(card);
 
         if (!api.comfyui) {
-            card.querySelector('#setComfyWfList').textContent = 'window.api.comfyui 不可用';
             return;
         }
 
@@ -559,18 +611,6 @@
             card.querySelector('#setComfyPort').value = cfg.port || 8188;
             card.querySelector('#setComfyOutput').value = cfg.outputDir || '';
 
-            if (api.comfyui.listWorkflows) {
-                const wfR = await api.comfyui.listWorkflows();
-                const wfDiv = card.querySelector('#setComfyWfList');
-                if (wfR && wfR.ok && Array.isArray(wfR.workflows)) {
-                    wfDiv.innerHTML = '<div style="margin-bottom:6px; font-weight:500;">已加载 workflow：</div>' + wfR.workflows.map(w => {
-                        const dot = w.broken ? '<span style="color:#f87171;">● 损坏</span>' : (w.hasPositive ? '<span style="color:#34d399;">● 就绪</span>' : '<span style="color:#fbbf24;">● 缺占位符</span>');
-                        return `<div style="padding:3px 0;">${dot} <b>${escapeHtml(w.name)}</b> (${w.mode}) — ${escapeHtml(w.defaultResolution || '?')} — ${escapeHtml(w.notes || '')}</div>`;
-                    }).join('');
-                } else {
-                    wfDiv.textContent = '无法读取 workflow 列表';
-                }
-            }
             refreshStatus();
         })();
 
@@ -611,12 +651,16 @@
             if (r && r.ok) showToast('ComfyUI 已启动（PID ' + (r.pid || '外部') + '）', 'success');
             else showToast('启动失败：' + (r && r.error), 'error');
             refreshStatus();
+            // D-NAVBAR-COMFY：同步刷新顶部导航栏徽章（settings.js 操作不影响事件触发时机）
+            if (typeof window.refreshNavComfyStatus === 'function') window.refreshNavComfyStatus();
         });
         card.querySelector('#setComfyStop').addEventListener('click', async () => {
             const r = await api.comfyui.stop();
             if (r && r.ok) showToast('ComfyUI 已停止', 'success');
             else showToast('停止失败：' + (r && r.error), 'error');
             refreshStatus();
+            // D-NAVBAR-COMFY：同步刷新顶部导航栏徽章
+            if (typeof window.refreshNavComfyStatus === 'function') window.refreshNavComfyStatus();
         });
         card.querySelector('#setComfyOpenOutput').addEventListener('click', async () => {
             if (api.comfyui.openOutputDir) {
@@ -651,6 +695,301 @@
                 if (btnStop) btnStop.style.display = 'none';
             }
         }
+    }
+
+    // ===== 系统信息（D-SYSINFO：读取主进程聚合的硬件 / 环境信息） =====
+    // 缓存最近一次拉到的数据，切走 tab 再切回来直接渲染缓存；点「刷新」强制重拉。
+    let _systeminfoCache = null;
+    let _systeminfoLoading = false;
+
+    function _formatBytes(n) {
+        if (n == null || !Number.isFinite(Number(n))) return null;
+        const num = Number(n);
+        if (num <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let v = num; let i = 0;
+        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+        return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+    function _formatUptime(sec) {
+        const n = Number(sec);
+        if (!Number.isFinite(n) || n < 0) return null;
+        const d = Math.floor(n / 86400);
+        const h = Math.floor((n % 86400) / 3600);
+        const m = Math.floor((n % 3600) / 60);
+        const parts = [];
+        if (d) parts.push(`${d} 天`);
+        if (h) parts.push(`${h} 小时`);
+        parts.push(`${m} 分`);
+        return parts.join(' ');
+    }
+    function _valEl(value, mutedFallback) {
+        if (value == null || value === '') {
+            return `<span class="si-value si-muted">${escapeHtml(mutedFallback || '未安装')}</span>`;
+        }
+        return `<span class="si-value">${escapeHtml(String(value))}</span>`;
+    }
+    function _skeletonBar(width) {
+        return `<span class="si-skel" style="width:${width || '70%'};"></span>`;
+    }
+    // CJK 字符宽度 ≈ 1em，ASCII ≈ 0.55em；统一换算成 em 得到稳定列宽
+    function _labelWidthEm(labels) {
+        let max = 0;
+        for (const l of labels) {
+            let em = 0;
+            for (const ch of String(l)) em += /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(ch) ? 1 : 0.55;
+            if (em > max) max = em;
+        }
+        return Math.max(4, max + 1.2); // 至少 4em，再加 1.2em 留点空隙
+    }
+
+    // 全局统一列宽：把页面里所有可能出现的标签都塞进来，取最宽那个。
+    // 所有 .si-body 共享同一个 --si-label-w，跨模块的标签左边缘对齐。
+    const _SYSINFO_LABEL_W = _labelWidthEm([
+        // 操作系统
+        '平台', '内核', '架构', '主机名', '运行时长',
+        // 处理器
+        '型号', '核心数', '主频',
+        // 内存
+        '已用 / 可用',
+        // 开发环境（工具名 + CUDA 子块）
+        'Git', 'Python', 'Node', 'npm', 'FFmpeg',
+        'CUDA 驱动', 'CUDA 版本', 'nvcc 路径',
+        // Electron 运行时
+        'Electron', 'Chromium', 'V8',
+        // 显卡子卡（保证 GPU 内的 dl/dt/dd 标签也跟其他模块对齐）
+        '厂商', '显存', '驱动',
+    ]);
+    function _row(label, value, mutedFallback) {
+        return `<div class="si-row"><span class="si-label">${escapeHtml(label)}</span>${_valEl(value, mutedFallback)}</div>`;
+    }
+    function _cardHeader(iconCls, title, badge) {
+        return `<div class="si-head"><span class="si-head-icon"><i class="fa-solid ${iconCls}"></i></span><span class="si-head-title">${escapeHtml(title)}</span>${badge ? `<span class="si-head-badge">${escapeHtml(badge)}</span>` : ''}</div>`;
+    }
+    function _openBody(labelWidthEm) {
+        return `<div class="si-body" style="--si-label-w:${labelWidthEm.toFixed(2)}em;">`;
+    }
+
+    function _memoryBarHtml(memory) {
+        const total = Number(memory.totalBytes);
+        const used = Number(memory.usedBytes);
+        if (!Number.isFinite(total) || total <= 0) return '';
+        const pct = Math.max(0, Math.min(100, (used / total) * 100));
+        // 颜色：< 70% 绿 / 70-90 黄 / > 90 红
+        const color = pct < 70 ? '#22c55e' : pct < 90 ? '#eab308' : '#ef4444';
+        return `<div class="si-meter">
+            <div class="si-meter-track"><div class="si-meter-fill" style="width:${pct.toFixed(1)}%; background:${color};"></div></div>
+            <span class="si-meter-text">${pct.toFixed(1)}%</span>
+        </div>`;
+    }
+
+    function _gpuItemsHtml(gpus) {
+        if (!Array.isArray(gpus) || gpus.length === 0) {
+            return `<div class="si-empty"><i class="fa-regular fa-circle-xmark"></i> 未检测到真实显卡</div>`;
+        }
+        const items = gpus.map(g => {
+            const vram = _formatBytes(g.vramBytes);
+            return `
+                <div class="si-gpu">
+                    <div class="si-gpu-head">
+                        <i class="fa-solid fa-tv"></i>
+                        <span class="si-gpu-name">${escapeHtml(g.model || '未知显卡')}</span>
+                    </div>
+                    <dl class="si-gpu-grid" style="--si-gpu-label-w:${_SYSINFO_LABEL_W.toFixed(2)}em;">
+                        <dt>厂商</dt><dd>${escapeHtml(g.vendor || '未知')}</dd>
+                        <dt>显存</dt><dd>${escapeHtml(vram || '未知')}</dd>
+                        <dt>驱动</dt><dd>${escapeHtml(g.driverVersion || '未知')}</dd>
+                    </dl>
+                </div>
+            `;
+        }).join('');
+        return `<div class="si-gpu-list">${items}</div>`;
+    }
+
+    function _toolRowHtml(name, t) {
+        if (!t) t = {};
+        const ok = !!t.available;
+        const verText = ok ? (t.version || '已安装') : '未安装';
+        const pathTip = t.path ? ` title="${escapeAttr(t.path)}"` : '';
+        const pathHtml = t.path ? `<span class="si-tool-path"${pathTip}>${escapeHtml(t.path)}</span>` : '';
+        return `
+            <div class="si-tool ${ok ? 'ok' : 'no'}">
+                <span class="si-dot"></span>
+                <span class="si-tool-name">${escapeHtml(name)}</span>
+                <span class="si-tool-ver ${ok ? '' : 'si-muted'}">${escapeHtml(verText)}</span>
+                ${pathHtml}
+            </div>
+        `;
+    }
+
+    function _buildSkeletonHtml() {
+        const sk = (n) => Array.from({ length: n }).map(() =>
+            `<div class="si-row"><span class="si-label">${_skeletonBar('50%')}</span>${_skeletonBar('80%')}</div>`
+        ).join('');
+        const skGpu = `<div class="si-skel-block"><div class="si-gpu"><div class="si-gpu-head">${_skeletonBar('40%')}</div><div class="si-gpu-grid">${_skeletonBar('30%')}${_skeletonBar('50%')}</div></div></div>`;
+        const skTools = ['Git', 'Python', 'Node', 'npm', 'FFmpeg'].map(n =>
+            `<div class="si-tool"><span class="si-dot"></span><span class="si-tool-name">${escapeHtml(n)}</span>${_skeletonBar('60%')}</div>`
+        ).join('');
+        return `
+            <div class="si-grid">
+                <section class="si-card">${_cardHeader('fa-desktop', '操作系统')}<div class="si-body">${sk(5)}</div></section>
+                <section class="si-card">${_cardHeader('fa-microchip', '处理器')}<div class="si-body">${sk(3)}</div></section>
+                <section class="si-card">${_cardHeader('fa-memory', '内存')}<div class="si-body">${sk(3)}</div></section>
+                <section class="si-card">${_cardHeader('fa-tv', '显卡')}<div class="si-body">${skGpu}</div></section>
+                <section class="si-card">${_cardHeader('fa-terminal', '开发环境')}<div class="si-body">${skTools}</div></section>
+                <section class="si-card">${_cardHeader('fa-window-maximize', 'Electron 运行时')}<div class="si-body">${sk(4)}</div></section>
+            </div>
+        `;
+    }
+
+    function _buildInfoHtml(d) {
+        const os = d.os || {};
+        const cpu = d.cpu || {};
+        const memory = d.memory || {};
+        const cuda = d.cuda || {};
+        const env = d.env || {};
+        const gpuCount = Array.isArray(d.gpus) ? d.gpus.length : 0;
+
+        return `
+            <div class="si-grid">
+                <section class="si-card">
+                    ${_cardHeader('fa-desktop', '操作系统')}
+                    ${_openBody(_SYSINFO_LABEL_W)}
+                        ${_row('平台', os.distro || (os.platform === 'win32' ? 'Windows' : os.platform === 'darwin' ? 'macOS' : 'Linux'))}
+                        ${_row('内核', os.kernel || os.release)}
+                        ${_row('架构', os.arch)}
+                        ${_row('主机名', os.hostname)}
+                        ${_row('运行时长', _formatUptime(os.uptimeSec))}
+                    </div>
+                </section>
+
+                <section class="si-card">
+                    ${_cardHeader('fa-microchip', '处理器')}
+                    ${_openBody(_SYSINFO_LABEL_W)}
+                        ${_row('型号', cpu.model || cpu.brand)}
+                        ${_row('核心数', cpu.cores != null ? `${cpu.cores} 核` : null)}
+                        ${_row('主频', cpu.speedMHz ? `${(cpu.speedMHz / 1000).toFixed(2)} GHz` : null)}
+                    </div>
+                </section>
+
+                <section class="si-card">
+                    ${_cardHeader('fa-memory', '内存', memory.totalBytes ? _formatBytes(memory.totalBytes) : null)}
+                    ${_openBody(_SYSINFO_LABEL_W)}
+                        ${_row('已用 / 可用', `${_formatBytes(memory.usedBytes) || '—'} / ${_formatBytes(memory.freeBytes) || '—'}`)}
+                        ${_memoryBarHtml(memory)}
+                    </div>
+                </section>
+
+                <section class="si-card">
+                    ${_cardHeader('fa-tv', '显卡', gpuCount > 0 ? `${gpuCount} 张` : null)}
+                    <div class="si-body">${_gpuItemsHtml(d.gpus || [])}</div>
+                </section>
+
+                <section class="si-card">
+                    ${_cardHeader('fa-terminal', '开发环境')}
+                    ${_openBody(_SYSINFO_LABEL_W)}
+                        ${_toolRowHtml('Git',    d.tools && d.tools.git)}
+                        ${_toolRowHtml('Python', d.tools && d.tools.python)}
+                        ${_toolRowHtml('Node',   d.tools && d.tools.node)}
+                        ${_toolRowHtml('npm',    d.tools && d.tools.npm)}
+                        ${_toolRowHtml('FFmpeg', d.tools && d.tools.ffmpeg)}
+                        <div class="si-subgroup">
+                            <div class="si-subgroup-title">CUDA / GPU 工具链</div>
+                            ${_row('CUDA 驱动', cuda.driverVersion, '不可用')}
+                            ${_row('CUDA 版本', cuda.cudaVersion,   '不可用')}
+                            ${_row('nvcc 路径', cuda.nvccPath,     '不可用')}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="si-card">
+                    ${_cardHeader('fa-window-maximize', 'Electron 运行时')}
+                    ${_openBody(_SYSINFO_LABEL_W)}
+                        ${_row('Electron', env.electron, '未知')}
+                        ${_row('Node',     env.node,     '未知')}
+                        ${_row('Chromium', env.chrome,   '未知')}
+                        ${_row('V8',       env.v8,       '未知')}
+                    </div>
+                </section>
+            </div>
+        `;
+    }
+
+    function _mountTopbarRefresh(onClick) {
+        const actions = document.querySelector('.set-topbar-actions');
+        if (!actions) return null;
+        actions.innerHTML = '';
+        const btn = document.createElement('button');
+        btn.id = 'setSysinfoRefreshBtn';
+        btn.className = 'btn btn-sm';
+        btn.type = 'button';
+        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> 刷新';
+        btn.addEventListener('click', onClick);
+        actions.appendChild(btn);
+        return btn;
+    }
+
+    async function renderSysteminfoPane(container) {
+        container.style.position = 'relative';
+        const wrap = document.createElement('div');
+        container.appendChild(wrap);
+
+        // 渲染骨架（骨架本身有高度，避免遮罩盖住空白导致跳变）
+        wrap.innerHTML = _buildSkeletonHtml();
+
+        // 顶部「刷新」按钮（每次渲染先清空，避免重复挂）
+        const refreshBtn = _mountTopbarRefresh(async () => {
+            if (_systeminfoLoading) return;
+            await _fetchAndRender(wrap, refreshBtn, true);
+        });
+
+        if (_systeminfoCache) {
+            // 已有缓存：直接渲染缓存，不重拉
+            wrap.innerHTML = _buildInfoHtml(_systeminfoCache);
+            return;
+        }
+        // 首次进入自动拉一次
+        await _fetchAndRender(wrap, refreshBtn, false);
+    }
+
+    async function _fetchAndRender(wrap, refreshBtn, isManual) {
+        _systeminfoLoading = true;
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 刷新中…';
+        }
+        // 手动刷新时显示 loading 遮罩；首次进入直接覆盖骨架
+        let overlay = null;
+        if (isManual) {
+            overlay = document.createElement('div');
+            overlay.className = 'si-loading';
+            overlay.innerHTML = '<i class="fa-solid fa-spinner"></i>';
+            wrap.style.position = 'relative';
+            wrap.appendChild(overlay);
+        }
+        const t0 = Date.now();
+        try {
+            const r = await api.systeminfo.get();
+            if (r && r.ok) {
+                _systeminfoCache = r.data;
+            } else {
+                _systeminfoCache = null;
+                if (window.showToast) showToast('系统信息获取失败：' + (r && r.error || '未知错误'), 'error');
+            }
+        } catch (e) {
+            _systeminfoCache = null;
+            if (window.showToast) showToast('系统信息获取失败：' + e.message, 'error');
+        }
+        // 手动刷新至少停留 250ms，避免闪一下
+        const elapsed = Date.now() - t0;
+        if (isManual && elapsed < 250) await new Promise(r => setTimeout(r, 250 - elapsed));
+        wrap.innerHTML = _systeminfoCache ? _buildInfoHtml(_systeminfoCache) : _buildSkeletonHtml();
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> 刷新';
+        }
+        _systeminfoLoading = false;
     }
 
     // ===== LLM 服务 =====
@@ -882,6 +1221,15 @@
         }
 
         function paint() {
+            // D-LAYOUT：外部 open({tab:'prompts', sub:'loras'}) 时，首次渲染前消费 _pendingPromptsSub
+            if (_pendingPromptsSub) {
+                const want = _pendingPromptsSub;
+                _pendingPromptsSub = null; // 只消费一次
+                if (SUB_MODULES.some(m => m.tab === want)) {
+                    view = 'sub';
+                    currentSub = want;
+                }
+            }
             if (view === 'cards') paintCards();
             else paintSub();
         }
@@ -3089,11 +3437,12 @@
     // ========== 工具 ==========
     function createCard(title, desc) {
         const card = document.createElement('div');
-        card.style.cssText = 'background:#ffffff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); max-width:920px;';
+        // DWP 视觉基线：class-based 卡片骨架，与工作台 .dwp-panel 对齐。
+        card.className = 'set-card';
         card.innerHTML = `
-            <div style="margin-bottom:18px;">
-                <div style="font-size:16px; font-weight:600; color:#1f2937;"><i class="fa-solid fa-folder-tree" style="color:#6366f1;"></i> ${escapeHtml(title)}</div>
-                ${desc ? '<div style="font-size:12px; color:#6b7280; margin-top:6px; line-height:1.6;">' + escapeHtml(desc) + '</div>' : ''}
+            <div class="set-card-head">
+                <h3 class="set-card-title"><i class="fa-solid fa-folder-tree" style="color:#6366f1;"></i> ${escapeHtml(title)}</h3>
+                ${desc ? '<p class="set-card-desc">' + escapeHtml(desc) + '</p>' : ''}
             </div>
         `;
         return card;
@@ -3125,6 +3474,28 @@
         setTimeout(() => t.remove(), 2800);
     }
 
+    // ===== AI 小说（依赖 novel.js 暴露的 renderIntoSettings；不重复维护 provider 配置 UI）=====
+    async function renderAiNovelPane(container) {
+        // settingsContent 是普通 flow 容器；wrap 占满可用空间以便内嵌的设置卡可滚动
+        const wrap = document.createElement('div');
+        wrap.className = 'set-ainovel-wrap';
+        wrap.style.cssText = 'position:absolute; top:0; left:0; right:0; bottom:0; overflow-y:auto; background:#ffffff;';
+        container.style.position = 'relative';
+        container.appendChild(wrap);
+
+        if (window.novel && typeof window.novel.renderIntoSettings === 'function') {
+            try {
+                await window.novel.renderIntoSettings(wrap);
+                return;
+            } catch (e) {
+                console.error('[settings] novel.renderIntoSettings 失败：', e);
+                wrap.innerHTML = `<div style="padding:60px 20px; text-align:center; color:#dc2626; font-size:13px;">加载 AI 小说配置失败，请刷新页面或重启应用后重试。</div>`;
+                return;
+            }
+        }
+        wrap.innerHTML = `<div style="padding:60px 20px; text-align:center; color:#6b7280; font-size:13px;">novel.js 未加载</div>`;
+    }
+
     // ========== 暴露 ==========
-    window.settings = { open, close };
+    window.settings = { open, close, isOpen };
 })();

@@ -14,15 +14,18 @@
 // ========= 状态对象 =========
 // shape:
 //   {
-//     running:  boolean,
-//     pid:      number | null,
-//     port:     number | null,
-//     startedAt: number | null,    // ms timestamp
+//     running:   boolean,        // 服务已就绪（/system_stats 可达）= true
+//     starting:  boolean,        // 子进程已 spawn，但 /system_stats 尚未就绪
+//                                // running=true 时 starting 必然 false；反之亦然
+//     pid:       number | null,
+//     port:      number | null,
+//     startedAt: number | null,  // ms timestamp（spawn 时刻，starting 进入时刻）
 //     lastError: string | null,
 //     // 子进程 spawn 出来的 handle 存在 process.js 自己 module 内（不暴露）
 //   }
 const COMFYUI_STATUS = {
     running: false,
+    starting: false,
     pid: null,
     port: null,
     startedAt: null,
@@ -34,6 +37,34 @@ const COMFYUI_STATUS = {
 //   - ws:  客户端 WS 句柄，comfyui-ws.js 持有，cancel 时关闭
 //   - promptId: ComfyUI 返回的 prompt_id
 const COMFYUI_JOBS = new Map();
+
+// ========= 终端日志环形缓冲（被 process.js 喂入；main.js / renderer 读取） =========
+// 设计目的：右侧浮层终端控制台展示 ComfyUI stdout/stderr。
+// - 喂入：process.js 在 _child.stdout/stderr on('data') 里调 appendComfyLog
+// - 读取：main.js 暴露 comfyui:log:get IPC 给 renderer 拉取初始缓冲
+// - 实时推送：每次 append 顺手 notifyRenderer('comfyui:event:log', ...)，
+//   renderer 开着面板就追加，不开就丢弃（缓冲还在，下次开再拉）
+// - 容量：保留最近 N 条（chunk 维度，不切行），溢出丢头
+const COMFYUI_LOG_BUFFER = [];
+const COMFYUI_LOG_MAX = 2000;
+
+function appendComfyLog(stream, text) {
+    if (typeof text !== 'string' || text.length === 0) return;
+    const entry = { stream: stream === 'stderr' ? 'stderr' : 'stdout', text, ts: Date.now() };
+    COMFYUI_LOG_BUFFER.push(entry);
+    if (COMFYUI_LOG_BUFFER.length > COMFYUI_LOG_MAX) {
+        COMFYUI_LOG_BUFFER.splice(0, COMFYUI_LOG_BUFFER.length - COMFYUI_LOG_MAX);
+    }
+    notifyRenderer('comfyui:event:log', entry);
+}
+
+function getComfyLogBuffer() {
+    return COMFYUI_LOG_BUFFER.slice();
+}
+
+function clearComfyLogBuffer() {
+    COMFYUI_LOG_BUFFER.length = 0;
+}
 
 // ========= 推送工具（被 process.js 触发，main.js 注入 sender） =========
 let _sender = null;
@@ -68,4 +99,7 @@ module.exports = {
     setSender,
     notifyRenderer,
     abortAllJobs,
+    appendComfyLog,
+    getComfyLogBuffer,
+    clearComfyLogBuffer,
 };

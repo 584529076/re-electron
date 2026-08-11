@@ -15,14 +15,16 @@ const fs = require('fs');
 const net = require('net');
 const { app } = require('electron');
 
-const { COMFYUI_STATUS, COMFYUI_JOBS, notifyRenderer, abortAllJobs } = require('./comfyui-state');
+const { COMFYUI_STATUS, COMFYUI_JOBS, notifyRenderer, abortAllJobs, appendComfyLog } = require('./comfyui-state');
 
 let _child = null;          // 当前 ChildProcess 句柄
 let _userInitiatedStop = false;  // 用户主动 stop 时标记，避免触发 exit 事件
 
 // ComfyUI 启动后等待 /system_stats 可达的最大时长
-// Qwen-Image / Flux 类大模型首次启动要加载 ~17GB UNet 到 VRAM，冷启慢；30s 经常不够
-const STARTUP_TIMEOUT_MS = 120 * 1000;  // 120s
+// Qwen-Image / Flux 类大模型首次启动要加载 ~17GB UNet 到 VRAM，冷启慢；冷启 120s 不够用
+// 用户可设置最多 10 分钟，配置项 startupTimeoutMs 生效（默认 120s）
+const STARTUP_TIMEOUT_MS_DEFAULT = 120 * 1000;  // 120s
+const STARTUP_TIMEOUT_MS_MAX = 10 * 60 * 1000;  // 10 分钟硬上限
 
 // ========= 路径校验 =========
 
@@ -101,6 +103,10 @@ async function startService(cfg) {
     if (COMFYUI_STATUS.running && _child && !_child.killed) {
         return { ok: true, pid: COMFYUI_STATUS.pid, port: COMFYUI_STATUS.port, alreadyRunning: true };
     }
+    // 正在启动中？拒绝并发启动
+    if (COMFYUI_STATUS.starting && _child && !_child.killed) {
+        return { ok: false, error: 'ComfyUI 正在启动中，请稍候' };
+    }
 
     const port = Number(cfg.port) || 8188;
 
@@ -137,7 +143,8 @@ async function startService(cfg) {
     }
 
     _userInitiatedStop = false;
-    COMFYUI_STATUS.running = true;
+    COMFYUI_STATUS.running = false;       // 等 /system_stats 可达才置 true
+    COMFYUI_STATUS.starting = true;       // spawn 已完成，进入"启动中"
     COMFYUI_STATUS.pid = _child.pid;
     COMFYUI_STATUS.port = port;
     COMFYUI_STATUS.startedAt = Date.now();
@@ -149,12 +156,19 @@ async function startService(cfg) {
         fs.writeFileSync(pidFile, String(_child.pid));
     } catch {}
 
+    // 推送 starting 事件（renderer 顶部导航状态指示）
+    notifyRenderer('comfyui:event:starting', { pid: _child.pid, port });
+
     // 收集 stdout/stderr
+    // 双写：原样打 main 进程的 stdout/stderr 方便终端排错；
+    // 同时喂进 appendComfyLog → 环形缓冲 + 推 comfyui:event:log 给 renderer 浮层
     _child.stdout?.on('data', (chunk) => {
         process.stdout.write(`[comfyui] ${chunk}`);
+        try { appendComfyLog('stdout', chunk.toString()); } catch {}
     });
     _child.stderr?.on('data', (chunk) => {
         process.stderr.write(`[comfyui!] ${chunk}`);
+        try { appendComfyLog('stderr', chunk.toString()); } catch {}
     });
 
     // 进程退出监听
@@ -167,6 +181,7 @@ async function startService(cfg) {
             COMFYUI_STATUS.lastError = userStopped ? null : (COMFYUI_STATUS.lastError || `ComfyUI 已停止 (code=${code})`);
         }
         COMFYUI_STATUS.running = false;
+        COMFYUI_STATUS.starting = false;
         COMFYUI_STATUS.pid = null;
         // 清理 PID 文件
         try {
@@ -181,22 +196,34 @@ async function startService(cfg) {
         _child = null;
     });
 
-    // 等 /system_stats 可达
-    const ready = await waitForReady(port, STARTUP_TIMEOUT_MS);
+    // 等 /system_stats 可达（用户可在配置中调高 startupTimeoutMs，硬上限 10 分钟）
+    const cfgTimeout = Number(cfg && cfg.startupTimeoutMs);
+    const timeoutMs = Math.min(
+        Math.max(Number.isFinite(cfgTimeout) && cfgTimeout > 0 ? cfgTimeout : STARTUP_TIMEOUT_MS_DEFAULT, 5 * 1000),
+        STARTUP_TIMEOUT_MS_MAX
+    );
+    const ready = await waitForReady(port, timeoutMs);
     if (!ready) {
         // 启动失败，杀掉
         await killTree(_child.pid);
         _child = null;
         COMFYUI_STATUS.running = false;
+        COMFYUI_STATUS.starting = false;
         COMFYUI_STATUS.pid = null;
-        return { ok: false, error: 'ComfyUI 启动超时（30s 内 /system_stats 未就绪）' };
+        const minutes = Math.round(timeoutMs / 60000);
+        return { ok: false, error: `ComfyUI 启动超时（${minutes} 分钟内 /system_stats 未就绪）` };
     }
+
+    // /system_stats 已可达：从 starting 进入 running
+    COMFYUI_STATUS.starting = false;
+    COMFYUI_STATUS.running = true;
+    notifyRenderer('comfyui:event:ready', { pid: _child.pid, port });
 
     return { ok: true, pid: _child.pid, port };
 }
 
 async function stopService() {
-    if (!_child && !COMFYUI_STATUS.running) {
+    if (!_child && !COMFYUI_STATUS.running && !COMFYUI_STATUS.starting) {
         return { ok: true, alreadyStopped: true };
     }
     _userInitiatedStop = true;
@@ -205,6 +232,7 @@ async function stopService() {
     }
     // 如果是 external 模式（无 child），只清状态
     COMFYUI_STATUS.running = false;
+    COMFYUI_STATUS.starting = false;
     COMFYUI_STATUS.pid = null;
     COMFYUI_STATUS.startedAt = null;
     return { ok: true };
@@ -213,6 +241,7 @@ async function stopService() {
 function getStatus() {
     return {
         running: COMFYUI_STATUS.running,
+        starting: COMFYUI_STATUS.starting,
         pid: COMFYUI_STATUS.pid,
         port: COMFYUI_STATUS.port,
         startedAt: COMFYUI_STATUS.startedAt,
@@ -239,7 +268,7 @@ async function healthCheck() {
 
 // ========= 内部 =========
 
-async function waitForReady(port, timeoutMs = STARTUP_TIMEOUT_MS) {
+async function waitForReady(port, timeoutMs = STARTUP_TIMEOUT_MS_DEFAULT) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (await probeComfyUI(port)) return true;

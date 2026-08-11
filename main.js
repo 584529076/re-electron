@@ -13,7 +13,7 @@
 //     - "local"    → 走主进程 fs.readdir 扫描（突破 web 端 showDirectoryPicker 浏览器限制）
 //     - "network"  → 主进程拉每个 URL HEAD 检查可达性 + 整理成媒体列表
 //   - 默认 seed：4 个 tab（ai-image / ai-video / nsfw-gallery / more-gallery）
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -29,9 +29,13 @@ const comfyuiWs = require('./comfyui-ws');
 const comfyuiWorkflows = require('./comfyui-workflows');
 const comfyuiToolStore = require('./comfyui-tool-store');
 const comfyuiApplier = require('./comfyui-workflow-applier');
-const { COMFYUI_STATUS, COMFYUI_JOBS, setSender: setComfySender, abortAllJobs: abortAllComfyJobs } = require('./comfyui-state');
+const { COMFYUI_STATUS, COMFYUI_JOBS, setSender: setComfySender, notifyRenderer, abortAllJobs: abortAllComfyJobs, getComfyLogBuffer, clearComfyLogBuffer } = require('./comfyui-state');
 const { LorasStore, createLinkElevated } = require('./loras-store');
+// ========= AI 小说（独立模块）=========
+const novelEngine = require('./novel-engine');
 const { spawn, execSync, spawnSync } = require('child_process');
+// crypto.randomUUID() 用于 task_queue.queueId（列队对外 ID，独立于 comfyui jobId/promptId）
+const crypto = require('crypto');
 
 // 关键：app 启动期会通过 Start-Process -Verb RunAs 提权，进程会变成 admin。
 // elevated Electron 在某些 Windows 配置下会因为 GPU 加速 / 沙箱渲染失败
@@ -216,11 +220,14 @@ async function ensureElevated() {
 }
 
 function createWindow() {
+    // 去掉窗口顶部的默认菜单栏（File / Edit / View / Window / Help）
+    Menu.setApplicationMenu(null);
+
     mainWindow = new BrowserWindow({
         width: 1600,
         height: 1000,
         backgroundColor: '#000',
-        title: 'ReElectron — 瀑布流媒体加载器',
+        title: 'RxAi工作台',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -230,6 +237,17 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'web', 'index.html'));
+
+    // 默认菜单被移除后 Ctrl+Shift+I / F12 的 accelerator 也随之失效，这里手动补回
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type !== 'keyDown') return;
+        const isF12 = input.key === 'F12';
+        const isInspect = (input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i';
+        if (isF12 || isInspect) {
+            mainWindow.webContents.toggleDevTools();
+            event.preventDefault();
+        }
+    });
 
     // ComfyUI: 把 webContents 注册成事件 sender
     setComfySender((channel, payload) => {
@@ -323,11 +341,15 @@ function initStore() {
     ensurePromptMenuTable();      // D-31: 分类表（必须在 prompt_items 前）
     ensurePromptItemsTable();     // D-31: 提示词条目表
     ensureNsfwAssociationTables();// D-36: 关联规则 + 场景模板表
+    ensurePromptLibraryTables();  // 提示词库：单表 + tags CSV 列（与 NSFW 标签系统完全隔离）
+    ensureTaskQueueTable();       // 任务队列表（透明接管 tools:run 提交）
     ensureMediaDir();             // ComfyUI: media/ 子目录
     ensureAssetsDir();            // 资产存储目录（用户可在设置改）
     ensureLorasTable();           // Lora 库表（Phase 1：纯数据层，UI 后续 phase）
     // lorasStore 需要 store + getAssetsDir + getComfyConfig 三件套；这些在 initStore 内可用
     lorasStore = new LorasStore({ store, getAssetsDir, getComfyConfig, getCoversDir });
+    // AI 小说：6 张表 + skill registry + 上下文 Map（独立模块，不依赖 comfyui / taskQueue / workbench）
+    novelEngine.bootstrap({ store, notify: notifyRenderer });
     // ComfyUI: 加载 workflows + tool schemas（JSON 损坏只 warn，不崩）
     // ComfyUI: 加载 workflows + tool schemas（JSON 损坏只 warn，不崩）
     try { comfyuiWorkflows.loadAll(); }
@@ -853,7 +875,41 @@ app.whenReady().then(async () => {
         console.warn('[startup] staging sweep failed:', e.message);
     }
     createWindow();
+    // 启动时自动拉起 ComfyUI（按 cfg.autoStartOnLaunch；默认 true）
+    // 不 await，避免阻塞窗口打开；后台跑，进度通过 comfyui:event 推 renderer
+    autoStartComfyUI();
+    // 加载任务队列里的 pending / 收尾 running；DB 已就绪（ensureTaskQueueTable 在 initStore 调过）
+    bootstrapTaskQueue();
 });
+
+// 启动时自动拉起 ComfyUI（后台，不阻塞 app ready）
+function autoStartComfyUI() {
+    try {
+        const cfg = getComfyConfig();
+        // 仅在显式 false 时才认为关闭；缺省/undefined 视为开启（与 comfyui:config:set 的默认值一致）
+        if (cfg.autoStartOnLaunch === false) {
+            console.log('[startup] ComfyUI 自动启动已关闭（cfg.autoStartOnLaunch=false）');
+            return;
+        }
+        if (!cfg.pythonPath || !cfg.comfyDir) {
+            console.warn('[startup] ComfyUI 未配置 pythonPath / comfyDir，跳过自动启动');
+            return;
+        }
+        console.log(`[startup] 自动启动 ComfyUI（port=${cfg.port}, timeout=${Math.round((cfg.startupTimeoutMs || 120000) / 1000)}s）…`);
+        // 不 await；fire-and-forget，错误和进度都通过 comfyuiProcess 内部事件 / 状态字段反馈
+        comfyuiProcess.startService(cfg).then((r) => {
+            if (r && r.ok) {
+                console.log(`[startup] ComfyUI 已就绪（port=${r.port}${r.external ? '，复用外部进程' : ''}）`);
+            } else {
+                console.warn(`[startup] ComfyUI 自动启动失败：${r && r.error || '未知错误'}`);
+            }
+        }).catch((e) => {
+            console.error('[startup] ComfyUI 自动启动异常:', e && e.message);
+        });
+    } catch (e) {
+        console.error('[startup] autoStartComfyUI 异常:', e && e.message);
+    }
+}
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
@@ -1308,7 +1364,152 @@ function ensurePromptItemsTable() {
 // 原 try 块已删：在脚本加载期 store 还是 null，会抛 "Cannot read properties of null"
 // 改在 initStore() 里统一调
 
-// ========== D-36: 提示词关联规则 + 场景模板 ==========
+// ========== 提示词库：单表 + tags CSV 列（与 NSFW 标签系统 prompt_menu/prompt_items 完全隔离） ==========
+// v4 schema（当前）：
+//   prompt_library (id, prompt_zh, prompt_en, tags TEXT DEFAULT '', created_at, updated_at)
+//   - prompt_zh / prompt_en 两列分别存中英文提示词（可任一为空）
+// v3 schema（已废弃，启动时检测并迁移；content → prompt_zh）：
+//   prompt_library (id, title, content, tags, ...)
+// v2 schema（已废弃，启动时检测并迁移）：
+//   prompt_library_tags + prompt_library + prompt_library_tag_map
+// v1 schema（已废弃，启动时检测并迁移）：
+//   prompt_library_categories + prompt_library (with category_id)
+// 启动时按 v4 → v3 → v2 → v1 顺序检测并迁移
+function ensurePromptLibraryTables() {
+    // ===== 1) 检测旧 schema =====
+    const cols = store.query("PRAGMA table_info(prompt_library)");
+    const isV1 = cols.length > 0 && cols.some(c => c.name === 'category_id');
+    const hasV2TagTable = store.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='prompt_library_tags'"
+    ).length > 0;
+    const hasV1CatOld = store.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='prompt_library_categories'"
+    ).length > 0;
+    const hasV1CatRenamed = store.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='_pl_v1_cat_old'"
+    ).length > 0;
+    const hasV1ItemRenamed = store.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='_pl_v1_old'"
+    ).length > 0;
+
+    // ===== 2) v1 → 备份旧表（若还在原名）=====
+    if (isV1) {
+        store.exec('ALTER TABLE prompt_library RENAME TO _pl_v1_old');
+    }
+    if (hasV1CatOld) {
+        store.exec('ALTER TABLE prompt_library_categories RENAME TO _pl_v1_cat_old');
+    }
+
+    // ===== 3) v2 → 把 tag_map 数据合并到 prompt_library.tags，删除两张表 =====
+    if (hasV2TagTable) {
+        const curCols = store.query("PRAGMA table_info(prompt_library)");
+        if (curCols.length && !curCols.some(c => c.name === 'tags')) {
+            store.exec("ALTER TABLE prompt_library ADD COLUMN tags TEXT DEFAULT ''");
+        }
+        const mapRows = store.query(`
+            SELECT m.item_id, t.name
+            FROM prompt_library_tag_map m
+            JOIN prompt_library_tags t ON t.id = m.tag_id
+        `);
+        const itemTags = new Map();
+        for (const r of mapRows) {
+            if (!itemTags.has(r.item_id)) itemTags.set(r.item_id, []);
+            const list = itemTags.get(r.item_id);
+            if (!list.includes(r.name)) list.push(r.name);
+        }
+        for (const [itemId, tags] of itemTags.entries()) {
+            store.exec('UPDATE prompt_library SET tags = ? WHERE id = ?', tags.join(','), itemId);
+        }
+        store.exec('DROP TABLE IF EXISTS prompt_library_tag_map');
+        store.exec('DROP TABLE IF EXISTS prompt_library_tags');
+        store.exec('DROP INDEX IF EXISTS idx_pl_tm_tag');
+        store.exec('DROP INDEX IF EXISTS idx_pl_tm_item');
+        store.exec('DROP INDEX IF EXISTS idx_pl_tags_name');
+    }
+
+    // ===== 4) 检测 v3（title+content 还在，没 prompt_zh）→ rename 备份 =====
+    const colsAfter23 = store.query("PRAGMA table_info(prompt_library)");
+    const isV3 = colsAfter23.length > 0 && !colsAfter23.some(c => c.name === 'prompt_zh');
+    if (isV3) {
+        store.exec('ALTER TABLE prompt_library RENAME TO _pl_v3_old');
+    }
+
+    // ===== 5) 创建 v4 表（首次安装 / v3 已 rename 后）=====
+    store.exec(`
+        CREATE TABLE IF NOT EXISTS prompt_library (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_zh  TEXT    DEFAULT '',
+            prompt_en  TEXT    DEFAULT '',
+            tags       TEXT    DEFAULT '',
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+        )
+    `);
+    store.exec(`CREATE INDEX IF NOT EXISTS idx_pl_tags ON prompt_library(tags)`);
+
+    // ===== 6) v3 → v4 数据迁移：content → prompt_zh（用户原内容视为中文），title 丢弃 =====
+    const hasV3Old = store.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='_pl_v3_old'"
+    ).length > 0;
+    if (hasV3Old) {
+        store.exec(`
+            INSERT INTO prompt_library (id, prompt_zh, prompt_en, tags, created_at, updated_at)
+            SELECT id, COALESCE(content, ''), '', COALESCE(tags, ''), created_at, updated_at
+              FROM _pl_v3_old
+             WHERE id NOT IN (SELECT id FROM prompt_library)
+        `);
+        store.exec('DROP TABLE IF EXISTS _pl_v3_old');
+    }
+
+    // ===== 7) v1 旧数据迁移（rename 后变 _pl_v1_old / _pl_v1_cat_old）=====
+    const hasV1Old = hasV1ItemRenamed || store.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='_pl_v1_old'"
+    ).length > 0;
+    if (hasV1Old) {
+        const catMap = new Map();
+        const hasCat = hasV1CatRenamed || store.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='_pl_v1_cat_old'"
+        ).length > 0;
+        if (hasCat) {
+            const catRows = store.query('SELECT id, name FROM _pl_v1_cat_old');
+            for (const c of catRows) catMap.set(c.id, c.name);
+        }
+        const oldRows = store.query(
+            `SELECT id, title, content, category_id, created_at, updated_at
+               FROM _pl_v1_old
+              ORDER BY id`
+        );
+        for (const r of oldRows) {
+            const tagName = catMap.get(r.category_id) || '';
+            // v1 老数据：content 视为中文（用户当时主要也是中文提示词）
+            store.exec(
+                'INSERT OR IGNORE INTO prompt_library (id, prompt_zh, prompt_en, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                r.id, r.content || '', '', tagName, r.created_at, r.updated_at
+            );
+        }
+        store.exec('DROP TABLE IF EXISTS _pl_v1_old');
+        store.exec('DROP TABLE IF EXISTS _pl_v1_cat_old');
+        store.exec('DROP INDEX IF EXISTS idx_pl_cat_code');
+        store.exec('DROP INDEX IF EXISTS idx_pl_item_cat');
+    }
+}
+
+/** 内部：tag 名称数组 → 去重 + 去空 + 保持顺序，返回 CSV 字符串 */
+function normalizeTagsCsv(tagNames) {
+    const out = [];
+    const seen = new Set();
+    for (const raw of tagNames || []) {
+        const name = String(raw || '').trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(name);
+    }
+    return out.join(',');
+}
+
+
 function ensureNsfwAssociationTables() {
     // 注意：KVDb.exec 底层用 db.prepare()，一次只能跑一条 SQL
     // 所以 CREATE TABLE 和 CREATE INDEX 必须分多次 exec
@@ -1403,6 +1604,74 @@ function ensureNsfwAssociationTables() {
         store.exec("ALTER TABLE scene_templates ADD COLUMN enabled INTEGER DEFAULT 1");
     }
     console.log('[D-NSFW-A] 关联规则 + 场景模板 + 范例 + 导入历史表已就绪');
+}
+
+// ========== D-QUEUE：任务队列表 ==========
+// 透明接管 tools:run 提交（应用层无感），所有 pending/running/done/failed/cancelled 全持久化。
+// 启动时清理：done ≥ 100 条后只保留最近 100；30 天前的 done/failed/cancelled 全部清。
+function ensureTaskQueueTable() {
+    store.exec(`
+        CREATE TABLE IF NOT EXISTS task_queue (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            queue_id        TEXT    UNIQUE NOT NULL,                    -- UUID，前端引用
+            tool_id         TEXT    NOT NULL,
+            tool_label      TEXT    NOT NULL DEFAULT '',                -- 工具展示名（提交快照）
+            form_values     TEXT    NOT NULL DEFAULT '{}',              -- JSON
+            workflow_json   TEXT    NOT NULL DEFAULT '{}',              -- JSON：提交快照，避免 schema 变了还能重提
+            prompt_id       TEXT,                                       -- ComfyUI promptId，提交成功才填
+            comfy_job_id    TEXT,                                       -- ComfyUI 端 jobId（cui-xxx），取消用
+            status          TEXT    NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending','running','done','failed','cancelled')),
+            position        INTEGER NOT NULL DEFAULT 0,                  -- pending 重排用
+            error_msg       TEXT,                                       -- 失败/取消原因
+            result_path     TEXT,                                       -- 完成时填：图片/视频本地相对路径或绝对路径
+            result_text     TEXT,                                       -- 文本结果
+            result_mime     TEXT,
+            result_size     INTEGER,
+            enqueued_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            started_at      INTEGER,
+            finished_at     INTEGER
+        )
+    `);
+    store.exec(`CREATE INDEX IF NOT EXISTS idx_tq_status_position ON task_queue(status, position)`);
+    store.exec(`CREATE INDEX IF NOT EXISTS idx_tq_enqueued_at ON task_queue(enqueued_at DESC)`);
+
+    // 启动时清理过期 done：
+    //   - 仅保留最近 100 条 done（按 finished_at DESC）
+    //   - 30 天前的 done/failed/cancelled 全清
+    try {
+        const now = Math.floor(Date.now() / 1000);
+        const cutoff = now - 86400 * 30;
+        // 30 天前的 done/failed/cancelled 直接清
+        store.exec(
+            `DELETE FROM task_queue WHERE status IN ('done','failed','cancelled') AND COALESCE(finished_at, enqueued_at) < ?`,
+            cutoff
+        );
+        // done 保留最近 100 条 → 找出第 101 条的 finished_at，删更早的
+        const keepRows = store.query(
+            `SELECT id FROM task_queue WHERE status='done' ORDER BY COALESCE(finished_at, enqueued_at) DESC LIMIT 100`
+        );
+        if (keepRows.length === 100) {
+            // 用倒数第 1 条的 finished_at 当阈值（更早的全部清掉）
+            const allDone = store.query(
+                `SELECT id, COALESCE(finished_at, enqueued_at) AS ts
+                   FROM task_queue WHERE status='done'
+                   ORDER BY COALESCE(finished_at, enqueued_at) DESC`
+            );
+            if (allDone.length > 100) {
+                const thresholdTs = allDone[99].ts;
+                const idsToDelete = allDone.slice(100).map(r => r.id);
+                if (idsToDelete.length) {
+                    store.exec(
+                        `DELETE FROM task_queue WHERE id IN (${idsToDelete.map(() => '?').join(',')}) AND status='done'`,
+                        ...idsToDelete
+                    );
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[task-queue] 启动清理过期 done 失败：', e.message);
+    }
 }
 
 // ========== Lora 库（Phase 1：数据层）==========
@@ -1741,6 +2010,143 @@ ipcMain.handle('prompt:item:import', async (_e, payload) => {
     }
 });
 
+// ========================================================================
+// 提示词库（单表 + tags CSV 列：prompt_library）
+// 用户私人 AI 生图提示词收藏，与 NSFW 标签系统（prompt_menu/prompt_items）完全隔离
+// ========================================================================
+
+// ---------- 标签 ----------
+// tags CSV 列解析：',a,b,,' → ['a','b']（trim + 去空）。保留原顺序。
+function parseTagCsv(s) {
+    if (!s) return [];
+    return s.split(',').map(x => String(x || '').trim()).filter(Boolean);
+}
+
+ipcMain.handle('prompt:library:tag:list', async () => {
+    try {
+        // 总条目数（用于「全部」chip 计数；不能用 tag 出现次数之和，1 条多 tag 会重复计数）
+        const total = store.query('SELECT COUNT(*) AS n FROM prompt_library')[0].n;
+        // 从每行的 tags CSV 解析 + 统计每个标签出现在多少条条目里；按字典序
+        const rows = store.query("SELECT tags FROM prompt_library WHERE tags IS NOT NULL AND tags != ''");
+        const counts = new Map();
+        for (const r of rows) {
+            const seen = new Set();
+            for (const t of parseTagCsv(r.tags)) {
+                const key = t.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                counts.set(t, (counts.get(t) || 0) + 1);
+            }
+        }
+        const items = [...counts.entries()]
+            .map(([name, count]) => ({ id: 0, name, count }))   // id 已无意义，前端只按 name 用
+            .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+        return { ok: true, items, total };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('prompt:library:tag:delete', async (_e, name) => {
+    try {
+        const tagName = String(name || '').trim();
+        if (!tagName) return { ok: false, error: '标签名必填' };
+        // 找出所有 tags 列包含该标签的行，去掉这个标签后回写
+        const rows = store.query('SELECT id, tags FROM prompt_library WHERE tags LIKE ?', `%${tagName}%`);
+        for (const r of rows) {
+            const filtered = parseTagCsv(r.tags).filter(t => t !== tagName);
+            store.exec(
+                "UPDATE prompt_library SET tags = ?, updated_at = strftime('%s','now') WHERE id = ?",
+                filtered.join(','), r.id
+            );
+        }
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// ---------- 提示词条目 ----------
+ipcMain.handle('prompt:library:item:list', async (_e, payload) => {
+    try {
+        const tagFilter = String((payload && payload.tag_name) || '').trim();
+        let rows;
+        if (tagFilter) {
+            // 用 ',tag,' 包裹后 LIKE 匹配，避免前缀/后缀子串误命中（如 '人物' 命中 '人物群体'）
+            rows = store.query(
+                `SELECT id, prompt_zh, prompt_en, tags, created_at, updated_at
+                   FROM prompt_library
+                  WHERE ',' || tags || ',' LIKE ?
+                  ORDER BY id DESC`,
+                `%,${tagFilter},%`
+            );
+        } else {
+            rows = store.query(
+                'SELECT id, prompt_zh, prompt_en, tags, created_at, updated_at FROM prompt_library ORDER BY id DESC'
+            );
+        }
+        const items = rows.map(r => ({
+            id: r.id,
+            prompt_zh: r.prompt_zh || '',
+            prompt_en: r.prompt_en || '',
+            created_at: r.created_at, updated_at: r.updated_at,
+            tag_names: parseTagCsv(r.tags),
+        }));
+        return { ok: true, items };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('prompt:library:item:add', async (_e, payload) => {
+    try {
+        const promptZh = String((payload && payload.prompt_zh) || '').trim();
+        const promptEn = String((payload && payload.prompt_en) || '').trim();
+        const tagNames = Array.isArray(payload && payload.tag_names) ? payload.tag_names : [];
+        if (!promptZh && !promptEn) return { ok: false, error: '中英文提示词至少填一个' };
+        const tagsCsv = normalizeTagsCsv(tagNames);
+        const r = store.exec(
+            'INSERT INTO prompt_library (prompt_zh, prompt_en, tags) VALUES (?, ?, ?)',
+            promptZh, promptEn, tagsCsv
+        );
+        return { ok: true, id: r.lastInsertRowid };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('prompt:library:item:update', async (_e, payload) => {
+    try {
+        const id = Number((payload && payload.id) || 0);
+        const promptZh = String((payload && payload.prompt_zh) || '').trim();
+        const promptEn = String((payload && payload.prompt_en) || '').trim();
+        const tagNames = Array.isArray(payload && payload.tag_names) ? payload.tag_names : [];
+        if (!id) return { ok: false, error: 'id 必填' };
+        if (!promptZh && !promptEn) return { ok: false, error: '中英文提示词至少填一个' };
+        const cur = store.query('SELECT id FROM prompt_library WHERE id = ?', id);
+        if (!cur.length) return { ok: false, error: `提示词 id=${id} 不存在` };
+        const tagsCsv = normalizeTagsCsv(tagNames);
+        store.exec(
+            "UPDATE prompt_library SET prompt_zh = ?, prompt_en = ?, tags = ?, updated_at = strftime('%s','now') WHERE id = ?",
+            promptZh, promptEn, tagsCsv, id
+        );
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('prompt:library:item:delete', async (_e, id) => {
+    try {
+        const itemId = Number(id) || 0;
+        if (!itemId) return { ok: false, error: 'id 必填' };
+        store.exec('DELETE FROM prompt_library WHERE id = ?', itemId);
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
 // ========== D-30: NSFW 模板拼装（本地化，零 LLM 依赖） ==========
 const NSFW_TEMPLATES_KEY = '__nsfw_templates__';       // { modules, tags, importedAt, sourceDir }
 const NSFW_TEMPLATES_META = '__nsfw_templates_meta__';  // { count, importedAt, sourceDir }
@@ -1970,6 +2376,8 @@ const COMFYUI_DEFAULT_CONFIG = {
     port: 8188,
     outputDir: '',         // 可选：ComfyUI 自己 output 目录的拷贝
     keepRunningAfterAppExit: false,
+    autoStartOnLaunch: true,        // 启动时自动 spawn ComfyUI（用户可在设置里关闭）
+    startupTimeoutMs: 120 * 1000,   // 单次启动等待 /system_stats 的超时（最大 10 分钟）
     jobTimeoutMs: 10 * 60 * 1000,
 };
 const MEDIA_DIR_NAME = 'media';
@@ -2023,6 +2431,11 @@ ipcMain.handle('comfyui:config:set', async (_e, cfg) => {
             port: Number(cfg?.port) || 8188,
             outputDir: typeof cfg?.outputDir === 'string' ? cfg.outputDir : '',
             keepRunningAfterAppExit: !!cfg?.keepRunningAfterAppExit,
+            autoStartOnLaunch: cfg?.autoStartOnLaunch !== false,   // 默认 true；缺省/true 都开；显式 false 才关
+            startupTimeoutMs: Math.min(
+                Math.max(Number(cfg?.startupTimeoutMs) || COMFYUI_DEFAULT_CONFIG.startupTimeoutMs, 5 * 1000),
+                10 * 60 * 1000  // 10 分钟硬上限
+            ),
             jobTimeoutMs: Number(cfg?.jobTimeoutMs) || COMFYUI_DEFAULT_CONFIG.jobTimeoutMs,
         };
         configStore.set(COMFYUI_CONFIG_KEY, out);
@@ -2094,6 +2507,16 @@ ipcMain.handle('comfyui:stop', async () => {
 
 ipcMain.handle('comfyui:status', async () => {
     try { return { ok: true, ...comfyuiProcess.getStatus() }; }
+    catch (e) { return { ok: false, error: e.message }; }
+});
+
+// 终端日志环形缓冲（renderer 右侧浮层用）
+ipcMain.handle('comfyui:log:get', async () => {
+    try { return { ok: true, lines: getComfyLogBuffer() }; }
+    catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('comfyui:log:clear', async () => {
+    try { clearComfyLogBuffer(); return { ok: true }; }
     catch (e) { return { ok: false, error: e.message }; }
 });
 
@@ -2376,6 +2799,25 @@ ipcMain.handle('comfyui:readMedia', async (_e, payload) => {
     } catch (e) { return { ok: false, error: e.message }; }
 });
 
+// D-MID-COMPARE：把本地任意图片读成 dataUrl（仅工作台 compare 模式渲染输入图用）
+// 路径来自 pickImage 对话框返回值（用户主动选过的），不允许 .. 段
+ipcMain.handle('comfyui:image:readAsDataUrl', async (_e, payload) => {
+    try {
+        const p = payload && payload.path;
+        if (!p || typeof p !== 'string') return { ok: false, error: 'path 必填' };
+        if (p.includes('..')) return { ok: false, error: '路径非法' };
+        if (!fs.existsSync(p)) return { ok: false, error: '文件不存在' };
+        const stat = fs.statSync(p);
+        if (!stat.isFile()) return { ok: false, error: '不是文件' };
+        if (stat.size > 50 * 1024 * 1024) return { ok: false, error: '文件超过 50MB' };
+        const buf = await fsp.readFile(p);
+        const ext = (p.split('.').pop() || '').toLowerCase();
+        const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', bmp: 'image/bmp', gif: 'image/gif' };
+        const mime = mimeMap[ext] || 'image/png';
+        return { ok: true, dataUrl: `data:${mime};base64,${buf.toString('base64')}`, size: buf.length };
+    } catch (e) { return { ok: false, error: e.message }; }
+});
+
 // 自动保存到资产目录（用户配置的 assets dir）：
 //   写图片二进制到 <assets>/<safeName>.<ext>
 //   写旁路元数据 <assets>/<safeName>.meta.json（workflow/models/LORA/prompt/timing/vram）
@@ -2495,6 +2937,68 @@ ipcMain.handle('assets:delete', async (_e, payload) => {
     } catch (e) { return { ok: false, error: e.message }; }
 });
 
+// ========== 资产生成历史（D-LAYOUT）==========
+// 递归扫 save dir 找 *.meta.json，返回带 ts 的清单（按 ts 倒序，limit 默认 1000）
+// 入参：{ dir?, limit? } —— dir 不传走 getAssetsDir()
+// 返回：{ ok, items: [{filePath, imagePath, ts, mime, size, filename, meta}], scanned, errors }
+ipcMain.handle('assets:listHistory', async (_e, payload) => {
+    const root = (payload && payload.dir) || getAssetsDir();
+    const limit = (payload && Number(payload.limit)) || 1000;
+    const IMG_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm'];
+    const items = [];
+    const errors = [];
+    let scanned = 0;
+
+    // 轻量递归 BFS（stack 控制深度防 symlink 循环）
+    async function walk(dir, depth) {
+        if (depth > 6) return; // 最多 6 层防爆栈
+        let entries;
+        try { entries = await fsp.readdir(dir, { withFileTypes: true }); }
+        catch (e) { return; } // 目录不可读 → 跳过
+        for (const ent of entries) {
+            // 跳过 loras/covers / 隐藏目录
+            if (ent.name.startsWith('.')) continue;
+            if (ent.name === 'loras' || ent.name === 'covers') continue;
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+                await walk(full, depth + 1);
+            } else if (ent.isFile() && ent.name.endsWith('.meta.json')) {
+                scanned++;
+                try {
+                    const txt = await fsp.readFile(full, 'utf-8');
+                    const env = JSON.parse(txt);
+                    const stem = full.replace(/\.meta\.json$/, '');
+                    let imagePath = null;
+                    for (const ext of IMG_EXTS) {
+                        const cand = stem + ext;
+                        try { await fsp.access(cand); imagePath = cand; break; }
+                        catch (_) { /* try next */ }
+                    }
+                    items.push({
+                        filePath: full,
+                        imagePath,
+                        ts: env.ts || 0,
+                        mime: env.mime || '',
+                        size: env.size || 0,
+                        filename: env.filename || '',
+                        meta: env.meta || {},
+                    });
+                } catch (e) {
+                    errors.push({ file: full, error: e.message });
+                }
+            }
+        }
+    }
+
+    try {
+        await walk(root, 0);
+        items.sort((a, b) => b.ts - a.ts);
+        return { ok: true, items: items.slice(0, limit), scanned, errors: errors.slice(0, 20), root };
+    } catch (e) {
+        return { ok: false, error: e.message, items: [], scanned, errors };
+    }
+});
+
 // ========== AI 工具（声明式 schema 驱动的 workflow 表单）==========
 ipcMain.handle('tools:list', async () => {
     try { return { ok: true, tools: comfyuiToolStore.listTools() }; }
@@ -2509,52 +3013,8 @@ ipcMain.handle('tools:get', async (_e, id) => {
     } catch (e) { return { ok: false, error: e.message }; }
 });
 
-ipcMain.handle('tools:run', async (_e, payload) => {
-    try {
-        const toolId = payload && payload.toolId;
-        const formValues = (payload && payload.formValues) || {};
-        if (!toolId) return { ok: false, error: 'toolId 必填' };
-        // 1) 拿 schema + workflow
-        const schema = comfyuiToolStore.getTool(toolId);
-        if (!schema) return { ok: false, error: `工具 ${toolId} 不存在` };
-        const wfr = comfyuiToolStore.getWorkflow(toolId);
-        if (!wfr.ok) return { ok: false, error: wfr.error };
-        // 2) 应用 form values（注入 Lora id → basename lookup，让 applier 能处理 lora/loraMulti 字段类型）
-        const ar = comfyuiApplier.applyFormToWorkflow(wfr.workflow, schema, formValues, {
-            loraLookup: (id) => {
-                if (!id) return null;
-                try {
-                    const l = _ensureLorasStore().getLora(Number(id));
-                    if (!l) return null;
-                    return { basename: l.name, weight: l.recommended_weight };
-                } catch (e) { return null; }
-            },
-        });
-        if (!ar.ok) return { ok: false, error: ar.error, warnings: ar.warnings };
-        // 3) 没跑就先自动启动
-        if (!COMFYUI_STATUS.running) {
-            const cfg = getComfyConfig();
-            const sr = await comfyuiProcess.startService(cfg);
-            if (!sr || !sr.ok) return { ok: false, error: (sr && sr.error) || 'ComfyUI 启动失败' };
-        }
-        // 4) 提交
-        const port = COMFYUI_STATUS.port;
-        const clientId = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const cfg = getComfyConfig();
-        const handle = comfyuiWs.startJob({
-            port,
-            workflowJson: ar.workflow,
-            clientId,
-            mode: schema.mode || 'sfw',
-            timeoutMs: cfg.jobTimeoutMs,
-            // 优先从 schema.outputNodes 指定的节点取产物（避免取到 PreviewImage 等辅助节点的预览图）
-            preferredNodeIds: (schema.outputNodes || []).map(n => n.nodeId),
-            // 传完整 outputNodes（含 type）让 startJob 决定走文本还是图片路径
-            outputNodes: schema.outputNodes || [],
-        });
-        return { ok: true, jobId: handle.jobId, warnings: ar.warnings };
-    } catch (e) { return { ok: false, error: e.message }; }
-});
+// D-QUEUE：原 tools:run 已迁到下方的任务队列入口（透明入队 → enqueueTask），
+// 这里不再注册 handler 以避免 ipcMain.handle 重复注册报错。
 
 // ========== D-37: 关联规则 CRUD + 校验 IPC ==========
 ipcMain.handle('prompt:association:listByItem', async (_e, payload) => {
@@ -3389,3 +3849,1174 @@ function countByLevel(cats) {
     }
     return Array.from(m.entries()).map(([level, count]) => ({ level, count })).sort((a, b) => a.level - b.level);
 }
+
+// ========== D-SYSINFO：设置页「系统信息」tab 取数 ==========
+// 全部用零依赖（os / child_process），不引入 systeminformation 之类 npm 包。
+// 单个子项失败只让该字段为 null，不阻断整体；handler 整体包 try/catch。
+
+function _osBytesToHuman(n) {
+    if (n == null) return null;
+    const num = Number(n);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let v = num;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+async function _getOsInfo() {
+    const os = require('os');
+    const out = {
+        platform: os.platform(),       // 'win32' / 'linux' / 'darwin'
+        arch: os.arch(),               // 'x64' / 'arm64'
+        release: os.release(),         // 内核版本号
+        hostname: os.hostname(),
+        uptimeSec: Math.floor(os.uptime()),
+        distro: null,
+        kernel: null,
+        error: null,
+    };
+    if (out.platform === 'win32') {
+        // Windows 上 release 是 NT 版本号（如 10.0.26200），distro 用 PowerShell 拿产品名
+        out.kernel = out.release;
+        try {
+            const r = spawnSync('powershell.exe', [
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-Command', "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; (Get-CimInstance Win32_OperatingSystem).Caption"
+            ], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+            if (r.status === 0 && r.stdout) {
+                out.distro = String(r.stdout).trim().split(/\r?\n/)[0] || null;
+            }
+        } catch (_) { /* ignore */ }
+    } else if (out.platform === 'linux') {
+        try {
+            const r = spawnSync('sh', ['-c', '. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"'], { encoding: 'utf8', timeout: 3000 });
+            if (r.status === 0 && r.stdout) out.distro = String(r.stdout).trim() || null;
+        } catch (_) {}
+        out.kernel = out.release;
+    } else if (out.platform === 'darwin') {
+        out.distro = 'macOS';
+        out.kernel = out.release;
+    }
+    return out;
+}
+
+function _getCpuInfo() {
+    const os = require('os');
+    const cpus = os.cpus() || [];
+    const first = cpus[0] || {};
+    return {
+        model: first.model || null,
+        brand: first.model || null,
+        manufacturer: null,
+        cores: cpus.length || null,
+        physicalCores: (typeof os.cpus === 'function' && typeof navigator === 'undefined') ? null : null, // Node 没有原生物理核 API，留 null
+        speedMHz: first.speed || null,
+    };
+}
+
+function _getMemoryInfo() {
+    const os = require('os');
+    const total = os.totalmem();
+    const free = os.freemem();
+    return {
+        totalBytes: total,
+        freeBytes: free,
+        usedBytes: total - free,
+    };
+}
+
+// nvidia-smi 一次拿所有 N 卡的显存（MiB → bytes），返回按 GPU index 的数组。
+// 不可用时返回空对象。用于覆盖 WMI uint32 溢出。
+async function _getNvidiaVramByIndex() {
+    const map = {};
+    try {
+        const r = spawnSync('nvidia-smi', [
+            '--query-gpu=index,memory.total',
+            '--format=csv,noheader,nounits',
+        ], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+        if (r.status === 0 && r.stdout) {
+            for (const line of String(r.stdout).split(/\r?\n/)) {
+                const m = line.trim().match(/^(\d+),\s*(\d+)/);
+                if (m) map[m[1]] = Number(m[2]) * 1024 * 1024;
+            }
+        }
+    } catch (_) {}
+    return map;
+}
+
+// nvidia-smi 一次拿 name → index 的映射（name 小写化），用于把 WMI 的 AdapterCompatibility 名
+// 关联到 nvidia-smi 的 index。多卡同型号 + 多卡名都按 nvidia-smi 顺序匹配；匹配失败返回空 Map。
+async function _getNvidiaNameToIndexMap() {
+    const map = new Map();
+    try {
+        const r = spawnSync('nvidia-smi', [
+            '--query-gpu=index,name',
+            '--format=csv,noheader',
+        ], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+        if (r.status === 0 && r.stdout) {
+            for (const line of String(r.stdout).split(/\r?\n/)) {
+                // "0, NVIDIA GeForce RTX 4070 Ti SUPER"
+                const m = line.trim().match(/^(\d+),\s*(.+)$/);
+                if (m) map.set(m[2].toLowerCase(), m[1]);
+            }
+        }
+    } catch (_) {}
+    return map;
+}
+
+// 过滤掉虚拟 / 软件显示适配器（云游戏串流、模拟器、远程桌面、虚拟显卡等）。
+// 这些通常没有真实硬件，也不会被 AI 推理用到。
+const _VENDOR_HINTS = {
+    real: [
+        // 真实显卡厂商
+        /nvidia/i, /geforce/i, /quadro/i, /tesla/i, /rtx/i, /gtx/i,
+        /advanced micro devices/i, /\bamd\b/i, /\bati\b/i, /radeon/i,
+        /intel/i, /\bintel\b.*\bcorporation\b/i,
+    ],
+    fake: [
+        // 已知虚拟 / 软件显示的 name / vendor 关键字
+        /gameviewer/i, /mumu/i, /网易/i, /netEase/i,
+        /parsec/i, /sunshine/i, /moonlight/i, /spacedesk/i,
+        /virtualhere/i, /virtualbox/i, /vmware/i, /hyper-v/i, /microsoft basic display/i,
+        /microsoft remote display/i, /miracast/i, /teamviewer/i, /anydesk/i,
+        /android.*display/i, /redroid/i, /bluestacks/i, /nox/i, /ldplayer/i, /雷电/i,
+    ],
+};
+
+function _isVirtualAdapter(name, vendor) {
+    const hay = `${vendor || ''} ${name || ''}`;
+    for (const re of _VENDOR_HINTS.fake) {
+        if (re.test(hay)) return true;
+    }
+    return false;
+}
+
+async function _getGpuList() {
+    // Windows 优先走 PowerShell (CIM)，失败再回退 wmic。
+    // Linux 走 lspci；macOS 走 system_profiler SPDisplaysDataType。
+    // 注：Win32_VideoController.AdapterRAM 在 WMI 里是 uint32，超过 4GiB 会溢出归零 / 回卷
+    //      → 对 NVIDIA/AMD 独显不靠谱。N 卡统一用 nvidia-smi.memory.total 覆盖。
+    const platform = process.platform;
+    const out = [];
+    if (platform === 'win32') {
+        const psScript = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-CimInstance Win32_VideoController | Select-Object Name,AdapterCompatibility,DriverVersion,AdapterRAM | ConvertTo-Json -Compress";
+        let parsed = null;
+        try {
+            const r = spawnSync('powershell.exe', [
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript,
+            ], { encoding: 'utf8', windowsHide: true, timeout: 8000 });
+            if (r.status === 0 && r.stdout && r.stdout.trim()) {
+                parsed = JSON.parse(r.stdout.trim());
+            }
+        } catch (_) { /* fall through to wmic */ }
+        if (!parsed) {
+            try {
+                const r = spawnSync('wmic', ['path', 'Win32_VideoController', 'get', 'Name,AdapterCompatibility,DriverVersion,AdapterRAM', '/format:list'], {
+                    encoding: 'utf8', windowsHide: true, timeout: 8000,
+                });
+                if (r.status === 0 && r.stdout) {
+                    // /format:list 输出是多段 KEY=VALUE，每段之间有空行
+                    const blocks = r.stdout.split(/\r?\n\r?\n/);
+                    const items = [];
+                    for (const blk of blocks) {
+                        if (!blk.trim()) continue;
+                        const obj = {};
+                        for (const line of blk.split(/\r?\n/)) {
+                            const m = line.match(/^([^=]+)=(.*)$/);
+                            if (m) obj[m[1].trim()] = m[2].trim();
+                        }
+                        if (obj.Name) items.push(obj);
+                    }
+                    if (items.length) parsed = items;
+                }
+            } catch (_) {}
+        }
+        // nvidia-smi 一次拿齐所有 N 卡的显存（按 GPU index）
+        const nvidiaVramByIndex = await _getNvidiaVramByIndex();
+        const nvidiaByName = await _getNvidiaNameToIndexMap();
+        const parseGpu = (it) => {
+            const ramRaw = it.AdapterRAM == null ? null : Number(it.AdapterRAM);
+            // WMI uint32 溢出判定：<= 0 或不在合理范围（> 64 GiB 也判为异常）
+            let vram = Number.isFinite(ramRaw) && ramRaw > 0 && ramRaw <= 64 * 1024 ** 3 ? ramRaw : null;
+            const vendor = it.AdapterCompatibility || null;
+            const name = it.Name || null;
+            // 过滤掉虚拟 / 软件显示适配器（云游戏、模拟器、远程桌面等）
+            if (_isVirtualAdapter(name, vendor)) return null;
+            // NVIDIA 独显：用 nvidia-smi 覆盖
+            if (vendor && /nvidia/i.test(String(vendor)) && name && nvidiaByName) {
+                const idx = nvidiaByName.get(String(name).toLowerCase());
+                if (idx != null && nvidiaVramByIndex[idx] != null) vram = nvidiaVramByIndex[idx];
+            }
+            return {
+                vendor,
+                model: name,
+                vramBytes: vram,
+                driverVersion: it.DriverVersion || null,
+            };
+        };
+        if (Array.isArray(parsed)) {
+            for (const it of parsed) {
+                const g = parseGpu(it);
+                if (g) out.push(g);
+            }
+        } else if (parsed && typeof parsed === 'object') {
+            // 单卡时 ConvertTo-Json 返回的是对象而非数组
+            const g = parseGpu(parsed);
+            if (g) out.push(g);
+        }
+    } else if (platform === 'linux') {
+        try {
+            const r = spawnSync('sh', ['-c', 'lspci -mm 2>/dev/null | grep -i "VGA\\|3D\\|Display"'], { encoding: 'utf8', timeout: 5000 });
+            if (r.status === 0 && r.stdout) {
+                for (const line of String(r.stdout).split(/\r?\n/)) {
+                    // 格式：XX:YY.Z "Vendor" "Device" "VGA compatible controller"
+                    const m = line.match(/^[\w:.]+\s+"([^"]+)"\s+"([^"]+)"\s+"([^"]+)"/);
+                    if (m) {
+                        out.push({ vendor: m[1], model: m[2], vramBytes: null, driverVersion: null, bus: m[3] });
+                    }
+                }
+            }
+        } catch (_) {}
+    } else if (platform === 'darwin') {
+        try {
+            const r = spawnSync('system_profiler', ['SPDisplaysDataType', '-json'], { encoding: 'utf8', timeout: 8000 });
+            if (r.status === 0 && r.stdout) {
+                const j = JSON.parse(r.stdout);
+                const arr = j && j.SPDisplaysDataType;
+                if (Array.isArray(arr)) {
+                    for (const it of arr) {
+                        out.push({
+                            vendor: it.SPVendor || it.vendor || null,
+                            model: it.sppci_model || it.model || it._name || null,
+                            vramBytes: it.spuram_size ? Number(String(it.spuram_size).replace(/[^0-9]/g, '')) * 1024 * 1024 : null,
+                            driverVersion: it.spdisplays_vendor || null,
+                        });
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+    return out;
+}
+
+async function _getCudaInfo() {
+    // nvidia-smi 是最权威的入口；没有就 available=false
+    const out = { available: false, driverVersion: null, cudaVersion: null, nvccPath: null, error: null };
+    try {
+        // 1) 拿 CUDA driver 版本 + CUDA runtime 版本
+        const r = spawnSync('nvidia-smi', [
+            '--query-gpu=driver_version',
+            '--format=csv,noheader,nounits',
+        ], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+        if (r.status === 0 && r.stdout && r.stdout.trim()) {
+            out.available = true;
+            out.driverVersion = String(r.stdout).trim().split(/\r?\n/)[0] || null;
+        }
+        if (out.available) {
+            const v = spawnSync('nvidia-smi', ['--version'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+            if (v.status === 0 && v.stdout) {
+                const m = String(v.stdout).match(/CUDA Version\s*[:：]?\s*(\S+)/i);
+                if (m) out.cudaVersion = m[1];
+            }
+        }
+        // 2) 找 nvcc（不一定在 PATH，但常在 cuda 安装目录）
+        const w = spawnSync('where', ['nvcc'], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
+        if (w.status === 0 && w.stdout) {
+            const first = String(w.stdout).trim().split(/\r?\n/)[0];
+            if (first) out.nvccPath = first;
+        } else if (process.platform !== 'win32') {
+            const w2 = spawnSync('sh', ['-c', 'command -v nvcc 2>/dev/null'], { encoding: 'utf8', timeout: 3000 });
+            if (w2.status === 0 && w2.stdout) out.nvccPath = String(w2.stdout).trim();
+        }
+        if (out.nvccPath && !out.cudaVersion) {
+            // nvcc --version 拿 CUDA 工具链版本
+            const nv = spawnSync('nvcc', ['--version'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+            if (nv.status === 0 && nv.stdout) {
+                const m = String(nv.stdout).match(/release\s+(\d+\.\d+)/i);
+                if (m) out.cudaVersion = m[1];
+            }
+        }
+    } catch (e) {
+        out.error = e.message;
+    }
+    return out;
+}
+
+// 通用工具检测：versionArgs 是跑 `--version` 用的参数；versionRegex 从 stdout 抽版本号。
+function _detectTool(cmd, versionArgs, versionRegex) {
+    const out = { available: false, version: null, path: null, error: null };
+    try {
+        // 先 where / which 找可执行文件路径
+        let whereRes;
+        if (process.platform === 'win32') {
+            whereRes = spawnSync('where', [cmd], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
+        } else {
+            whereRes = spawnSync('sh', ['-c', `command -v ${cmd} 2>/dev/null`], { encoding: 'utf8', timeout: 3000 });
+        }
+        if (whereRes.status === 0 && whereRes.stdout) {
+            const p = String(whereRes.stdout).trim().split(/\r?\n/)[0];
+            if (p) out.path = p;
+        }
+        // 再跑 --version
+        const args = Array.isArray(versionArgs) ? versionArgs : ['--version'];
+        const r = spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+        if (r.status === 0 && r.stdout) {
+            out.available = true;
+            if (versionRegex instanceof RegExp) {
+                const m = String(r.stdout).match(versionRegex);
+                if (m && m[1]) out.version = m[1];
+            }
+            if (!out.version) {
+                // 没匹配上就用第一行非空文本兜底
+                const firstLine = String(r.stdout).trim().split(/\r?\n/).find(l => l.trim());
+                if (firstLine) out.version = firstLine.slice(0, 80);
+            }
+        } else if (out.path) {
+            // 找到了可执行文件但 --version 失败（极少数），仍记 available=true
+            out.available = true;
+        }
+    } catch (e) {
+        out.error = e.message;
+    }
+    return out;
+}
+
+async function _getToolsInfo() {
+    return {
+        git:    _detectTool('git',    ['--version'],        /git version (\S+)/i),
+        python: _detectTool('python', ['--version'],        /Python (\d+\.\d+\.\d+)/i),
+        node:   _detectTool('node',   ['--version'],        /^v(\d+\.\d+\.\d+)/),
+        npm:    _detectTool('npm',    ['--version'],        /(\d+\.\d+\.\d+)/),
+        ffmpeg: _detectTool('ffmpeg', ['-version'],         /ffmpeg version (\S+)/i),
+    };
+}
+
+async function collectSystemInfo() {
+    // 8s 整体硬超时：任何一个子项卡住不阻塞整体
+    const HARD_TIMEOUT_MS = 8000;
+    const timer = new Promise(resolve => setTimeout(() => resolve({ __timeout: true }), HARD_TIMEOUT_MS));
+    const work = (async () => {
+        const [os, cpu, memory, gpus, cuda, tools] = await Promise.all([
+            _getOsInfo(),
+            Promise.resolve(_getCpuInfo()),
+            Promise.resolve(_getMemoryInfo()),
+            _getGpuList(),
+            _getCudaInfo(),
+            _getToolsInfo(),
+        ]);
+        return { os, cpu, memory, gpus, cuda, tools };
+    })();
+    const result = await Promise.race([work, timer]);
+    if (result && result.__timeout) {
+        // 整体超时：返回空壳但仍能渲染已就绪的字段。这里直接复用 work 的已完成部分
+        // （work 还在后台跑，但 Promise.race 已经解了）；为简单起见，返回空标识让前端显示「刷新」
+        return { __timeout: true };
+    }
+    return result;
+}
+
+ipcMain.handle('systeminfo:get', async () => {
+    try {
+        const data = await collectSystemInfo();
+        if (data && data.__timeout) {
+            return { ok: false, error: '系统信息采集整体超时，请稍后重试' };
+        }
+        // 进程级静态信息放这里，不让渲染器依赖 process.versions
+        const env = {
+            electron: app.getVersion(),
+            node: process.versions.node || null,
+            chrome: process.versions.chrome || null,
+            v8: process.versions.v8 || null,
+            electronRenderer: process.versions.electron || null,
+        };
+        return { ok: true, data: { ...data, env } };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// =====================================================================
+// D-QUEUE：任务队列（透明接管 tools:run 提交，串行执行 ComfyUI 任务）
+//   - 入队 = 写 pending 行 → 立刻返回 queueId（前端感知不到队列存在）
+//   - _qTick() 拉 top pending → 调 comfyuiWs.startJob → 监听 complete/error/close
+//   - 所有状态持久化到 task_queue 表；启动时残留 pending 会自动继续
+//   - 推送 taskQueue:event:update 事件供 drawer / 角标 / workbench 共同消费
+// =====================================================================
+
+const _q = {
+    items: new Map(),       // queueId → { row, handle? }（handle 是 comfyuiWs 返回的 cancel/ee）
+    current: null,          // queueId（当前 running 的），null 表示空闲
+    subscribers: new Set(), // 事件订阅，回调签名 (payload) => void
+    tickScheduled: false,   // 防止重复 scheduleTick
+};
+
+// ---------- 事件分发 ----------
+function _qBroadcast(payload) {
+    // 1) 主进程 → renderer（drawer / workbench / 角标都能订阅）
+    try { notifyRenderer('taskQueue:event:update', payload); } catch (e) { /* sender 未就绪 */ }
+    // 2) 也推一份给本进程内的订阅者（如果以后 main 内部有需要）
+    for (const cb of _q.subscribers) {
+        try { cb(payload); } catch (e) { console.warn('[task-queue] subscriber err:', e.message); }
+    }
+}
+
+// 内存里的对应行（如果还没缓存就现拉一次）
+function _qFindRow(queueId) {
+    const cached = _q.items.get(queueId);
+    if (cached) return cached.row;
+    const rows = store.query(`SELECT * FROM task_queue WHERE queue_id = ?`, queueId);
+    return rows[0] || null;
+}
+
+// 把内存里的 row 同步回 DB
+function _qUpdateRow(queueId, patch) {
+    const keys = Object.keys(patch || {});
+    if (!keys.length) return;
+    const sets = keys.map(k => `${k} = ?`).join(', ');
+    const values = keys.map(k => patch[k]);
+    store.exec(
+        `UPDATE task_queue SET ${sets} WHERE queue_id = ?`,
+        ...values, queueId
+    );
+    // 同步内存缓存
+    const cached = _q.items.get(queueId);
+    if (cached) Object.assign(cached.row, patch);
+}
+
+// ---------- 计算 pending 排队位置 ----------
+function _qPositionOf(queueId) {
+    const rows = store.query(
+        `SELECT queue_id FROM task_queue WHERE status='pending' ORDER BY position ASC, id ASC`
+    );
+    return rows.findIndex(r => r.queue_id === queueId); // -1 表示不在 pending
+}
+
+// 推进 pending 的 position：把所有 pending 的 position 写成当前顺序 0,1,2,...
+function _qCompactPendingPositions() {
+    const rows = store.query(
+        `SELECT queue_id FROM task_queue WHERE status='pending' ORDER BY position ASC, id ASC`
+    );
+    rows.forEach((r, i) => {
+        store.exec(`UPDATE task_queue SET position=? WHERE queue_id=?`, i, r.queue_id);
+    });
+}
+
+// 兜底工具：path.join 但忽略参数为 null/undefined 的项
+function pathJoinSafe(...args) {
+    return path.join(...args.filter(x => x !== null && x !== undefined && x !== ''));
+}
+
+// ---------- 提交新任务 ----------
+function enqueueTask({ toolId, formValues }) {
+    try {
+        if (!toolId) return { ok: false, error: 'toolId 必填' };
+        const schema = comfyuiToolStore.getTool(toolId);
+        if (!schema) return { ok: false, error: `工具 ${toolId} 不存在` };
+        const wfr = comfyuiToolStore.getWorkflow(toolId);
+        if (!wfr.ok) return { ok: false, error: wfr.error };
+        const ar = comfyuiApplier.applyFormToWorkflow(wfr.workflow, schema, formValues, {
+            loraLookup: (id) => {
+                if (!id) return null;
+                try {
+                    const l = _ensureLorasStore().getLora(Number(id));
+                    if (!l) return null;
+                    return { basename: l.name, weight: l.recommended_weight };
+                } catch (e) { return null; }
+            },
+        });
+        if (!ar.ok) return { ok: false, error: ar.error, warnings: ar.warnings };
+
+        // 选一个 position（放在当前最大值之后）
+        const maxPosRow = store.query(
+            `SELECT COALESCE(MAX(position), -1) AS p FROM task_queue WHERE status='pending'`
+        );
+        const position = (maxPosRow[0] && maxPosRow[0].p + 1) || 0;
+
+        const queueId = (crypto.randomUUID && crypto.randomUUID()) ||
+            (`q-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+
+        const toolLabel = schema.label || schema.name || toolId;
+        store.exec(
+            `INSERT INTO task_queue
+             (queue_id, tool_id, tool_label, form_values, workflow_json, status, position, enqueued_at)
+             VALUES (?, ?, ?, ?, ?, 'pending', ?, strftime('%s','now'))`,
+            queueId,
+            toolId,
+            String(toolLabel).slice(0, 200),
+            JSON.stringify(formValues || {}),
+            JSON.stringify(ar.workflow || {}),
+            position
+        );
+        const row = store.query(`SELECT * FROM task_queue WHERE queue_id = ?`, queueId)[0];
+        _q.items.set(queueId, { row, handle: null });
+        // D-MID-AUTO-MATCH-FIX：'added' 事件补顶层 queueId，
+        // 否则 renderer 监听器里 `if (!ev.queueId) return` 会把这条事件吃掉，
+        // midTasksByJobId 永远不更新 → 自动匹配永远命中不到
+        _qBroadcast({ type: 'added', queueId, task: row });
+        _qScheduleTick();
+        return { ok: true, queueId, position, warnings: ar.warnings };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+// ---------- 引擎推进 ----------
+function _qScheduleTick() {
+    if (_q.tickScheduled) return;
+    _q.tickScheduled = true;
+    setImmediate(() => {
+        _q.tickScheduled = false;
+        _qTick();
+    });
+}
+
+async function _qTick() {
+    if (_q.current) return; // 已在跑
+    const rows = store.query(
+        `SELECT * FROM task_queue WHERE status='pending' ORDER BY position ASC, id ASC LIMIT 1`
+    );
+    const row = rows[0];
+    if (!row) return;
+    const queueId = row.queue_id;
+    _q.current = queueId;
+
+    // 确保 ComfyUI 已就绪
+    if (!COMFYUI_STATUS.running) {
+        let sr;
+        try {
+            const cfg = getComfyConfig();
+            sr = await comfyuiProcess.startService(cfg);
+        } catch (e) {
+            sr = { ok: false, error: e.message };
+        }
+        if (!sr || !sr.ok) {
+            const msg = (sr && sr.error) || 'ComfyUI 启动失败';
+            _qUpdateRow(queueId, {
+                status: 'failed',
+                error_msg: msg,
+                started_at: Math.floor(Date.now() / 1000),
+                finished_at: Math.floor(Date.now() / 1000),
+            });
+            _q.current = null;
+            _qBroadcast({ type: 'status', queueId, status: 'failed', error_msg: msg });
+            // 等一拍再试，避免忙循环
+            setTimeout(() => _qScheduleTick(), 1500);
+            return;
+        }
+    }
+
+    const startedAt = Math.floor(Date.now() / 1000);
+    try {
+        const cfg = getComfyConfig();
+        const port = COMFYUI_STATUS.port;
+        const clientId = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const workflowJson = JSON.parse(row.workflow_json || '{}');
+        const schema = comfyuiToolStore.getTool(row.tool_id);
+        const handle = comfyuiWs.startJob({
+            port,
+            workflowJson,
+            clientId,
+            mode: schema ? (schema.mode || 'sfw') : 'sfw',
+            timeoutMs: cfg.jobTimeoutMs,
+            preferredNodeIds: (schema && schema.outputNodes ? schema.outputNodes : []).map(n => n.nodeId),
+            outputNodes: (schema && schema.outputNodes) || [],
+        });
+        const cached = _q.items.get(queueId) || { row };
+        cached.handle = handle;
+        _q.items.set(queueId, cached);
+
+        let settled = false;
+        const onSettle = (finalStatus, extra = {}) => {
+            if (settled) return;
+            settled = true;
+            if (_q.current === queueId) _q.current = null;
+            const finishedAt = Math.floor(Date.now() / 1000);
+            const patch = {
+                status: finalStatus,
+                finished_at: finishedAt,
+                ...extra,
+            };
+            _qUpdateRow(queueId, patch);
+            _qBroadcast({ type: 'status', queueId, status: finalStatus, ...extra });
+            if (finalStatus === 'done') {
+                _qBroadcast({ type: 'result', queueId, ...extra });
+            }
+            _qCompactPendingPositions();
+            _qScheduleTick();
+        };
+
+        handle.ee.once('error', (ev) => {
+            onSettle('failed', { error_msg: ev.message || `提交失败 (${ev.code || ''})` });
+        });
+        handle.ee.once('complete', (ev) => {
+            const resultPatch = {
+                result_mime: ev.mime || (ev.kind === 'text' ? 'text/plain' : null),
+                result_size: (ev.meta && ev.meta.fileSize) || null,
+            };
+            if (ev.kind === 'text') {
+                resultPatch.result_text = ev.text || '';
+                resultPatch.result_path = null;
+            } else {
+                resultPatch.result_path = ev.dataUrl || null;
+                resultPatch.result_text = null;
+            }
+            onSettle('done', resultPatch);
+        });
+        handle.ee.once('close', () => {
+            // 兜底：complete/error 都没触发。
+            // 但若行已经被外部 cancel 直接写成 cancelled，不能再覆盖回 failed。
+            if (settled) return;
+            const cur = _qFindRow(queueId);
+            if (cur && cur.status === 'cancelled') { settled = true; return; }
+            onSettle('failed', { error_msg: 'ComfyUI 任务异常关闭' });
+        });
+
+        // started 事件 → 落 running 状态 + 写 prompt_id
+        handle.ee.once('started', (ev) => {
+            _qUpdateRow(queueId, {
+                status: 'running',
+                started_at: startedAt,
+                prompt_id: ev.promptId || null,
+                comfy_job_id: ev.jobId || null,
+            });
+            _qBroadcast({ type: 'status', queueId, status: 'running', prompt_id: ev.promptId });
+        });
+
+        // 进度转发
+        handle.ee.on('progress', (ev) => {
+            _qBroadcast({ type: 'progress', queueId, value: ev.value || 0, max: ev.max || 0 });
+        });
+    } catch (e) {
+        const msg = e && e.message || String(e);
+        _qUpdateRow(queueId, {
+            status: 'failed',
+            started_at: startedAt,
+            finished_at: startedAt,
+            error_msg: msg,
+        });
+        _q.current = null;
+        _qBroadcast({ type: 'status', queueId, status: 'failed', error_msg: msg });
+        _qScheduleTick();
+    }
+}
+
+// ---------- 取消 / 移除 / 重排 ----------
+function cancelTask(queueId) {
+    const cached = _q.items.get(queueId);
+    const row = _qFindRow(queueId);
+    if (!row) return { ok: false, error: '任务不存在' };
+    if (row.status === 'pending') {
+        const finishedAt = Math.floor(Date.now() / 1000);
+        _qUpdateRow(queueId, {
+            status: 'cancelled',
+            finished_at: finishedAt,
+            error_msg: '用户取消（未开始）',
+        });
+        _qBroadcast({ type: 'status', queueId, status: 'cancelled' });
+        _qCompactPendingPositions();
+        _qScheduleTick();
+        return { ok: true };
+    }
+    if (row.status === 'running') {
+        try {
+            if (cached && cached.handle && cached.handle.cancel) {
+                cached.handle.cancel('user cancel');
+            } else {
+                const jobRow = COMFYUI_JOBS.get(row.comfy_job_id || '');
+                if (jobRow && jobRow.ac) jobRow.ac.abort('user cancel');
+            }
+        } catch {}
+        const finishedAt = Math.floor(Date.now() / 1000);
+        _qUpdateRow(queueId, {
+            status: 'cancelled',
+            finished_at: finishedAt,
+            error_msg: '用户取消',
+        });
+        if (_q.current === queueId) _q.current = null;
+        _qBroadcast({ type: 'status', queueId, status: 'cancelled' });
+        _qCompactPendingPositions();
+        _qScheduleTick();
+        return { ok: true };
+    }
+    return { ok: false, error: `当前状态（${row.status}）不可取消` };
+}
+
+function removeTask(queueId) {
+    const row = _qFindRow(queueId);
+    if (!row) return { ok: false, error: '任务不存在' };
+    if (!['done', 'failed', 'cancelled'].includes(row.status)) {
+        return { ok: false, error: '仅终态任务可删除' };
+    }
+    store.exec(`DELETE FROM task_queue WHERE queue_id = ?`, queueId);
+    _q.items.delete(queueId);
+    _qBroadcast({ type: 'removed', queueId });
+    return { ok: true };
+}
+
+function reorderTask(queueId, targetQueueId) {
+    if (queueId === targetQueueId) return { ok: true, noop: true };
+    const from = _qFindRow(queueId);
+    const to = _qFindRow(targetQueueId);
+    if (!from || !to) return { ok: false, error: '任务不存在' };
+    if (from.status !== 'pending' || to.status !== 'pending') {
+        return { ok: false, error: '仅 pending 间可拖拽' };
+    }
+    const fromPos = from.position;
+    const toPos = to.position;
+    _qUpdateRow(queueId, { position: toPos });
+    _qUpdateRow(targetQueueId, { position: fromPos });
+    _qCompactPendingPositions();
+    _qBroadcast({ type: 'reordered', queueId });
+    _qBroadcast({ type: 'reordered', queueId: targetQueueId });
+    return { ok: true };
+}
+
+// 启动时拉已存在的非终态行进 _q.items 缓存
+function _qLoadOnStartup() {
+    const rows = store.query(
+        `SELECT * FROM task_queue WHERE status IN ('pending','running')`
+    );
+    const now = Math.floor(Date.now() / 1000);
+    for (const row of rows) {
+        if (row.status === 'running') {
+            // 重启前是 running → 已无法恢复 comfyui 端进度，归为 failed 让下一条顶上去
+            _qUpdateRow(row.queue_id, {
+                status: 'failed',
+                finished_at: now,
+                error_msg: 'app 重启，任务被中断',
+            });
+        }
+        _q.items.set(row.queue_id, { row, handle: null });
+    }
+    _qCompactPendingPositions();
+    _qScheduleTick();
+}
+
+// ---------- IPC ==========
+ipcMain.handle('taskQueue:enqueue', async (_e, payload) => {
+    return enqueueTask(payload || {});
+});
+
+ipcMain.handle('taskQueue:list', async (_e, opts) => {
+    try {
+        const limit = (opts && opts.limit) || 500;
+        if (opts && opts.countOnly) {
+            const r = store.query(
+                `SELECT
+                    SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS running,
+                    SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+                    SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+                    SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled
+                  FROM task_queue`
+            );
+            const s = r[0] || {};
+            const o = {
+                total: (Number(s.pending) || 0) + (Number(s.running) || 0) +
+                       (Number(s.done) || 0) + (Number(s.failed) || 0) + (Number(s.cancelled) || 0),
+                pending: Number(s.pending) || 0,
+                running: Number(s.running) || 0,
+                done: Number(s.done) || 0,
+                failed: Number(s.failed) || 0,
+                cancelled: Number(s.cancelled) || 0,
+            };
+            return { ok: true, counts: o };
+        }
+        const rows = store.query(
+            // 不返回 result_path / result_text —— 这俩字段在 image 任务上是 base64 data URL
+            // （动辄几百 KB ~ 几 MB），大量 done 任务时 IPC payload 会很重。
+            // 前端需要缩略图时通过 taskQueue:result:readAsDataUrl 按需拉。
+            // D-MID-AUTO-MATCH：返回 form_values（KB 级，几百条任务共几 MB，可以接受），
+            // 工作台用它做「当前 tool + form 是否匹配某条 done 任务」的检测。
+            `SELECT id, queue_id, tool_id, tool_label, status, position, error_msg,
+                    form_values,
+                    result_mime, result_size, enqueued_at, started_at, finished_at,
+                    prompt_id, comfy_job_id,
+                    (result_path IS NOT NULL) AS has_result_path,
+                    (result_text IS NOT NULL) AS has_result_text
+               FROM task_queue ORDER BY enqueued_at DESC LIMIT ?`,
+            limit
+        );
+        return { ok: true, items: rows };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('taskQueue:cancel', async (_e, queueId) => {
+    return cancelTask(String(queueId || ''));
+});
+
+ipcMain.handle('taskQueue:remove', async (_e, queueId) => {
+    return removeTask(String(queueId || ''));
+});
+
+ipcMain.handle('taskQueue:reorder', async (_e, payload) => {
+    try {
+        const fromId = payload && payload.from;
+        const toId = payload && payload.to;
+        return reorderTask(String(fromId || ''), String(toId || ''));
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('taskQueue:result:readAsDataUrl', async (_e, queueId) => {
+    try {
+        const row = _qFindRow(String(queueId || ''));
+        if (!row) return { ok: false, error: '任务不存在' };
+        const rpath = row.result_path;
+        if (rpath && /^data:/i.test(rpath)) {
+            return { ok: true, dataUrl: rpath, mime: row.result_mime || 'image/png' };
+        }
+        if (row.result_text) {
+            return { ok: true, kind: 'text', text: row.result_text, mime: row.result_mime || 'text/plain' };
+        }
+        if (rpath) {
+            let abs = rpath;
+            if (!fs.existsSync(abs)) {
+                const candidates = [
+                    rpath,
+                    pathJoinSafe(getMediaDir(), rpath),
+                    pathJoinSafe(promptsDir, rpath),
+                ];
+                for (const c of candidates) {
+                    if (c && fs.existsSync(c)) { abs = c; break; }
+                }
+            }
+            if (!fs.existsSync(abs)) return { ok: false, error: '产物文件不存在' };
+            const buf = await fsp.readFile(abs);
+            const mime = row.result_mime || 'image/png';
+            const dataUrl = `data:${mime};base64,${buf.toString('base64')}`;
+            return { ok: true, dataUrl, mime, path: abs };
+        }
+        return { ok: false, error: '该任务没有产物' };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// 改造 tools:run：现在直接走队列（前端 workbench 后续会切到 taskQueue:* 频道）
+ipcMain.handle('tools:run', async (_e, payload) => {
+    return enqueueTask(payload || {});
+});
+
+// 启动入口：供 app.whenReady() 末尾调用
+function bootstrapTaskQueue() {
+    try {
+        _qLoadOnStartup();
+    } catch (e) {
+        console.warn('[task-queue] bootstrap 失败：', e.message);
+    }
+}
+
+// ========== AI 小说（独立模块；不动 taskQueue / ComfyUI / workbench）=========
+// 共 13 个 handler；事件推送走 ainovel:event:update（复用现有 notifyRenderer）
+ipcMain.handle('ainovel:list', async () => {
+    return novelEngine.listNovels();
+});
+
+ipcMain.handle('ainovel:create', async (_e, payload) => {
+    return novelEngine.createNovel(payload || {});
+});
+
+ipcMain.handle('ainovel:get', async (_e, payload) => {
+    return novelEngine.getNovel((payload || {}).novelId);
+});
+
+ipcMain.handle('ainovel:delete', async (_e, payload) => {
+    return novelEngine.deleteNovel((payload || {}).novelId);
+});
+
+ipcMain.handle('ainovel:updateOutline', async (_e, payload) => {
+    const { novelId, outlinePatch } = payload || {};
+    return novelEngine.updateOutline(novelId, outlinePatch || {});
+});
+
+ipcMain.handle('ainovel:generateOutline', async (_e, payload) => {
+    const { novelId } = payload || {};
+    return novelEngine.callSkill('outline-architect', { novelId }, { novelId });
+});
+
+ipcMain.handle('ainovel:writeChapter', async (_e, payload) => {
+    const { novelId, chapterId } = payload || {};
+    if (!novelId || !chapterId) return { ok: false, error: 'novelId / chapterId 必填' };
+    const chapter = novelEngine.getActive?.()?.chapters?.get(chapterId)
+        || null;
+    // 从 store 直接取（getActive 可能为 null 如果该 novel 未 setActive）
+    let ch = chapter;
+    if (!ch) {
+        try {
+            const row = (store.query('SELECT * FROM _ainovel_chapters WHERE id = ? AND novel_id = ?', chapterId, novelId)[0]) || null;
+            ch = row;
+        } catch {}
+    }
+    if (!ch) return { ok: false, error: '章节不存在' };
+    return novelEngine.callSkill('chapter-writer', { novelId, chapter: ch }, { novelId });
+});
+
+ipcMain.handle('ainovel:updateChapter', async (_e, payload) => {
+    const { novelId, chapterId, ...patch } = payload || {};
+    return novelEngine.updateChapter(novelId, chapterId, patch || {});
+});
+
+ipcMain.handle('ainovel:exportTxt', async (_e, payload) => {
+    const { novelId } = payload || {};
+    if (!novelId) return { ok: false, error: 'novelId 必填' };
+    return _ainovelExportTxt(novelId);
+});
+
+async function _ainovelExportTxt(novelId) {
+    try {
+        const get = novelEngine.getNovel(novelId);
+        if (!get.ok) return get;
+        const { novel: nv, outline, chapters } = get;
+        if (!chapters || !chapters.length) return { ok: false, error: '该小说暂无章节' };
+        const dlg = await dialog.showSaveDialog(mainWindow, {
+            title: '导出小说为 TXT',
+            defaultPath: (nv.title || 'novel').replace(/[\\/:*?"<>|]/g, '_') + '.txt',
+            filters: [{ name: '文本文件', extensions: ['txt'] }],
+        });
+        if (dlg.canceled || !dlg.filePath) return { ok: false, error: '已取消' };
+        const fs = require('fs');
+        const lines = [];
+        lines.push(nv.title || '未命名');
+        lines.push('');
+        lines.push('风格：' + (nv.style || '') + (nv.custom_style ? ' / ' + nv.custom_style : ''));
+        lines.push('核心创意：' + (nv.core_idea || ''));
+        if (outline) {
+            if (outline.structure) { lines.push(''); lines.push('【结构】'); lines.push(outline.structure); }
+            if (outline.world_setting) { lines.push(''); lines.push('【世界观】'); lines.push(outline.world_setting); }
+        }
+        lines.push('');
+        lines.push('='.repeat(60));
+        lines.push('');
+        const sortedChapters = chapters.slice().sort((a, b) => a.chapter_no - b.chapter_no);
+        for (const ch of sortedChapters) {
+            if (!ch.content) continue;
+            lines.push(`第 ${ch.chapter_no} 章 ${ch.title || ''}`);
+            lines.push('');
+            lines.push(ch.content);
+            lines.push('');
+        }
+        await fs.promises.writeFile(dlg.filePath, lines.join('\n'), 'utf8');
+        return { ok: true, path: dlg.filePath };
+    } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+    }
+}
+
+ipcMain.handle('ainovel:getProviderConfig', async () => {
+    return novelEngine.getProviderConfig();
+});
+
+ipcMain.handle('ainovel:setProviderConfig', async (_e, payload) => {
+    return novelEngine.setProviderConfig(payload || {});
+});
+
+ipcMain.handle('ainovel:testProvider', async (_e, payload) => {
+    return novelEngine.testProviderConnection(payload || {});
+});
+
+ipcMain.handle('ainovel:listGenerations', async (_e, payload) => {
+    return novelEngine.listGenerations((payload || {}).novelId);
+});
+ipcMain.handle('ainovel:getGeneration', async (_e, payload) => {
+    return novelEngine.getGeneration((payload || {}).id);
+});
+// OpenClaw 模式：用户反馈 + Agent 配置管理
+ipcMain.handle('ainovel:saveAgentFeedback', async (_e, payload) => {
+    try { return novelEngine.saveAgentFeedback(payload || {}); }
+    catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+ipcMain.handle('ainovel:listAgentFeedback', async (_e, payload) => {
+    return novelEngine.listAgentFeedback(payload || {});
+});
+ipcMain.handle('ainovel:getAgentConfig', async (_e, payload) => {
+    return novelEngine.getAgentConfig((payload || {}).skill);
+});
+ipcMain.handle('ainovel:saveAgentConfig', async (_e, payload) => {
+    return novelEngine.saveAgentConfig((payload || {}).skill, (payload || {}).filename, (payload || {}).content);
+});
+ipcMain.handle('ainovel:listMemoryLogs', async (_e, payload) => {
+    return novelEngine.listMemoryLogs(payload || {});
+});
+ipcMain.handle('ainovel:flushMemory', async (_e, payload) => {
+    return novelEngine.flushMemory(payload || {});
+});
+
+// 列出全部已注册 Agent（供设置 → Agent 配置 面板渲染左侧列表）
+ipcMain.handle('ainovel:listSkills', async () => {
+    const list = (typeof novelEngine.listSkills === 'function') ? novelEngine.listSkills() : [];
+    return { ok: true, skills: list };
+});
+
+// ========= Sprint H：LLM-driven 多 agent 协作（Blackboard / Inbox / Task / Director）=========
+function _hSafe(fn) {
+    try { const r = fn(); return (r && typeof r.then === 'function') ? r.catch(e => ({ ok: false, error: e.message || String(e) })) : r; }
+    catch (e) { return { ok: false, error: e.message || String(e) }; }
+}
+
+// --- H2: 黑板 ---
+ipcMain.handle('ainovel:blackboardList', async (_e, payload) => {
+    const { novelId } = payload || {};
+    return _hSafe(() => novelEngine.blackboardList(novelId));
+});
+ipcMain.handle('ainovel:blackboardRead', async (_e, payload) => {
+    const { novelId, key } = payload || {};
+    return _hSafe(() => novelEngine.blackboardRead(novelId, key));
+});
+ipcMain.handle('ainovel:blackboardWrite', async (_e, payload) => {
+    const { novelId, key, value, owner } = payload || {};
+    return _hSafe(() => novelEngine.blackboardWrite(novelId, key, value, owner || 'user'));
+});
+ipcMain.handle('ainovel:blackboardClear', async (_e, payload) => {
+    const { novelId, key } = payload || {};
+    return _hSafe(() => novelEngine.blackboardClear(novelId, key || null));
+});
+
+// --- H3: 收件箱 ---
+ipcMain.handle('ainovel:inboxList', async (_e, payload) => {
+    const { novelId, agentName } = payload || {};
+    return _hSafe(() => novelEngine.inboxList(novelId, agentName));
+});
+ipcMain.handle('ainovel:inboxSend', async (_e, payload) => {
+    const { novelId, ...opts } = payload || {};
+    return _hSafe(() => novelEngine.inboxSend(novelId, Object.assign({ from: 'user' }, opts)));
+});
+ipcMain.handle('ainovel:inboxMarkRead', async (_e, payload) => {
+    const { novelId, agentName, ids } = payload || {};
+    return _hSafe(() => novelEngine.inboxMarkRead(novelId, agentName, ids || null));
+});
+
+// --- H4: 任务图 ---
+ipcMain.handle('ainovel:taskList', async (_e, payload) => {
+    const { novelId, ...opts } = payload || {};
+    return _hSafe(() => novelEngine.taskList(novelId, opts));
+});
+ipcMain.handle('ainovel:taskCreate', async (_e, payload) => {
+    const { novelId, ...opts } = payload || {};
+    return _hSafe(() => novelEngine.taskCreate(novelId, opts));
+});
+ipcMain.handle('ainovel:taskGet', async (_e, payload) => {
+    return _hSafe(() => novelEngine.taskGet((payload || {}).taskId));
+});
+ipcMain.handle('ainovel:taskComplete', async (_e, payload) => {
+    const { taskId, result } = payload || {};
+    return _hSafe(() => novelEngine.taskComplete(taskId, result));
+});
+ipcMain.handle('ainovel:taskFail', async (_e, payload) => {
+    const { taskId, error } = payload || {};
+    return _hSafe(() => novelEngine.taskFail(taskId, error));
+});
+ipcMain.handle('ainovel:taskReady', async (_e, payload) => {
+    const { novelId, agentName } = payload || {};
+    return _hSafe(() => novelEngine.taskReady(novelId, agentName || null));
+});
+
+// --- H5/H6: 编剧调度 ---
+ipcMain.handle('ainovel:runDirector', async (_e, payload) => {
+    const { novelId, goal, input } = payload || {};
+    if (!novelId || !goal) return { ok: false, error: 'novelId / goal 必填' };
+    try { return await novelEngine.runDirectedAgent(novelId, goal, { input: input || {} }); }
+    catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+ipcMain.handle('ainovel:getDirectorMode', async () => {
+    return _hSafe(() => ({ ok: true, mode: novelEngine.getDirectorMode() }));
+});
+ipcMain.handle('ainovel:setDirectorMode', async (_e, payload) => {
+    return _hSafe(() => novelEngine.setDirectorMode((payload || {}).mode));
+});
+
+// Phase 2: 自动推进模式（5 个 handler）
+ipcMain.handle('ainovel:autoStart', async (_e, payload) => {
+    try { return await novelEngine.startAuto((payload || {}).novelId); }
+    catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+ipcMain.handle('ainovel:autoPause', async (_e, payload) => {
+    return novelEngine.pauseAuto((payload || {}).novelId);
+});
+ipcMain.handle('ainovel:autoResume', async (_e, payload) => {
+    return novelEngine.resumeAuto((payload || {}).novelId);
+});
+ipcMain.handle('ainovel:autoCancel', async (_e, payload) => {
+    return novelEngine.cancelAuto((payload || {}).novelId);
+});
+ipcMain.handle('ainovel:getAutoStatus', async (_e, payload) => {
+    return novelEngine.getAutoStatus((payload || {}).novelId);
+});
+// ========= Phase 3: 知识库 IPC =========
+ipcMain.handle('ainovel:getKnowledge', async (_e, payload) => {
+    return novelEngine.getKnowledge((payload || {}).novelId, (payload || {}).kind);
+});
+ipcMain.handle('ainovel:extractKnowledge', async (_e, payload) => {
+    return novelEngine.extractKnowledge((payload || {}).novelId, (payload || {}).kinds);
+});
+ipcMain.handle('ainovel:updateKnowledge', async (_e, payload) => {
+    return novelEngine.updateKnowledge((payload || {}).id, (payload || {}).patch || {});
+});
+ipcMain.handle('ainovel:deleteKnowledge', async (_e, payload) => {
+    return novelEngine.deleteKnowledge((payload || {}).id);
+});
+
+// Phase 4-A: 故事架构 IPC
+ipcMain.handle('ainovel:getArchitecture', async (_e, payload) => {
+    return novelEngine.getArchitecture((payload || {}).novelId);
+});
+
+ipcMain.handle('ainovel:updateArchitecture', async (_e, payload) => {
+    return novelEngine.updateArchitecture((payload || {}).novelId, (payload || {}).patch || {});
+});
+
+ipcMain.handle('ainovel:regenerateArchitecture', async (_e, payload) => {
+    // 触发 story-architect 重跑（基于已有 outline）
+    return novelEngine.regenerateArchitecture((payload || {}).novelId);
+});
+
+// 通用设置读写（novel 全局 key/value，落 _ainovel_settings）
+ipcMain.handle('ainovel:getSetting', async (_e, payload) => {
+    try {
+        return novelEngine.getSetting((payload || {}).key);
+    } catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+ipcMain.handle('ainovel:setSetting', async (_e, payload) => {
+    try {
+        return novelEngine.setSetting((payload || {}).key, (payload || {}).value);
+    } catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+
+// Sprint W: 工作面板事件流
+ipcMain.handle('ainovel:listWorkflowEvents', async (_e, payload) => {
+    return _hSafe(() => novelEngine.listWorkflowEvents(
+        (payload || {}).novelId,
+        (payload || {}).opts || {}
+    ));
+});
+ipcMain.handle('ainovel:listWorkflowReplay', async (_e, payload) => {
+    return _hSafe(() => novelEngine.listWorkflowReplay(
+        (payload || {}).novelId,
+        (payload || {}).opts || {}
+    ));
+});
+ipcMain.handle('ainovel:getWorkflowEventDetail', async (_e, payload) => {
+    return _hSafe(() => novelEngine.getWorkflowEventDetail((payload || {}).id));
+});
+ipcMain.handle('ainovel:getWorkflowStats', async (_e, payload) => {
+    return _hSafe(() => novelEngine.getWorkflowStats((payload || {}).novelId));
+});
+
+// Phase 4-B: 圣经状态 IPC
+ipcMain.handle('ainovel:getNovelState', async (_e, payload) => {
+    return novelEngine.getNovelState((payload || {}).novelId);
+});
+
+ipcMain.handle('ainovel:atomicCommitState', async (_e, payload) => {
+    return novelEngine.atomicCommitState((payload || {}).novelId, (payload || {}).patch || {});
+});
+
+ipcMain.handle('ainovel:resetNovelState', async (_e, payload) => {
+    return novelEngine.resetNovelState((payload || {}).novelId);
+});

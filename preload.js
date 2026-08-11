@@ -78,6 +78,15 @@ contextBridge.exposeInMainWorld('api', {
         listAll: () => ipcRenderer.invoke('prompt:item:listAll'),
         import: (rows) => ipcRenderer.invoke('prompt:item:import', { rows }),
     },
+    // ========= 提示词库（prompt_library：单表 + tags CSV 列） =========
+    promptLibrary: {
+        tagList:   ()   => ipcRenderer.invoke('prompt:library:tag:list'),
+        tagDelete: (name) => ipcRenderer.invoke('prompt:library:tag:delete', name),
+        itemList:  (tagName) => ipcRenderer.invoke('prompt:library:item:list', { tag_name: tagName || '' }),
+        itemAdd:    (p)  => ipcRenderer.invoke('prompt:library:item:add', p),
+        itemUpdate: (p)  => ipcRenderer.invoke('prompt:library:item:update', p),
+        itemDelete: (id) => ipcRenderer.invoke('prompt:library:item:delete', id),
+    },
     // ========= 提示词预览图（<promptsDir>/previews/<id>-<ts>.<ext>）=========
     promptPreview: {
         upload: (payload) => ipcRenderer.invoke('prompt:preview:upload', payload),
@@ -139,22 +148,47 @@ contextBridge.exposeInMainWorld('api', {
         saveAsset: (payload) => ipcRenderer.invoke('comfyui:saveAsset', payload),
         saveAs: (payload) => ipcRenderer.invoke('comfyui:saveAs', payload),
         readMedia: (payload) => ipcRenderer.invoke('comfyui:readMedia', payload),
+        // D-MID-COMPARE：把本地图片读成 dataUrl（compare 模式渲染输入图）
+        imageReadAsDataUrl: (payload) => ipcRenderer.invoke('comfyui:image:readAsDataUrl', payload || {}),
+        // 终端日志环形缓冲（renderer 右侧浮层用）
+        logGet: () => ipcRenderer.invoke('comfyui:log:get'),
+        logClear: () => ipcRenderer.invoke('comfyui:log:clear'),
         // 事件订阅（每个返回 unsubscribe 函数）
         onProgress: _listen('comfyui:event:progress'),
         onComplete: _listen('comfyui:event:complete'),
         onError: _listen('comfyui:event:error'),
         onExit: _listen('comfyui:event:exit'),
+        onStarting: _listen('comfyui:event:starting'),
+        onReady: _listen('comfyui:event:ready'),
+        onLog: _listen('comfyui:event:log'),
     },
-    // ========= 资产存储（读取 .meta.json 旁路元数据 + 删除资产）=========
+    // ========= 资产存储（读取 .meta.json 旁路元数据 + 删除资产 + 资产生成历史）=========
     assets: {
         readMeta: (filename) => ipcRenderer.invoke('assets:readMeta', { filename }),
         delete: (filename) => ipcRenderer.invoke('assets:delete', { filename }),
+        listHistory: (opts) => ipcRenderer.invoke('assets:listHistory', opts || {}),
+    },
+    // ========= D-SYSINFO：设置页「系统信息」tab 取数 =========
+    systeminfo: {
+        get: () => ipcRenderer.invoke('systeminfo:get'),
     },
     // ========= AI 工具（声明式 schema 驱动的 workflow 表单）==========
     tools: {
         list: () => ipcRenderer.invoke('tools:list'),
         get: (id) => ipcRenderer.invoke('tools:get', id),
         run: (payload) => ipcRenderer.invoke('tools:run', payload),
+    },
+    // ========= D-QUEUE：任务队列（透明接管 tools:run）==========
+    taskQueue: {
+        // 注：enqueue 是同步返回 queueId；list/cancel/remove/reorder 都走 IPC
+        enqueue: (payload) => ipcRenderer.invoke('taskQueue:enqueue', payload || {}),
+        list:    (opts) => ipcRenderer.invoke('taskQueue:list', opts || {}),
+        cancel:  (queueId) => ipcRenderer.invoke('taskQueue:cancel', queueId),
+        remove:  (queueId) => ipcRenderer.invoke('taskQueue:remove', queueId),
+        reorder: (from, to) => ipcRenderer.invoke('taskQueue:reorder', { from, to }),
+        resultReadAsDataUrl: (queueId) => ipcRenderer.invoke('taskQueue:result:readAsDataUrl', queueId),
+        // 主进程推任务状态变化（added/status/progress/result/removed/reordered）
+        onUpdate: _listen('taskQueue:event:update'),
     },
     // ========= Lora 库（Phase 1：数据层）==========
     loras: {
@@ -174,5 +208,75 @@ contextBridge.exposeInMainWorld('api', {
         listByModel:  (modelOrArray) => ipcRenderer.invoke('loras:listByModel', modelOrArray || []),
         resolveByNames: (basenames) => ipcRenderer.invoke('loras:resolveByNames', basenames || []),
         types:        () => ipcRenderer.invoke('loras:types'),
+    },
+    // ========= AI 小说（独立模块；不动现有任何功能）==========
+    ainovel: {
+        list:                () => ipcRenderer.invoke('ainovel:list'),
+        create:              (payload) => ipcRenderer.invoke('ainovel:create', payload || {}),
+        get:                 (novelId) => ipcRenderer.invoke('ainovel:get', { novelId }),
+        delete:              (novelId) => ipcRenderer.invoke('ainovel:delete', { novelId }),
+        updateOutline:       (novelId, outlinePatch) => ipcRenderer.invoke('ainovel:updateOutline', { novelId, outlinePatch }),
+        generateOutline:     (novelId) => ipcRenderer.invoke('ainovel:generateOutline', { novelId }),
+        writeChapter:        (novelId, chapterId) => ipcRenderer.invoke('ainovel:writeChapter', { novelId, chapterId }),
+        updateChapter:       (novelId, chapterId, patch) => ipcRenderer.invoke('ainovel:updateChapter', { novelId, chapterId, ...patch }),
+        exportTxt:           (novelId) => ipcRenderer.invoke('ainovel:exportTxt', { novelId }),
+        getProviderConfig:   () => ipcRenderer.invoke('ainovel:getProviderConfig'),
+        setProviderConfig:   (cfg) => ipcRenderer.invoke('ainovel:setProviderConfig', cfg || {}),
+        testProvider:        (cfg) => ipcRenderer.invoke('ainovel:testProvider', cfg || {}),
+        listGenerations:     (novelId) => ipcRenderer.invoke('ainovel:listGenerations', { novelId }),
+        getGeneration:       (id) => ipcRenderer.invoke('ainovel:getGeneration', { id }),
+        // Phase 2: 自动推进模式
+        autoStart:           (novelId) => ipcRenderer.invoke('ainovel:autoStart', { novelId }),
+        autoPause:           (novelId) => ipcRenderer.invoke('ainovel:autoPause', { novelId }),
+        autoResume:          (novelId) => ipcRenderer.invoke('ainovel:autoResume', { novelId }),
+        autoCancel:          (novelId) => ipcRenderer.invoke('ainovel:autoCancel', { novelId }),
+        getAutoStatus:       (novelId) => ipcRenderer.invoke('ainovel:getAutoStatus', { novelId }),
+        // Phase 3: 知识库 CRUD
+        getKnowledge:        (novelId, kind) => ipcRenderer.invoke('ainovel:getKnowledge', { novelId, kind: kind || null }),
+        extractKnowledge:    (novelId, kinds) => ipcRenderer.invoke('ainovel:extractKnowledge', { novelId, kinds: kinds || [] }),
+        updateKnowledge:     (id, patch) => ipcRenderer.invoke('ainovel:updateKnowledge', { id, patch: patch || {} }),
+        deleteKnowledge:     (id) => ipcRenderer.invoke('ainovel:deleteKnowledge', { id }),
+        // Phase 4-A: 故事架构
+        getArchitecture:        (novelId) => ipcRenderer.invoke('ainovel:getArchitecture', { novelId }),
+        updateArchitecture:     (novelId, patch) => ipcRenderer.invoke('ainovel:updateArchitecture', { novelId, patch: patch || {} }),
+        regenerateArchitecture: (novelId) => ipcRenderer.invoke('ainovel:regenerateArchitecture', { novelId }),
+        // Phase 4-Sprint D/E/F: OpenClaw 模式（用户反馈 + Agent 配置 + 记忆管理）
+        saveAgentFeedback:      (payload) => ipcRenderer.invoke('ainovel:saveAgentFeedback', payload || {}),
+        listAgentFeedback:      (payload) => ipcRenderer.invoke('ainovel:listAgentFeedback', payload || {}),
+        getAgentConfig:         (skill) => ipcRenderer.invoke('ainovel:getAgentConfig', { skill }),
+        saveAgentConfig:        (skill, filename, content) => ipcRenderer.invoke('ainovel:saveAgentConfig', { skill, filename, content }),
+        listMemoryLogs:         (payload) => ipcRenderer.invoke('ainovel:listMemoryLogs', payload || {}),
+        flushMemory:            (payload) => ipcRenderer.invoke('ainovel:flushMemory', payload || {}),
+        listSkills:             () => ipcRenderer.invoke('ainovel:listSkills'),
+        // Sprint H: LLM-driven 多 agent 协作（黑板 / 收件箱 / 任务图 / 编剧调度）
+        blackboardList:   (novelId) => ipcRenderer.invoke('ainovel:blackboardList', { novelId }),
+        blackboardRead:   (novelId, key) => ipcRenderer.invoke('ainovel:blackboardRead', { novelId, key }),
+        blackboardWrite:  (novelId, key, value, owner) => ipcRenderer.invoke('ainovel:blackboardWrite', { novelId, key, value, owner }),
+        blackboardClear:  (novelId, key) => ipcRenderer.invoke('ainovel:blackboardClear', { novelId, key: key || null }),
+        inboxList:        (novelId, agentName) => ipcRenderer.invoke('ainovel:inboxList', { novelId, agentName }),
+        inboxSend:        (novelId, opts) => ipcRenderer.invoke('ainovel:inboxSend', Object.assign({ novelId }, opts || {})),
+        inboxMarkRead:    (novelId, agentName, ids) => ipcRenderer.invoke('ainovel:inboxMarkRead', { novelId, agentName, ids: ids || null }),
+        taskList:         (novelId, opts) => ipcRenderer.invoke('ainovel:taskList', Object.assign({ novelId }, opts || {})),
+        taskCreate:       (novelId, opts) => ipcRenderer.invoke('ainovel:taskCreate', Object.assign({ novelId }, opts || {})),
+        taskGet:          (taskId) => ipcRenderer.invoke('ainovel:taskGet', { taskId }),
+        taskComplete:     (taskId, result) => ipcRenderer.invoke('ainovel:taskComplete', { taskId, result }),
+        taskFail:         (taskId, error) => ipcRenderer.invoke('ainovel:taskFail', { taskId, error }),
+        taskReady:        (novelId, agentName) => ipcRenderer.invoke('ainovel:taskReady', { novelId, agentName: agentName || null }),
+        runDirector:      (novelId, goal, input) => ipcRenderer.invoke('ainovel:runDirector', { novelId, goal, input: input || {} }),
+        getDirectorMode:  () => ipcRenderer.invoke('ainovel:getDirectorMode'),
+        setDirectorMode:  (mode) => ipcRenderer.invoke('ainovel:setDirectorMode', { mode }),
+        getSetting:       (key) => ipcRenderer.invoke('ainovel:getSetting', { key }),
+        setSetting:       (key, value) => ipcRenderer.invoke('ainovel:setSetting', { key, value }),
+        // Sprint W: 工作面板事件流
+        listWorkflowEvents:     (novelId, opts) => ipcRenderer.invoke('ainovel:listWorkflowEvents', { novelId, opts: opts || {} }),
+        listWorkflowReplay:     (novelId, opts) => ipcRenderer.invoke('ainovel:listWorkflowReplay', { novelId, opts: opts || {} }),
+        getWorkflowEventDetail: (id) => ipcRenderer.invoke('ainovel:getWorkflowEventDetail', { id }),
+        getWorkflowStats:       (novelId) => ipcRenderer.invoke('ainovel:getWorkflowStats', { novelId }),
+        // Phase 4-B: 圣经状态 + atomic commit
+        getNovelState:        (novelId) => ipcRenderer.invoke('ainovel:getNovelState', { novelId }),
+        atomicCommitState:    (novelId, patch) => ipcRenderer.invoke('ainovel:atomicCommitState', { novelId, patch: patch || {} }),
+        resetNovelState:      (novelId) => ipcRenderer.invoke('ainovel:resetNovelState', { novelId }),
+        // 主进程推小说事件（outline_generated / chapter_generated / novel_added / pipeline_* / auto_* / knowledge_* 等）
+        onUpdate:            _listen('ainovel:event:update'),
     },
 });

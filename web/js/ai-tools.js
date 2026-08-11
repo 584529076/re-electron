@@ -27,6 +27,7 @@
     let _comfyStatus = null;      // { running, port, ... }
     let _unsubs = [];             // comfyui 事件订阅
     let _view = 'gallery';        // 'gallery' | 'detail'
+    let _embeddedMode = false;    // 嵌入到任意 host 时跳过 open/close 创建 fullscreen overlay
     let _loraMultiState = {};    // { fieldId: [{id, weight}, ...] } — loraMulti 字段的当前选中列表（每个 item 带 weight 覆盖，undefined = 用 lora.recommended_weight）
 
     // ========== 入口 ==========
@@ -45,27 +46,44 @@
         subscribeComfyEvents();
     }
 
-    function close() {
+    function close(opts) {
+        // D-NAVBAR：opts.silent=true 用于顶部导航主动切页时调用，避免触发 workbench 自动回退
+        const silent = !!(opts && opts.silent);
         const page = document.getElementById('aiToolsPage');
         if (page) page.style.display = 'none';
-        // 恢复主页和 header 的显示（showPage 时被设成 none）
+        // D-NAVBAR：只恢复 main，不再碰 header（header 全平台持久可见）
         const main = document.querySelector('main');
-        const header = document.querySelector('header');
         if (main) main.style.display = '';
-        if (header) header.style.display = '';
         for (const u of _unsubs) { try { u && u(); } catch (e) {} }
         _unsubs = [];
         if (_currentJobId) {
             try { api.comfyui.cancel(_currentJobId); } catch (e) {}
             _currentJobId = null;
         }
+        // D-LAYOUT：通知 workbench 关闭（如果是从工作台进去的，workbench 会决定是否重开）
+        if (!silent) {
+            try {
+                window.dispatchEvent(new CustomEvent('workbench:requestReturn', { detail: { source: 'aiTools' } }));
+            } catch (e) {}
+        }
+        // D-NAVBAR：通知 nav active 态同步
+        try {
+            window.dispatchEvent(new CustomEvent('aiTools:closed', { detail: { silent } }));
+        } catch (e) {}
+    }
+
+    // D-NAVBAR：暴露 isOpen() 给 switchMainView 用
+    function isOpen() {
+        const page = document.getElementById('aiToolsPage');
+        return !!(page && page.style.display !== 'none');
     }
 
     // ========== DOM ==========
     function createPage() {
         const page = document.createElement('div');
         page.id = 'aiToolsPage';
-        page.style.cssText = 'position:fixed; inset:0; background:#f5f6f8; z-index:200; display:none; flex-direction:column; color:#1a1a1a; font-family:system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;';
+        // D-NAVBAR：top 用 var(--header-height) 让位给顶部导航栏（header 持久可见，不再 inset:0 全屏覆盖）
+        page.style.cssText = 'position:fixed; top:var(--header-height); left:0; right:0; bottom:0; background:#f5f6f8; z-index:200; display:none; flex-direction:column; color:#1a1a1a; font-family:system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;';
         page.innerHTML = `
             <!-- 顶部 bar（两视图共用） -->
             <div id="atHeaderBar" style="display:flex; align-items:center; padding:14px 20px; border-bottom:1px solid #e5e7eb; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.04); flex-shrink:0;">
@@ -176,10 +194,13 @@
     function showPage() {
         const page = document.getElementById('aiToolsPage');
         if (page) page.style.display = 'flex';
+        // D-NAVBAR：main 仍然隐藏（ai-tools 是全屏 overlay 覆盖 main），但 header 保持可见
         const main = document.querySelector('main');
-        const header = document.querySelector('header');
         if (main) main.style.display = 'none';
-        if (header) header.style.display = 'none';
+        // D-NAVBAR：通知 nav active 态同步
+        try {
+            window.dispatchEvent(new CustomEvent('aiTools:opened'));
+        } catch (e) {}
     }
 
     // ========== 视图切换 ==========
@@ -206,6 +227,59 @@
         if (gallery) gallery.style.display = 'none';
         if (detail) detail.style.display = 'flex';
         if (headerBar) headerBar.style.display = 'none';   // 隐藏顶部 bar（detail 自己的子 header 接管）
+    }
+
+    // ========== 字段分组（D-WORKBENCH 三栏分发）==========
+    // 把 formField 归到 primary / size / params 三栏：
+    //   primary → 左栏（主输入）：textarea / image / video
+    //   size    → 中栏底部（输出尺寸）：type=number 且 id 是 width / height
+    //   params  → 右栏（参数微调）：其他所有（number / select / lora / loraMulti / text / ...）
+    // schema 可以显式写 `panel: "primary" | "size" | "params"` 覆盖默认规则。
+    const _PRIMARY_ORDER = { textarea: 0, image: 1, video: 2 };
+    function _classifyField(field) {
+        if (!field) return 'params';
+        if (field.panel === 'primary' || field.panel === 'size' || field.panel === 'params') return field.panel;
+        if (field.type === 'textarea' || field.type === 'image' || field.type === 'video') return 'primary';
+        if (field.type === 'number' && (field.id === 'width' || field.id === 'height')) return 'size';
+        return 'params';
+    }
+    function _primarySortKey(field) {
+        return _PRIMARY_ORDER[field.type] !== undefined ? _PRIMARY_ORDER[field.type] : 99;
+    }
+
+    // 生成三个独立 HTML 片段，给工作台三栏分别塞入：
+    //   primary：按 textarea → image → video 顺序，无 group header（主输入面板是平的）
+    //   size：width + height 紧凑横排
+    //   params：保持原 group + ungrouped 结构
+    function renderEmbeddedFormSections(tool) {
+        const fields = (tool && tool.formFields) || [];
+        const primary = fields.filter(f => _classifyField(f) === 'primary').sort((a, b) => _primarySortKey(a) - _primarySortKey(b));
+        const size = fields.filter(f => _classifyField(f) === 'size');
+        const params = fields.filter(f => _classifyField(f) === 'params');
+        return {
+            primary: primary.map(f => renderField(f)).join(''),
+            size: size.map(f => renderField(f)).join(''),
+            params: _renderParamsHtml(params),
+        };
+    }
+
+    function _renderParamsHtml(fields) {
+        const groups = {};
+        const ungrouped = [];
+        for (const f of fields) {
+            if (f.group) {
+                if (!groups[f.group]) groups[f.group] = [];
+                groups[f.group].push(f);
+            } else {
+                ungrouped.push(f);
+            }
+        }
+        let html = '';
+        for (const f of ungrouped) html += renderField(f);
+        for (const g of Object.keys(groups)) {
+            for (const f of groups[g]) html += renderField(f);
+        }
+        return html;
     }
 
     // ========== Gallery（工具卡片网格）==========
@@ -291,24 +365,12 @@
     }
 
     // ========== 动态表单 ==========
-    function renderForm(tool) {
-        const form = document.getElementById('atForm');
+    function renderForm(tool, container) {
+        const form = container || document.getElementById('atForm');
         if (!form) return;
         if (tool.broken) {
             form.innerHTML = `<div style="padding:20px; color:#dc2626;">工具加载失败：${escapeHtml(tool.error || '未知')}</div>`;
             return;
-        }
-        const fields = tool.formFields || [];
-        // 按 group 分组
-        const groups = {};
-        const ungrouped = [];
-        for (const f of fields) {
-            if (f.group) {
-                if (!groups[f.group]) groups[f.group] = [];
-                groups[f.group].push(f);
-            } else {
-                ungrouped.push(f);
-            }
         }
         // 顶部 banner：工作流主模型（用于 Lora 字段按模型过滤的提示）
         // 优先展示 schema.models（声明的适配模型枚举）；缺省时回退到从 workflow JSON 抽出的 basename
@@ -321,14 +383,38 @@
                 <span style="margin-left:8px; color:#a16207; font-size:11px;">（Lora 选择器会自动按这些模型筛选）</span>
             </div>`;
         }
-        for (const f of ungrouped) html += renderField(f);
-        for (const g of Object.keys(groups)) {
-            html += `<div style="margin-top:14px; padding:8px 12px; background:#e0f2fe; border-radius:6px; font-size:12px; color:#0c4a6e; font-weight:500;">${escapeHtml(g)}</div>`;
-            for (const f of groups[g]) html += renderField(f);
-        }
+        // 复用三栏分发逻辑（settings.js 走 legacy 单容器；工作台走三栏分发）
+        const sections = renderEmbeddedFormSections(tool);
+        html += sections.primary + sections.size + sections.params;
         form.innerHTML = html;
+        // 初始化 lora / loraMulti 字段（异步加载选项 + 初始 chip 渲染）
+        initLoraFields(tool, displayModels);
+        // 绑定 data-action 按钮（pick-image / pick-loras / clear-loras / clear-lora / randomize）
+        bindFormActions(form, fields, displayModels);
+        // 监听输入：textarea / input / select 任一变化都重新计算「运行」按钮 enable 状态
+        // （之前没监听，导致 default="" 的工具如 Wan2.2，用户输入提示词后按钮仍是 disabled）
+        if (!form._atInputBound) {
+            form.addEventListener('input', updateRunButtonState);
+            form.addEventListener('change', updateRunButtonState);
+            form._atInputBound = true;
+        }
+        // 每次重渲染后同步按钮 enable
+        updateRunButtonState();
+    }
+
+    // ========== 表单 data-action 绑定（pick-image / pick-loras / clear-* / randomize）==========
+    // 抽离出来给工作台三栏分发场景复用：工作台用 renderEmbeddedFormSections 拼三块 HTML，
+    // 但内部不再调这些绑定，所以单独暴露给 aiToolsEmbedded。
+    // 参数：
+    //   formEl: 已写入 HTML 的容器（renderForm 场景是单一 form；工作台场景是三栏各自一个）
+    //   fields: tool.formFields（用于 loraMulti 字段定位）
+    //   displayModels: 工作流主模型数组（用于 lora 按模型筛选）
+    function bindFormActions(formEl, fields, displayModels) {
+        if (!formEl) return;
+        const fieldsArr = fields || [];
+        const models = displayModels || [];
         // 绑定 random 按钮
-        form.querySelectorAll('[data-action="randomize"]').forEach(btn => {
+        formEl.querySelectorAll('[data-action="randomize"]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const fieldId = btn.dataset.field;
@@ -340,7 +426,7 @@
             });
         });
         // 绑定「选择图片」按钮（image 类型字段）
-        form.querySelectorAll('[data-action="pick-image"]').forEach(btn => {
+        formEl.querySelectorAll('[data-action="pick-image"]').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const fieldId = btn.dataset.field;
@@ -359,7 +445,15 @@
                     // 优先用 comfyuiName（main 端复制到 input 目录后的最终名），
                     // 复制失败时回退到原 basename
                     input.value = r.comfyuiName || r.name || r.path || '';
+                    // D-MID-COMPARE：把用户挑的原图绝对路径挂到 data 属性上，
+                    // 工作台 compare 模式会读这个属性再去 IPC 读图渲染左侧原图
+                    if (r.path) input.dataset.sourcePath = r.path;
+                    else delete input.dataset.sourcePath;
                     updateRunButtonState();
+                    // D-MID-COMPARE：表单值变了，工作台要刷新对比按钮 enable + 重新加载输入图缓存
+                    if (window.workbench && typeof window.workbench.refreshCompareAvailability === 'function') {
+                        try { window.workbench.refreshCompareAvailability(); } catch (e) {}
+                    }
                     if (r.copied) {
                         showToast(`已复制到 ComfyUI input: ${r.comfyuiName}`, 'success');
                     } else if (r.copyError) {
@@ -368,39 +462,75 @@
                 }
             });
         });
-        // Phase 3：lora / loraMulti 字段的渲染与交互
-        // 1) lora 单选：异步加载 Lora 列表填 select
-        const loraFields = fields.filter(f => f.type === 'lora');
-        for (const f of loraFields) {
-            loadLoraOptionsForField(f, displayModels);
-        }
-        // 2) loraMulti：渲染初始空 chip 列表 + 绑定「选择 Lora」按钮
-        const loraMultiFields = fields.filter(f => f.type === 'loraMulti');
-        for (const f of loraMultiFields) {
-            // 渲染默认值的 chip（如果有）
-            renderLoraMultiChips(f);
-        }
-        form.querySelectorAll('[data-action="pick-loras"]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+        // ========== D-WORKBENCH-ASSET-MODULE：image/video 卡片 picker 绑定 ==========
+        // 两个入口共用同一份 picker：点击空态区 / 点击「替换」按钮。
+        // 图片走 api.comfyui.pickImage()；视频走隐藏的 <input type="file">（无 pickVideo IPC）。
+        formEl.querySelectorAll('[data-action="asset-pick"]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 const fieldId = btn.dataset.field;
-                const f = fields.find(x => x.id === fieldId && x.type === 'loraMulti');
-                if (!f) return;
-                openLoraMultiPicker(f, displayModels);
+                const module = formEl.querySelector(`.dwp-asset-module[data-field-id="${CSS.escape(fieldId)}"]`);
+                if (!module) return;
+                const assetType = module.dataset.assetType; // 'image' | 'video'
+                if (assetType === 'image') {
+                    await _pickImageForAsset(fieldId, module);
+                } else {
+                    // 视频：触发隐藏的 file input
+                    const fileInput = module.querySelector(`[data-asset-file="${CSS.escape(fieldId)}"]`);
+                    if (fileInput) fileInput.click();
+                }
             });
         });
-        form.querySelectorAll('[data-action="clear-loras"]').forEach(btn => {
+        // 视频 file input change → 读 blob → 生成预览 + 写隐藏 input
+        formEl.querySelectorAll('[data-asset-file]').forEach(fi => {
+            fi.addEventListener('change', (e) => {
+                const fieldId = fi.dataset.assetFile;
+                const module = formEl.querySelector(`.dwp-asset-module[data-field-id="${CSS.escape(fieldId)}"]`);
+                const file = fi.files && fi.files[0];
+                if (!file || !module) return;
+                _setAssetPreviewVideo(fieldId, module, file);
+            });
+        });
+        // 删除按钮：清空 hidden input / dataset.sourcePath / 预览 DOM
+        formEl.querySelectorAll('[data-action="asset-remove"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const fieldId = btn.dataset.field;
+                const module = formEl.querySelector(`.dwp-asset-module[data-field-id="${CSS.escape(fieldId)}"]`);
+                if (!module) return;
+                _clearAssetPreview(fieldId, module);
+                updateRunButtonState();
+                if (window.workbench && typeof window.workbench.refreshCompareAvailability === 'function') {
+                    try { window.workbench.refreshCompareAvailability(); } catch (e) {}
+                }
+            });
+        });
+        // 「选择 Lora」按钮（loraMulti）
+        formEl.querySelectorAll('[data-action="pick-loras"]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const fieldId = btn.dataset.field;
-                const f = fields.find(x => x.id === fieldId && x.type === 'loraMulti');
+                const f = fieldsArr.find(x => x && x.id === fieldId && x.type === 'loraMulti');
+                if (!f) return;
+                openLoraMultiPicker(f, models);
+            });
+        });
+        // 「清空 Lora」按钮（loraMulti）
+        formEl.querySelectorAll('[data-action="clear-loras"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const fieldId = btn.dataset.field;
+                const f = fieldsArr.find(x => x && x.id === fieldId && x.type === 'loraMulti');
                 if (!f) return;
                 _loraMultiState[f.id] = [];
                 renderLoraMultiChips(f);
                 updateRunButtonState();
             });
         });
-        form.querySelectorAll('[data-action="clear-lora"]').forEach(btn => {
+        // 「清除单个 lora」按钮（lora 单选）
+        formEl.querySelectorAll('[data-action="clear-lora"]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const fieldId = btn.dataset.field;
@@ -408,22 +538,183 @@
                 if (el) {
                     el.value = '';
                     el.dataset.loraName = '';
-                    // 同步 weight 显示
                     const wEl = document.getElementById(`at-field-${fieldId}-weight`);
                     if (wEl) { wEl.value = ''; wEl.disabled = true; }
                     updateRunButtonState();
                 }
             });
         });
-        // 监听输入：textarea / input / select 任一变化都重新计算「运行」按钮 enable 状态
-        // （之前没监听，导致 default="" 的工具如 Wan2.2，用户输入提示词后按钮仍是 disabled）
-        if (!form._atInputBound) {
-            form.addEventListener('input', updateRunButtonState);
-            form.addEventListener('change', updateRunButtonState);
-            form._atInputBound = true;
+    }
+
+    // ========== D-WORKBENCH-ASSET-MODULE：image/video 上传卡片辅助函数 ==========
+    // 这几个函数只服务 asset 模块（pick / preview / clear），与 ai-tools.js 其余逻辑解耦。
+    // 关键不变量：
+    //   - 隐藏 input `#at-field-{id}` 始终存 basename（兼容 collectFormValues）
+    //   - dataset.sourcePath 始终存用户原图绝对路径（仅 image 有意义；用于 compare 模式）
+    //   - 预览 DOM 与 input 值严格同步（input 空 → 预览隐藏；input 有值 → 预览显示）
+
+    // 把 input 切换到「已选」状态：隐藏空态、显示预览卡、设值（basename）
+    function _showAssetSelected(fieldId, module, fileName, metaText) {
+        const empty = module.querySelector('.dwp-asset-empty');
+        const card = module.querySelector(`[data-asset-card="${CSS.escape(fieldId)}"]`);
+        const nameEl = module.querySelector(`[data-asset-name="${CSS.escape(fieldId)}"]`);
+        const metaEl = module.querySelector(`[data-asset-meta="${CSS.escape(fieldId)}"]`);
+        const replaceBtn = module.querySelector(`.dwp-asset-replace-btn[data-field="${CSS.escape(fieldId)}"]`);
+        if (empty) empty.style.display = 'none';
+        if (card) card.style.display = '';
+        if (nameEl) { nameEl.textContent = fileName || ''; nameEl.title = fileName || ''; }
+        if (metaEl) metaEl.textContent = metaText || '';
+        if (replaceBtn) replaceBtn.style.display = '';
+    }
+
+    // 把 input 切回「空态」：隐藏预览卡、显示空态、清空 file input
+    function _showAssetEmpty(fieldId, module) {
+        const empty = module.querySelector('.dwp-asset-empty');
+        const card = module.querySelector(`[data-asset-card="${CSS.escape(fieldId)}"]`);
+        const thumb = module.querySelector(`[data-asset-thumb="${CSS.escape(fieldId)}"]`);
+        const fileInput = module.querySelector(`[data-asset-file="${CSS.escape(fieldId)}"]`);
+        const replaceBtn = module.querySelector(`.dwp-asset-replace-btn[data-field="${CSS.escape(fieldId)}"]`);
+        if (empty) empty.style.display = '';
+        if (card) card.style.display = 'none';
+        if (replaceBtn) replaceBtn.style.display = 'none';
+        // 释放 blob URL（避免内存泄漏），清掉 thumbnail 子节点
+        if (thumb) {
+            const vid = thumb.querySelector('video');
+            if (vid) {
+                try { vid.pause(); } catch (e) {}
+                if (vid.dataset && vid.dataset.blobUrl) {
+                    try { URL.revokeObjectURL(vid.dataset.blobUrl); } catch (e) {}
+                }
+                vid.removeAttribute('src');
+                vid.load();
+            }
+            thumb.innerHTML = '<i class="fa-solid fa-image"></i>';
+            thumb.classList.remove('loading');
         }
-        // 每次重渲染后同步按钮 enable
+        if (fileInput) fileInput.value = '';
+    }
+
+    // 图片 picker：弹原生对话框 → 复制到 ComfyUI input → IPC 读 dataURL 渲染缩略图
+    async function _pickImageForAsset(fieldId, module) {
+        if (!api.comfyui || typeof api.comfyui.pickImage !== 'function') {
+            showToast('图片选择接口不可用', 'error');
+            return;
+        }
+        const thumb = module.querySelector(`[data-asset-thumb="${CSS.escape(fieldId)}"]`);
+        if (thumb) thumb.classList.add('loading');
+        try {
+            const r = await api.comfyui.pickImage();
+            if (!r || !r.ok) {
+                if (r && r.error) showToast('选择图片失败: ' + r.error, 'error');
+                if (thumb) thumb.classList.remove('loading');
+                return;
+            }
+            if (r.canceled) {
+                if (thumb) thumb.classList.remove('loading');
+                return;
+            }
+            const input = document.getElementById(`at-field-${fieldId}`);
+            if (input) {
+                input.value = r.comfyuiName || r.name || r.path || '';
+                if (r.path) input.dataset.sourcePath = r.path;
+                else delete input.dataset.sourcePath;
+            }
+            const meta = [];
+            if (r.comfyuiName) meta.push('已复制到 input');
+            const sizeKB = r.size ? Math.round(r.size / 1024) : 0;
+            if (sizeKB) meta.push(sizeKB + ' KB');
+            _showAssetSelected(fieldId, module, r.comfyuiName || r.name || r.path || '已选择', meta.join(' · '));
+            // 异步加载缩略图（用本地 file path 读 dataURL）
+            if (thumb) {
+                thumb.innerHTML = '';
+                if (r.path && typeof api.comfyui.imageReadAsDataUrl === 'function') {
+                    api.comfyui.imageReadAsDataUrl({ path: r.path }).then(rr => {
+                        if (rr && rr.ok && rr.dataUrl) {
+                            thumb.innerHTML = `<img src="${rr.dataUrl}" alt="" />`;
+                        } else {
+                            thumb.innerHTML = '<i class="fa-solid fa-image"></i>';
+                        }
+                        thumb.classList.remove('loading');
+                    }).catch(() => {
+                        thumb.innerHTML = '<i class="fa-solid fa-image"></i>';
+                        thumb.classList.remove('loading');
+                    });
+                } else {
+                    thumb.innerHTML = '<i class="fa-solid fa-image"></i>';
+                    thumb.classList.remove('loading');
+                }
+            }
+            if (r.copied) showToast(`已复制到 ComfyUI input: ${r.comfyuiName}`, 'success');
+            else if (r.copyError) showToast(`未自动复制（${r.copyError}），请手动放到 ComfyUI input 目录`, 'error');
+            updateRunButtonState();
+            if (window.workbench && typeof window.workbench.refreshCompareAvailability === 'function') {
+                try { window.workbench.refreshCompareAvailability(); } catch (e) {}
+            }
+        } catch (e) {
+            if (thumb) thumb.classList.remove('loading');
+            showToast('选择图片失败: ' + (e && e.message || '未知'), 'error');
+        }
+    }
+
+    // 视频 picker：浏览器原生 file input → blob URL 渲染预览
+    // 当前没有 pickVideo IPC，value 用 file.name（ComfyUI 端需要再 stage 一份，目前未自动化）。
+    // 用户仍可在视频字段上看到预览 + 文件名；提交时会以 basename 写入 workflow（与图片一致）。
+    function _setAssetPreviewVideo(fieldId, module, file) {
+        const input = document.getElementById(`at-field-${fieldId}`);
+        if (input) {
+            input.value = file.name || '';
+            delete input.dataset.sourcePath; // 视频不参与 compare
+        }
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        const meta = `${(file.type || 'video/*').replace('video/', '')} · ${sizeMB} MB`;
+        _showAssetSelected(fieldId, module, file.name, meta);
+        const thumb = module.querySelector(`[data-asset-thumb="${CSS.escape(fieldId)}"]`);
+        if (thumb) {
+            thumb.classList.add('loading');
+            const blobUrl = URL.createObjectURL(file);
+            thumb.innerHTML = `<video src="${blobUrl}" muted playsinline preload="metadata"></video>`;
+            const vid = thumb.querySelector('video');
+            if (vid) vid.dataset.blobUrl = blobUrl;
+            // 第一帧加载完移除 loading
+            if (vid) {
+                vid.addEventListener('loadeddata', () => {
+                    thumb.classList.remove('loading');
+                }, { once: true });
+                // 兜底：5 秒后还没 loadeddata 也移除 loading
+                setTimeout(() => thumb.classList.remove('loading'), 5000);
+            }
+        }
         updateRunButtonState();
+    }
+
+    // 清除预览：hidden input 清空 / file input 清空 / 释放 blob URL
+    function _clearAssetPreview(fieldId, module) {
+        const input = document.getElementById(`at-field-${fieldId}`);
+        if (input) {
+            input.value = '';
+            delete input.dataset.sourcePath;
+        }
+        _showAssetEmpty(fieldId, module);
+    }
+
+    // ========== lora / loraMulti 字段初始化 ===========
+    // 1) lora 单选：异步加载 Lora 列表填 select
+    // 2) loraMulti：渲染初始空 chip 列表
+    // 抽离出来给工作台三栏分发场景复用。
+    function initLoraFields(tool, displayModels) {
+        const fields = (tool && tool.formFields) || [];
+        const models = (displayModels && displayModels.length)
+            ? displayModels
+            : ((Array.isArray(tool && tool.models) && tool.models.length) ? tool.models
+                : (tool && tool.mainModel ? [tool.mainModel] : []));
+        const loraFields = fields.filter(f => f && f.type === 'lora');
+        for (const f of loraFields) {
+            loadLoraOptionsForField(f, models);
+        }
+        const loraMultiFields = fields.filter(f => f && f.type === 'loraMulti');
+        for (const f of loraMultiFields) {
+            renderLoraMultiChips(f);
+        }
     }
 
     function renderField(field) {
@@ -449,13 +740,56 @@
                 `<option value="${escapeAttr(String(o))}" ${String(o) === String(value) ? 'selected' : ''}>${escapeHtml(String(o))}</option>`
             ).join('');
             widget = `<select id="${id}" style="${inputStyle()}">${opts}</select>`;
-        } else if (field.type === 'image') {
-            // 图片选择：只读 input（显示完整路径） + 旁边「选择图片」按钮
-            // 不做上传，value 提交时取 basename 写入 ComfyUI workflow
-            const initVal = String(value || '');
-            const placeholder = field.placeholder || '（点右侧按钮选图片，或手动输入 ComfyUI input 目录里的文件名）';
-            widget = `<input id="${id}" type="text" value="${escapeAttr(initVal)}" placeholder="${escapeAttr(placeholder)}" style="${inputStyle()}; background:#f9fafb; cursor:default;" readonly />`;
-            extraWidget = `<button type="button" data-action="pick-image" data-field="${field.id}" style="margin-left:6px; padding:8px 14px; background:#0ea5e9; color:#ffffff; border:1px solid #0284c7; border-radius:6px; cursor:pointer; white-space:nowrap; font-size:13px;"><i class="fa-solid fa-folder-open"></i> 选择图片</button>`;
+        } else if (field.type === 'image' || field.type === 'video') {
+            // D-WORKBENCH-ASSET-MODULE：图片/视频上传卡片（视觉参考 LORA 模块）。
+            // - 空态：虚线占位 + 中央图标 + 「选择图片/视频」按钮
+            // - 已选：缩略图（图片 dataURL / 视频 blob URL）+ 文件名 + 类型 + 替换/删除按钮
+            // - hidden input #at-field-{id}：保留用于 collectFormValues 取 basename 写入 workflow
+            // - dataset.sourcePath：传给工作台 compare 模式（仅图片有意义）
+            const isVideo = field.type === 'video';
+            const accept = isVideo ? 'video/*' : 'image/*';
+            const emptyIcon = isVideo ? 'fa-film' : 'fa-image';
+            const emptyTitle = isVideo ? '未选择视频' : '未选择图片';
+            const emptyBtnText = isVideo ? '选择视频' : '选择图片';
+            const emptyBtnIcon = isVideo ? 'fa-folder-open' : 'fa-folder-open';
+            // hidden input 存 basename（提交时 collectFormValues 直接取 .value）
+            widget = `
+                <div class="dwp-asset-module ${isVideo ? 'dwp-asset-module-video' : ''}" data-field-id="${escapeAttr(field.id)}" data-asset-type="${field.type}">
+                    <div class="dwp-asset-module-title">
+                        <i class="fa-solid ${isVideo ? 'fa-film' : 'fa-image'}"></i>
+                        <span>${isVideo ? '视频' : '图片'}</span>
+                    </div>
+                    <div class="dwp-asset-slot">
+                        <div class="dwp-asset-slot-head">
+                            <span class="dwp-asset-slot-label">${escapeHtml(field.label)}</span>
+                            <div class="dwp-asset-slot-actions">
+                                <button type="button" class="dwp-asset-replace-btn" data-action="asset-pick" data-field="${escapeAttr(field.id)}" style="display:none;"><i class="fa-solid fa-rotate"></i> 替换</button>
+                            </div>
+                        </div>
+                        <!-- 空态：整块可点击触发 picker（图片走 IPC 弹原生对话框；视频走下方隐藏 file input） -->
+                        <div class="dwp-asset-empty" data-action="asset-pick" data-field="${escapeAttr(field.id)}">
+                            <i class="fa-solid ${emptyIcon}"></i>
+                            <div>${escapeHtml(emptyTitle)}</div>
+                            <div class="dwp-asset-empty-btn"><i class="fa-solid ${emptyBtnIcon}"></i> ${escapeHtml(emptyBtnText)}</div>
+                        </div>
+                        <!-- 已选预览：缩略图 + 文件名/类型 + 删除按钮 -->
+                        <div class="dwp-asset-card" data-asset-card="${escapeAttr(field.id)}" style="display:none;">
+                            <div class="dwp-asset-card-thumb" data-asset-thumb="${escapeAttr(field.id)}">
+                                <i class="fa-solid ${emptyIcon}"></i>
+                            </div>
+                            <div class="dwp-asset-card-info">
+                                <div class="dwp-asset-card-name" data-asset-name="${escapeAttr(field.id)}"></div>
+                                <div class="dwp-asset-card-meta" data-asset-meta="${escapeAttr(field.id)}"></div>
+                            </div>
+                            <button type="button" class="dwp-asset-card-remove" data-action="asset-remove" data-field="${escapeAttr(field.id)}" title="移除"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <!-- 隐藏的 file input（视频用）+ 隐藏的 basename input（兼容 collectFormValues） -->
+                        <input class="dwp-asset-file-input" type="file" accept="${escapeAttr(accept)}" data-asset-file="${escapeAttr(field.id)}" tabindex="-1" />
+                        <input id="${id}" type="hidden" value="${escapeAttr(String(value || ''))}" />
+                    </div>
+                </div>
+            `;
+            extraWidget = '';
         } else if (field.type === 'lora') {
             // Phase 3：单 Lora 选择器
             // 渲染为空 select，async loadLoraOptionsForField 会异步填充选项
@@ -488,6 +822,11 @@
             ? `<button type="button" data-action="randomize" data-field="${field.id}" title="随机" style="margin-left:6px; padding:6px 10px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:4px; cursor:pointer;">🎲</button>`
             : '';
         const note = field.note ? `<div style="font-size:11px; color:#9ca3af; margin-top:4px;">${escapeHtml(field.note)}</div>` : '';
+        // D-WORKBENCH-ASSET-MODULE：image / video 字段的 widget 是完整模块（含自己的标题 + 标签），
+        // 不再套外层 label / flex 容器，直接返回。note 也保留在模块底。
+        if (field.type === 'image' || field.type === 'video') {
+            return `<div style="margin-bottom:14px;">${widget}${note}</div>`;
+        }
         return `
             <div style="margin-bottom:14px;">
                 <label for="${id}" style="display:block; font-size:13px; color:#374151; margin-bottom:6px; font-weight:500;">${escapeHtml(field.label)}</label>
@@ -504,13 +843,17 @@
         return 'width:100%; padding:8px 12px; background:#ffffff; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px; box-sizing:border-box;';
     }
 
-    function collectFormValues() {
-        if (!_currentTool) return {};
+    function collectFormValues(container, tool) {
+        const t = tool || _currentTool;
+        if (!t) return {};
         const values = {};
-        for (const field of (_currentTool.formFields || [])) {
+        const root = container || document;
+        for (const field of (t.formFields || [])) {
             // Phase 3：lora / loraMulti 从内部 state 取（id 数组 / 单 id），不走 DOM value
             if (field.type === 'lora') {
-                const el = document.getElementById(`at-field-${field.id}`);
+                const el = (container && container.querySelector)
+                    ? container.querySelector('#at-field-' + field.id)
+                    : document.getElementById(`at-field-${field.id}`);
                 const weightEl = document.getElementById(`at-field-${field.id}-weight`);
                 const id = el ? Number(el.value) : NaN;
                 let weight = null;
@@ -530,7 +873,9 @@
                 values[field.id] = (_loraMultiState[field.id] || []).slice();
                 continue;
             }
-            const el = document.getElementById(`at-field-${field.id}`);
+            const el = (container && container.querySelector)
+                ? container.querySelector('#at-field-' + field.id)
+                : document.getElementById(`at-field-${field.id}`);
             if (!el) continue;
             let v = el.value;
             if (field.type === 'number') {
@@ -1393,11 +1738,31 @@
         if (ta) ta.value = '';
     }
 
-    // ========== utils ==========
-    function escapeHtml(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    // ========== 嵌入模式 API ==========
+    // 暴露给工作台作为可复用模块（renderForm / collectFormValues 支持任意 container）
+    function _ensureEmbeddedShell() {
+        let shell = document.getElementById('atEmbeddedForm');
+        if (shell) return shell;
+        shell = document.createElement('div');
+        shell.id = 'atEmbeddedForm';
+        shell.style.cssText = 'display:flex; flex-direction:column; min-height:0;';
+        return shell;
     }
-    function escapeAttr(s) { return escapeHtml(s); }
+    function renderEmbeddedForm(tool, container) {
+        const host = container || document.body;
+        let shell = host.querySelector('#atEmbeddedForm');
+        if (!shell) {
+            shell = _ensureEmbeddedShell();
+            host.appendChild(shell);
+        }
+        shell.innerHTML = '';
+        renderForm(tool, shell);
+        return shell;
+    }
+
+    // ========== utils ==========
+    // D-WORKBENCH：转义工具统一从 window.dUtil 取（共享，避免 4 处漂移）
+    const { escapeHtml, escapeAttr } = window.dUtil;
     function showToast(msg, type) {
         // 复用 script.js 的全局 toast（如果有）
         if (window.showToast) { window.showToast(msg, type); return; }
@@ -1459,5 +1824,61 @@
         updateRunButtonState();
     }
 
-    window.aiTools = { open, close, jumpToTool };
+    window.aiTools = { open, close, isOpen, jumpToTool };
+    window.aiToolsEmbedded = {
+        renderForm,
+        collectFormValues,
+        renderEmbeddedForm,
+        renderEmbeddedFormSections,
+        // D-WORKBENCH-PICKIMAGE：工作台三栏分发场景需要主动调这两个
+        bindFormActions,
+        initLoraFields,
+        // D-WORKBENCH-LORA-MODULE：工作台 LORA 模块读写 lora / loraMulti 状态
+        // （替代旧的「select + chip」控件，统一用封面预览 + 弹框多选）
+        getLoraMultiState: (fieldId) => (_loraMultiState[fieldId] || []).slice(),
+        setLoraMultiState: (fieldId, items) => {
+            _loraMultiState[fieldId] = Array.isArray(items) ? items.slice() : [];
+            // 同步刷新 chip 容器（以防旧 UI 仍然可见）
+            // 注意：_currentTool 在 workbench 路径下可能为 null，找不到字段就直接跳过
+            const f = (_currentTool && _currentTool.formFields || [])
+                .find(x => x && x.id === fieldId);
+            if (f && f.type === 'loraMulti') {
+                try { renderLoraMultiChips(f); } catch (e) { /* 字段 wrapper 不在 DOM 时忽略 */ }
+            }
+            try { updateRunButtonState(); } catch (e) {}
+        },
+        // 单选 lora：读写 at-field-{id} select 值与 at-field-{id}-weight input 值
+        getLoraSingleState: (fieldId) => {
+            const sel = document.getElementById('at-field-' + fieldId);
+            const weightEl = document.getElementById('at-field-' + fieldId + '-weight');
+            const id = sel ? Number(sel.value) : NaN;
+            let weight = null;
+            if (weightEl && !weightEl.disabled) {
+                const w = Number(weightEl.value);
+                if (Number.isFinite(w) && w >= 0) weight = w;
+            }
+            return { id: (id && !Number.isNaN(id)) ? id : null, weight };
+        },
+        setLoraSingleState: (fieldId, { id, weight } = {}) => {
+            const sel = document.getElementById('at-field-' + fieldId);
+            if (sel) {
+                if (id == null) {
+                    sel.value = '';
+                } else {
+                    sel.value = String(id);
+                }
+                // 触发 change 监听以同步 weight input（loadLoraOptionsForField 已绑定）
+                try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+            }
+            const weightEl = document.getElementById('at-field-' + fieldId + '-weight');
+            if (weightEl) {
+                if (weight == null) {
+                    weightEl.value = '';
+                } else {
+                    weightEl.value = String(weight);
+                }
+            }
+            try { updateRunButtonState(); } catch (e) {}
+        },
+    };
 })();

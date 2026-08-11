@@ -117,7 +117,7 @@
   },
   "16": {
     "inputs": {
-      "image": "35188B55391D0C1B729EE420D3DFDD3F.jpg"
+      "image": "mmexport1785458929231.jpeg"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -295,12 +295,12 @@
           {
             "name": "A",
             "selected": true,
-            "url": "/api/view?filename=rgthree.compare._temp_dsyqc_00001_.png&type=temp&subfolder=&rand=0.770054991406364"
+            "url": "/api/view?filename=rgthree.compare._temp_ipmqv_00001_.png&type=temp&subfolder=&rand=0.4735373489254412"
           },
           {
             "name": "B",
             "selected": true,
-            "url": "/api/view?filename=rgthree.compare._temp_dsyqc_00002_.png&type=temp&subfolder=&rand=0.5998092070263201"
+            "url": "/api/view?filename=rgthree.compare._temp_ipmqv_00002_.png&type=temp&subfolder=&rand=0.3524964388202305"
           }
         ]
       },
@@ -354,6 +354,7 @@
       "enforce_mod32_boundaries": true,
       "use_tiled_vae": false,
       "tile_size": 512,
+      "offload_models_to_cpu": true,
       "latent": [
         "22",
         0
@@ -424,6 +425,16 @@
     "class_type": "SaveImage",
     "_meta": {
       "title": "保存图像"
+    }
+  },
+  "108": {
+    "inputs": {
+      "lora_name": "Klein\\Klein_9B-NSFW.safetensors",
+      "strength_model": 1
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
     }
   }
 }

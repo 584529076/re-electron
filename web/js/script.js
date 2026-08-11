@@ -63,6 +63,12 @@ const state = {
  _metaCollapsed: true,
  // ========= 新增：Module 3 标签收起状态（默认收起）=========
  _tagsCollapsed: true,
+ // ========= D-LAYOUT：主视图状态机 =========
+ currentView: 'assets', // 'assets' | 'workbench'
+ workbenchPrevFullscreen: null, // 'aiTools' | 'promptGen' | 'loras' | null
+ // ========= D-NAVBAR：顶部导航栏高亮项（与 currentView 不同：activeNav 反映「顶级页」，
+ //           含 settings；currentView 反映 main 区的视图）
+ activeNav: 'assets', // 'assets' | 'workbench' | 'settings' | 'novel' | 'promptLibrary'
 };
 
 // ========= 新增：blob URL集中管理（严重2） =========
@@ -397,57 +403,364 @@ function init() {
         });
     }
 
-    // D-31: 绑定写死的「配置」「提示词生成」按钮
-    // D-配置整合：btnConfig 改用新 settings 页（tab=resources 资源管理）
-    const btnConfig = document.getElementById('btnConfig');
-    console.log('[script.js] btnConfig 元素:', btnConfig);
-    if (btnConfig) {
-        btnConfig.addEventListener('click', () => {
-            console.log('[script.js] btnConfig 被点击');
+    // D-NAVBAR：公共顶部导航栏（资产库 / 提示词库 / 工作台 / AI 小说 / 设置）持久化到所有页面
+    // 旧齿轮入口 btnConfig 已删除，由 navSettings 顶替
+    const navAssets = document.getElementById('navAssets');
+    const navPromptLibrary = document.getElementById('navPromptLibrary');
+    const navWorkbench = document.getElementById('navWorkbench');
+    const navNovel = document.getElementById('navNovel');
+    const navSettings = document.getElementById('navSettings');
+    if (navAssets) {
+        navAssets.addEventListener('click', () => switchMainView('assets'));
+    }
+    if (navPromptLibrary) {
+        navPromptLibrary.addEventListener('click', () => switchMainView('promptLibrary'));
+    }
+    if (navWorkbench) {
+        navWorkbench.addEventListener('click', () => switchMainView('workbench'));
+    }
+    if (navNovel) {
+        navNovel.addEventListener('click', () => switchMainView('novel'));
+    }
+    if (navSettings) {
+        navSettings.addEventListener('click', () => switchMainView('settings'));
+    }
+
+    // D-WORKBENCH：ai-tools / prompt-gen 改嵌入到工作台后，不再有 fullscreen 切换的 requestReturn 流程
+    // 保留监听以兼容老逻辑（外部意外触发不报错）
+    window.addEventListener('workbench:requestReturn', () => {});
+
+    // D-NAVBAR：监听各 page 的 opened/closed 事件，自动同步 activeNav
+    // （处理「page 内部 open/close」导致的高亮不一致，比如 settings.open({tab:'loras'})）
+    const _navSyncHandler = (e) => {
+        const map = {
+            'settings:opened':   () => { state.activeNav = 'settings'; },
+            'settings:closed':   () => { _resolveActiveNavAfterClose('settings'); },
+            'workbench:opened':  () => { state.activeNav = 'workbench'; },
+            'workbench:closed':  () => { _resolveActiveNavAfterClose('workbench'); },
+            'aiTools:opened':    () => { state.activeNav = 'workbench'; }, // ai-tools 是工作台子页，顶部仍是工作台
+            'aiTools:closed':    (ev) => { _resolveActiveNavAfterAiClose(ev); },
+            'promptGen:opened':  () => { state.activeNav = 'workbench'; },
+            'promptGen:closed':  (ev) => { _resolveActiveNavAfterAiClose(ev); },
+            'promptLibrary:opened': () => { state.activeNav = 'promptLibrary'; },
+            'promptLibrary:closed': () => { _resolveActiveNavAfterClose('promptLibrary'); },
+            'novel:opened': () => { state.activeNav = 'novel'; },
+            'novel:closed': () => { _resolveActiveNavAfterClose('novel'); },
+        };
+        const fn = map[e.type];
+        if (fn) {
+            try { fn(e); } catch (err) { console.error('[navsync]', e.type, err); }
+            updateNavActiveState();
+        }
+    };
+    // ai-tools/prompt-gen 关闭后：silent 关闭 → 顶部仍是工作台（外层 nav 主动切的），
+    // 否则让 workbench:requestReturn listener 自己处理（会切到工作台）。
+    function _resolveActiveNavAfterAiClose(ev) {
+        const silent = !!(ev && ev.detail && ev.detail.silent);
+        if (silent) {
+            // silent 关闭（如 nav 主动切到其他页）→ 顶部维持 workbench
+            // （因为 workbench 还在，只是 ai-tools 退出；后续 nav 关闭 workbench 时再清）
+        }
+        // 非 silent 关闭会触发 workbench:requestReturn，由它更新 activeNav
+    }
+    function _resolveActiveNavAfterClose(_closedPage) {
+        // 关闭一个 page 后，从剩下的可见 page 里挑一个作为 activeNav
+        if (window.settings && window.settings.isOpen && window.settings.isOpen()) {
+            state.activeNav = 'settings';
+        } else if (window.workbench && window.workbench.isOpen && window.workbench.isOpen()) {
+            state.activeNav = 'workbench';
+        } else if (window.novel && window.novel.isOpen && window.novel.isOpen()) {
+            state.activeNav = 'novel';
+        } else if (window.promptLibrary && window.promptLibrary.isOpen && window.promptLibrary.isOpen()) {
+            state.activeNav = 'promptLibrary';
+        } else {
+            state.activeNav = 'assets';
+        }
+    }
+    [
+        'settings:opened', 'settings:closed',
+        'workbench:opened', 'workbench:closed',
+        'aiTools:opened', 'aiTools:closed',
+        'promptGen:opened', 'promptGen:closed',
+        'promptLibrary:opened', 'promptLibrary:closed',
+        'novel:opened', 'novel:closed',
+    ].forEach((evt) => window.addEventListener(evt, _navSyncHandler));
+
+    // D-NAVBAR：更新顶部 nav 的 active class + aria-pressed
+    function updateNavActiveState() {
+        const map = {
+            assets:        document.getElementById('navAssets'),
+            promptLibrary: document.getElementById('navPromptLibrary'),
+            workbench:     document.getElementById('navWorkbench'),
+            novel:         document.getElementById('navNovel'),
+            settings:      document.getElementById('navSettings'),
+        };
+        for (const key of Object.keys(map)) {
+            const el = map[key];
+            if (!el) continue;
+            const isActive = state.activeNav === key;
+            el.classList.toggle('active', isActive);
+            el.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        }
+    }
+
+    // D-NAVBAR：主视图切换函数 —— 关闭其他所有 page，再切到目标
+    // view: 'assets' | 'workbench' | 'settings' | 'novel' | 'promptLibrary'
+    function switchMainView(view) {
+        // 1. 先关 media preview modal（如打开），避免切页后弹框残留在错误位置
+        if (typeof window.closeMediaPreviewModal === 'function') {
+            try { window.closeMediaPreviewModal(); } catch (e) {}
+        }
+
+        // 2. 关闭其他 fullscreen 页（silent 防止 ai-tools/prompt-gen 触发 workbench 自动回退）
+        if (view !== 'settings' && window.settings && typeof window.settings.isOpen === 'function' && window.settings.isOpen()) {
+            try { window.settings.close(); } catch (e) {}
+        }
+        if (view !== 'workbench' && window.workbench && typeof window.workbench.isOpen === 'function' && window.workbench.isOpen()) {
+            try { window.workbench.close(); } catch (e) {}
+        }
+        if (view !== 'novel' && window.novel && typeof window.novel.isOpen === 'function' && window.novel.isOpen()) {
+            try { window.novel.close(); } catch (e) {}
+        }
+        if (view !== 'promptLibrary' && window.promptLibrary && typeof window.promptLibrary.isOpen === 'function' && window.promptLibrary.isOpen()) {
+            try { window.promptLibrary.close(); } catch (e) {}
+        }
+        // ai-tools / prompt-gen：nav 切页总是 silent（不让 workbench 自动回退）
+        if (window.aiTools && typeof window.aiTools.isOpen === 'function' && window.aiTools.isOpen()) {
+            try { window.aiTools.close({ silent: true }); } catch (e) {}
+        }
+        if (window.promptGen && typeof window.promptGen.isOpen === 'function' && window.promptGen.isOpen()) {
+            try { window.promptGen.close({ silent: true }); } catch (e) {}
+        }
+
+        // 3. 切到目标
+        state.activeNav = view;
+        if (view === 'assets') {
+            state.currentView = 'assets';
+            state.workbenchPrevFullscreen = null;
+        } else if (view === 'workbench') {
+            state.currentView = 'workbench';
+            if (window.workbench && typeof window.workbench.open === 'function') {
+                window.workbench.open();
+            }
+        } else if (view === 'settings') {
             if (window.settings && typeof window.settings.open === 'function') {
                 window.settings.open({ tab: 'resources' });
-            } else if (window.configUI && window.configUI.openManageModal) {
-                // 兜底：settings.js 未加载时退回旧弹框
-                window.configUI.openManageModal();
-            } else {
-                console.error('[script.js] 设置页 / 旧弹框均不可用');
-                alert('设置模块未加载');
             }
-        });
-    }
-    const btnPromptGen = document.getElementById('btnPromptGen');
-    console.log('[script.js] btnPromptGen 元素:', btnPromptGen);
-    if (btnPromptGen) {
-        btnPromptGen.addEventListener('click', () => {
-            console.log('[script.js] btnPromptGen 被点击');
-            if (window.promptGen && window.promptGen.open) {
-                window.promptGen.open();
-            } else {
-                console.error('[script.js] window.promptGen 不可用');
-                alert('提示词生成模块未加载');
+        } else if (view === 'promptLibrary') {
+            if (window.promptLibrary && typeof window.promptLibrary.open === 'function') {
+                window.promptLibrary.open();
             }
-        });
-    }
-    const btnAiTools = document.getElementById('btnAiTools');
-    if (btnAiTools) {
-        btnAiTools.addEventListener('click', () => {
-            if (window.aiTools && window.aiTools.open) {
-                window.aiTools.open();
-            } else {
-                alert('AI 工具模块未加载');
+        } else if (view === 'novel') {
+            if (window.novel && typeof window.novel.open === 'function') {
+                window.novel.open();
             }
-        });
+        }
+
+        // 4. 同步 nav active 态
+        updateNavActiveState();
     }
-    const btnLoras = document.getElementById('btnLoras');
-    if (btnLoras) {
-        btnLoras.addEventListener('click', () => {
-            if (window.lorasPage && window.lorasPage.open) {
-                window.lorasPage.open();
-            } else {
-                alert('Lora 库模块未加载');
+    window.switchMainView = switchMainView;
+
+    // ========== D-NAVBAR-COMFY：顶部导航栏右侧 ComfyUI 启动状态徽章 ==========
+    // 4 态：
+    //   idle     → 未启动（灰）
+    //   starting → 启动中（琥珀 + 脉冲图标，main 进程 spawn 后等到 /system_stats 可达前）
+    //   running  → 已启动（绿，显示端口）
+    //   failed   → 启动失败（红）
+    //
+    // 数据源：
+    //   - 轮询 api.comfyui.status()（兜底，处理「事件丢失 / 重连」情况）
+    //   - 事件订阅 onStarting / onReady / onExit（即时刷新，避免轮询间隔延迟）
+    const _navComfy = (() => {
+        const badge = document.getElementById('navComfyStatus');
+        const textEl = badge ? badge.querySelector('.nav-comfy-text') : null;
+        const STATES = ['idle', 'starting', 'running', 'failed'];
+        const TEXT = {
+            idle:     'ComfyUI 未启动',
+            starting: 'ComfyUI 启动中…',
+            running:  'ComfyUI 已启动',
+            failed:   'ComfyUI 启动失败',
+        };
+
+        function apply(state, port) {
+            if (!badge) return;
+            for (const s of STATES) badge.classList.remove(`nav-comfy-status-${s}`);
+            badge.classList.add(`nav-comfy-status-${state}`);
+            if (textEl) {
+                let label = TEXT[state] || '';
+                if (state === 'running' && port) label = `${TEXT.running} (:${port})`;
+                textEl.textContent = label;
             }
-        });
-    }
+            badge.setAttribute('data-state', state);
+        }
+
+        function stateFromStatus(r) {
+            if (!r) return 'idle';
+            if (r.running) return 'running';
+            if (r.starting) return 'starting';
+            if (r.lastError) return 'failed';
+            return 'idle';
+        }
+
+        let lastAppliedState = null;
+        async function refresh() {
+            let r = null;
+            try {
+                const api = window.api;
+                r = api && api.comfyui && api.comfyui.status ? await api.comfyui.status() : null;
+            } catch (e) { /* ignore */ }
+            const next = stateFromStatus(r);
+            const port = r && r.port;
+            // 同样的状态不重写 DOM，避免无谓抖动；failed 时 title 显示原因
+            if (next === lastAppliedState && next !== 'failed') return;
+            lastAppliedState = next;
+            apply(next, port);
+            if (next === 'failed' && r && r.lastError) {
+                badge.title = `ComfyUI 启动失败：${r.lastError}`;
+            } else if (next === 'running') {
+                badge.title = `ComfyUI 已启动 (port ${port})`;
+            } else {
+                badge.title = TEXT[next] || '';
+            }
+        }
+
+        // 事件订阅：即时刷新（轮询兜底）
+        const unsubFns = [];
+        function _safeListen(name, fn) {
+            const api = window.api;
+            const off = api && api.comfyui && api.comfyui[name] ? api.comfyui[name](fn) : null;
+            if (typeof off === 'function') unsubFns.push(off);
+        }
+        _safeListen('onStarting', () => { refresh(); });
+        _safeListen('onReady', () => { refresh(); });
+        _safeListen('onExit', () => { refresh(); });
+
+        // 轮询：1s 一次（事件丢失 / 启动前就监听不到的事件兜底）
+        // 1s 是为了捕获 spawn → /system_stats 就绪 的快速过渡
+        const timer = setInterval(() => { refresh(); }, 1000);
+
+        // 立即拉一次
+        refresh();
+
+        return {
+            refresh,
+            dispose() {
+                if (timer) clearInterval(timer);
+                for (const u of unsubFns) { try { u(); } catch {} }
+            },
+        };
+    })();
+    // 暴露给 settings / workbench 等手动触发（如启动/停止 ComfyUI 后立刻刷新徽章）
+    window.refreshNavComfyStatus = _navComfy.refresh;
+
+    // ========== D-NAVBAR-TERM：右侧浮层终端面板（ComfyUI stdout/stderr）==========
+    // - 点击 #navConsoleToggle 切 open 态（transform translateX 滑入）
+    // - 打开时：fetch logGet 灌历史 + 订阅 onLog 追加实时
+    // - 关闭时：取消订阅（不再追加 DOM，缓冲仍在 main 进程）
+    // - 自动滚动策略：用户在底部（≤ 32px）才跟随；用户往上翻时不滚
+    (() => {
+        const toggleBtn = document.getElementById('navConsoleToggle');
+        const drawer = document.getElementById('consoleDrawer');
+        const body = document.getElementById('consoleDrawerBody');
+        const closeBtn = document.getElementById('consoleCloseBtn');
+        const clearBtn = document.getElementById('consoleClearBtn');
+        if (!toggleBtn || !drawer || !body) return;
+
+        const api = () => (window.api && window.api.comfyui) || null;
+        let open = false;
+        let unsubLog = null;
+        const STICK_TO_BOTTOM_PX = 32;
+
+        function atBottom() {
+            const slack = body.scrollHeight - body.scrollTop - body.clientHeight;
+            return slack <= STICK_TO_BOTTOM_PX;
+        }
+        function appendLine(entry) {
+            const el = document.createElement('div');
+            el.className = `console-line console-${entry.stream === 'stderr' ? 'stderr' : 'stdout'}`;
+            el.textContent = entry.text;
+            const stick = atBottom();
+            body.appendChild(el);
+            // 单条过高（如 ComfyUI 大段 traceback）也要节流；保守：超过 5000 行就裁掉头部
+            while (body.childElementCount > 5000) {
+                body.removeChild(body.firstElementChild);
+            }
+            if (stick) body.scrollTop = body.scrollHeight;
+        }
+        function setEmpty() {
+            body.innerHTML = '<div class="console-line console-empty">暂无日志（启动 ComfyUI 后会有输出）</div>';
+        }
+
+        async function openDrawer() {
+            if (open) return;
+            open = true;
+            drawer.classList.add('console-drawer-open');
+            toggleBtn.classList.add('active');
+            toggleBtn.setAttribute('aria-pressed', 'true');
+            // 拉历史缓冲
+            const a = api();
+            body.innerHTML = '';
+            if (a && a.logGet) {
+                try {
+                    const r = await a.logGet();
+                    if (r && r.ok && Array.isArray(r.lines) && r.lines.length) {
+                        // 用 DocumentFragment 批量插入，减少 reflow
+                        const frag = document.createDocumentFragment();
+                        for (const entry of r.lines) {
+                            const el = document.createElement('div');
+                            el.className = `console-line console-${entry.stream === 'stderr' ? 'stderr' : 'stdout'}`;
+                            el.textContent = entry.text;
+                            frag.appendChild(el);
+                        }
+                        body.appendChild(frag);
+                        body.scrollTop = body.scrollHeight;
+                    } else {
+                        setEmpty();
+                    }
+                } catch (e) {
+                    setEmpty();
+                }
+            } else {
+                setEmpty();
+            }
+            // 订阅实时事件
+            if (a && typeof a.onLog === 'function') {
+                unsubLog = a.onLog((entry) => {
+                    if (entry && entry.text) appendLine(entry);
+                });
+            }
+        }
+        function closeDrawer() {
+            if (!open) return;
+            open = false;
+            drawer.classList.remove('console-drawer-open');
+            toggleBtn.classList.remove('active');
+            toggleBtn.setAttribute('aria-pressed', 'false');
+            if (typeof unsubLog === 'function') {
+                try { unsubLog(); } catch {}
+                unsubLog = null;
+            }
+        }
+        function toggleDrawer() { open ? closeDrawer() : openDrawer(); }
+
+        toggleBtn.addEventListener('click', toggleDrawer);
+        if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+        if (clearBtn) {
+            clearBtn.addEventListener('click', async () => {
+                const a = api();
+                if (a && a.logClear) {
+                    try { await a.logClear(); } catch {}
+                }
+                body.innerHTML = '';
+                setEmpty();
+            });
+        }
+
+        // 暴露给外部（如快捷键 / 测试）
+        window.openConsoleDrawer = openDrawer;
+        window.closeConsoleDrawer = closeDrawer;
+    })();
 
     // ========== 主内容区域锁屏遮罩 ==========
     // 每次打开软件默认锁定；点击「解锁」后隐藏（直至软件重启）。
@@ -2233,3 +2546,17 @@ function bindEvents() {
 
 // 启动应用
 window.addEventListener('DOMContentLoaded', init);
+
+// D-LAYOUT：暴露 state 给 workbench.js 使用（写入 workbenchPrevFullscreen 标记）
+window.state = state;
+
+// D-NAVBAR：暴露 closeMediaPreviewModal 给 switchMainView 用（切页前关闭预览弹框，避免残留）
+// 原 _closePreview 是 init() 内部局部函数，这里再包一层全局入口
+window.closeMediaPreviewModal = function closeMediaPreviewModal() {
+    const previewModal = document.getElementById('mediaPreviewModal');
+    if (previewModal && previewModal.classList.contains('active')) {
+        // 模拟点击关闭按钮，触发原有的 _closePreview 完整流程（含 prompt 编辑提示 + timer 清理）
+        const closeBtn = document.querySelector('.close-preview');
+        if (closeBtn) closeBtn.click();
+    }
+};

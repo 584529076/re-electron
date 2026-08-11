@@ -405,7 +405,34 @@ function pathOfMenu(menuId, menuById) {
     let _comfyPollTimer = null;      // setInterval handle，open 时启、close 时清
     let _resultTab = 'prompt';       // 'prompt' | 'image'
 
-    // ========== 入口 ==========
+    let _embeddedHost = null;
+    let _embeddedOnChange = null;
+
+    async function openEmbedded(host, onChange) {
+        _embeddedHost = host || null;
+        _embeddedOnChange = typeof onChange === 'function' ? onChange : null;
+        await open();
+        const page = document.getElementById('promptGenPage');
+        if (!page || !_embeddedHost) return;
+        _embeddedHost.hidden = false;
+        _embeddedHost.appendChild(page);
+        page.hidden = false;
+        page.style.display = 'flex';
+        page.style.position = 'absolute';
+        page.style.inset = '0';
+        page.style.zIndex = '1';
+        const header = page.querySelector('#pgHeaderBar');
+        if (header) header.style.display = 'none';
+        const result = page.querySelector('#pgResult');
+        if (result && !result._embeddedBound) {
+            result._embeddedBound = true;
+            result.addEventListener('input', () => {
+                if (_embeddedOnChange) _embeddedOnChange(result.value || '');
+            });
+        }
+        if (_embeddedOnChange && result) _embeddedOnChange(result.value || '');
+    }
+
     async function open() {
         _injectPromptGenLightCss();
         if (!document.getElementById('promptGenPage')) {
@@ -427,9 +454,14 @@ function pathOfMenu(menuId, menuById) {
         }
     }
 
-    function close() {
+    function close(opts) {
+        // D-NAVBAR：opts.silent=true 用于顶部导航主动切页时调用，避免触发 workbench 自动回退
+        const silent = !!(opts && opts.silent);
         const page = document.getElementById('promptGenPage');
-        if (page) page.style.display = 'none';
+        if (page) {
+            page.style.display = 'none';
+            page.hidden = true;
+        }
         // ComfyUI 清理：停 polling + 取消事件订阅 + 取消 in-flight job
         if (_comfyPollTimer) { clearInterval(_comfyPollTimer); _comfyPollTimer = null; }
         for (const u of _comfyUnsubscribe) { try { u && u(); } catch (e) {} }
@@ -438,20 +470,40 @@ function pathOfMenu(menuId, menuById) {
             try { api.comfyui.cancel(_currentImageJobId); } catch (e) {}
             _currentImageJobId = null;
         }
-        if (window.configUI && window.configUI.showGallery) {
-            window.configUI.showGallery();
+        // D-NAVBAR：恢复 main 显示（header 全平台持久可见，不再依赖 configUI.showGallery 兜底）
+        const main = document.querySelector('main');
+        if (main) main.style.display = '';
+        // D-LAYOUT：通知 workbench 关闭（如果是从工作台进去的，workbench 会决定是否重开）
+        if (!silent) {
+            try {
+                window.dispatchEvent(new CustomEvent('workbench:requestReturn', { detail: { source: 'promptGen' } }));
+            } catch (e) {}
         }
+        // D-NAVBAR：通知 nav active 态同步
+        try {
+            window.dispatchEvent(new CustomEvent('promptGen:closed', { detail: { silent } }));
+        } catch (e) {}
+    }
+
+    // D-NAVBAR：暴露 isOpen() 给 switchMainView 用
+    function isOpen() {
+        const page = document.getElementById('promptGenPage');
+        return !!(page && !page.hidden && page.style.display !== 'none');
     }
 
     // ========== DOM 创建 ==========
     function createPage() {
         const page = document.createElement('div');
         page.id = 'promptGenPage';
-        page.style.cssText = 'position:fixed; inset:0; background:#f5f6f8; z-index:200; display:none; flex-direction:column; color:#1a1a1a; font-family:system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;';
+        // DWP 视觉基线：class-based 外层骨架（与工作台 DWP 对齐）；内联状态指示器 / 三栏布局保留原状。
+        page.className = 'prompt-page';
+        page.hidden = true;
+        page.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
         page.innerHTML = `
-            <div id="pgHeaderBar" style="display:flex; align-items:center; padding:14px 20px; border-bottom:1px solid #e5e7eb; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
-                <button id="pgBtnBack" class="btn" title="返回瀑布流页" style="margin-right:14px;"><i class="fa-solid fa-arrow-left"></i> 返回</button>
-                <h2 style="margin:0; flex:1; color:#1f2937; font-size:18px; font-weight:600;"><i class="fa-solid fa-wand-magic-sparkles" style="color:#6366f1;"></i> 提示词自动生成</h2>
+            <div id="pgHeaderBar" class="prompt-topbar">
+                <button id="pgBtnBack" class="btn" title="返回瀑布流页" style="margin-right:8px;"><i class="fa-solid fa-arrow-left"></i> 返回</button>
+                <h2 class="prompt-topbar-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:#6366f1;"></i> 提示词自动生成</h2>
+                <span class="prompt-topbar-spacer"></span>
                 <span id="pgOllamaStatus" style="margin-right:12px; font-size:12px; color:#9ca3af;">● Ollama 未连接</span>
                 <span id="pgComfyStatus" style="margin-right:12px; font-size:12px; color:#9ca3af;" title="ComfyUI 服务状态（在设置 → ComfyUI 服务配置）">● ComfyUI 未启动</span>
                 <!-- D-29: SFW / NSFW 模式切换（class 切换：active-sfw / active-nsfw / inactive） -->
@@ -671,12 +723,17 @@ function pathOfMenu(menuId, menuById) {
 
     function showPage() {
         const page = document.getElementById('promptGenPage');
-        if (page) page.style.display = 'flex';
-        // 隐藏瀑布流
+        if (page) {
+            page.hidden = false;
+            page.style.display = 'flex';
+        }
+        // D-NAVBAR：main 仍然隐藏（prompt-gen 是全屏 overlay 覆盖 main），但 header 保持可见
         const main = document.querySelector('main');
-        const header = document.querySelector('header');
         if (main) main.style.display = 'none';
-        if (header) header.style.display = 'none';
+        // D-NAVBAR：通知 nav active 态同步
+        try {
+            window.dispatchEvent(new CustomEvent('promptGen:opened'));
+        } catch (e) {}
     }
 
     // ========== ComfyUI：配置 / 状态 / 事件订阅 / 生图 / 保存 ==========
@@ -4222,20 +4279,8 @@ async function openConfigModal(opts) {
         };
     }
 
-    // escapeHtml 工具（部分模块可能已有，为防体重名加个 IIFE 局部版）
-    function escapeHtml(s) {
-        if (s == null) return '';
-        return String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-    // 跟其他模块（ai-tools.js / settings.js）保持一致：escapeAttr 是 escapeHtml 的别名
-    // 之前没定义，新代码里 `data-id="${escapeAttr(rec.id)}"` 会 ReferenceError 让列表渲染挂掉
-    function escapeAttr(s) { return escapeHtml(s);
-    }
+    // D-WORKBENCH：转义工具统一从 window.dUtil 取（共享，避免 4 处漂移）
+    const { escapeHtml, escapeAttr } = window.dUtil;
 
     // 拼装规则面板的保存/清空按钮绑定（只绑一次）
     // D-35 fix: cfgRuleSaveBtn/clearBtn 在 cfg 弹框 DOM 里，IIFE 顶层执行时还没创建
@@ -4759,7 +4804,8 @@ async function openConfigModal(opts) {
     }
 
     // ========== 暴露 ==========
-    window.promptGen = { open, close };
+    window.promptGen = { open, close, isOpen };
+    window.promptGenEmbedded = { openEmbedded, liveAssemble, liveAssembleAndUpdate };
     // settings.js 也需要触发原「配置」弹框（4 子模块迁移前的兼容方案）
     // 调用方式：window.promptGenOpenConfigModal({ tab: 'menu' | 'item' | 'rule' | 'scene' })
     window.promptGenOpenConfigModal = function (opts) { return openConfigModal(opts || {}); };
@@ -4845,7 +4891,7 @@ async function openAssociationManager(opts) {
             const main = document.getElementById('promptGenPage');
             const settings = document.getElementById('settingsPage');
             // 只有当 settings 模态没在显示时才恢复 promptGenPage，避免从 settings 进入关联管理后误显主界面
-            if (main && (!settings || settings.style.display === 'none')) {
+            if (main && (!settings || settings.hidden)) {
                 main.style.display = 'flex';
             }
         });

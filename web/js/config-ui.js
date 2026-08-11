@@ -66,8 +66,9 @@
     }
 
     // ========= 顶部 tab 渲染 =========
+    // D-LAYOUT：tab 容器从 header 移到 main 顶部 subToolbar（id=subToolbarTabContainer）
     function renderTabs() {
-        const container = document.querySelector('.tab-container');
+        const container = document.getElementById('subToolbarTabContainer');
         if (!container) return;
         container.innerHTML = '';
         if (!_config || !Array.isArray(_config.tabs)) return;
@@ -126,51 +127,32 @@
     }
 
     // ========= 配置管理按钮 =========
+    // D-LAYOUT：btnConfig 已在 HTML 写死（仅图标），btnPromptGen 已废弃（合并到工作台）
+    // 这里只做兜底：btnConfig 缺失时注入；不再创建 btnPromptGen
     function bindManageButton() {
-        // 复用顶部 .controls 容器，加「配置」「提示词生成」按钮
         const controls = document.querySelector('.controls');
         if (!controls) {
             console.warn('[config-ui] .controls 容器不存在，跳过 bindManageButton');
             return;
         }
-        console.log('[config-ui] bindManageButton 开始执行，controls 子节点数=', controls.children.length, 'firstChild=', controls.firstChild && controls.firstChild.nodeName);
 
-        // D-31: 改为 appendChild 到末尾，不依赖 firstChild / nextSibling
         if (!document.getElementById('btnConfig')) {
             const btn = document.createElement('button');
             btn.id = 'btnConfig';
-            btn.className = 'btn';
-            btn.title = '管理 Tab 配置（增删改 + 切换资源路径）';
-            btn.innerHTML = '<i class="fa-solid fa-gear"></i> 配置';
+            btn.className = 'btn btn-icon';
+            btn.title = '配置（资源管理 / 提示词管理 / ComfyUI / LLM）';
+            btn.setAttribute('aria-label', '配置');
+            btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
             btn.addEventListener('click', openManageModal);
             controls.appendChild(btn);
-            console.log('[config-ui] btnConfig 已 append');
-        }
-
-        if (!document.getElementById('btnPromptGen')) {
-            const pgBtn = document.createElement('button');
-            pgBtn.id = 'btnPromptGen';
-            pgBtn.className = 'btn';
-            pgBtn.title = '提示词自动生成（Ollama 本地 LLM）';
-            pgBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 提示词生成';
-            pgBtn.addEventListener('click', () => {
-                if (window.promptGen && window.promptGen.open) {
-                    window.promptGen.open();
-                } else {
-                    alert('提示词生成模块未加载');
-                }
-            });
-            controls.appendChild(pgBtn);
-            console.log('[config-ui] btnPromptGen 已 append');
         }
     }
 
     // D-27: 从提示词生成页返回时显示瀑布流
+    // D-NAVBAR：header 全平台持久可见，不再处理 header.style.display
     function showGallery() {
         const main = document.querySelector('main');
-        const header = document.querySelector('header');
         if (main) main.style.display = '';
-        if (header) header.style.display = '';
     }
 
     // ========= 配置管理模态 =========

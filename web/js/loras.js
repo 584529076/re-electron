@@ -1,15 +1,17 @@
 // loras.js — Lora 库页面（管理 / 浏览 / 编辑 / 删除）
 //
-// 入口：window.lorasPage.open() — 由 script.js 的「Lora 库」按钮调用
+// D-LAYOUT：原 fullscreen overlay 模式已废弃，改成 renderInto(container) 嵌入到调用方容器
+// 入口：
+//   - settings.js → renderLorasPane → window.lorasModule.renderInto(wrap)
+//   - workbench.js → Lora 卡片 → settings.open({tab:'loras'})
 // 数据：api.loras.* (Phase 1 IPC) + 本地状态
 //
-// 布局：
-//   lorasPage
-//   ├── headerBar       返回主页 + 标题 + "+ 新建 Lora"
-//   ├── sidebar         类型分类 (all + 8 types) + 每类计数
-//   ├── toolbar         搜索框 + 模型筛选下拉 + 类型 chips
-//   ├── grid            Lora 卡片网格
-//   └── modals (按需创建)
+// 布局（嵌入模式）：
+//   lorasModuleRoot
+//   ├── sidebar       类型分类 (all + 8 types) + 每类计数
+//   ├── toolbar       [新建 Lora] + 搜索框 + 模型筛选下拉 + 总数
+//   ├── grid          Lora 卡片网格（自带 overflow-y:auto）
+//   └── modals (按需创建，挂在 body)
 //       ├── detailModal   详情查看 + 编辑/删除/复制示例提示词
 //       ├── editModal     新建/编辑表单
 //       └── pickerModal   推荐搭配 Lora 多选
@@ -19,6 +21,11 @@
 (function () {
     const api = window.api || {};
     if (!api.loras) { console.warn('[loras] window.api.loras 不可用'); return; }
+
+    // D-WORKBENCH：转义工具统一从 window.dUtil 取（共享，避免 4 处漂移）。
+    // 必须在 _adaptiveModelOptionsHtml 拼字符串之前就拿到，否则会触发 TDZ
+    // （Cannot access 'escapeAttr' before initialization，loras.js:48）。
+    const { escapeHtml, escapeAttr } = window.dUtil || { escapeHtml: (s) => String(s), escapeAttr: (s) => String(s) };
 
     // ========== 状态 ==========
     const _types = [
@@ -56,29 +63,67 @@
     let _editCoverUrl = '';           // 预览用（blob URL 或 file://）
     let _pairingPickerCallback = null;
 
-    // ========== 入口 ==========
-    async function open() {
-        if (!document.getElementById('lorasPage')) createPage();
-        showPage();
+    // ========== 入口（嵌入模式 —— D-LAYOUT 挪到 settings 顶级 tab）==========
+    // 旧：open() 创建一个 fullscreen overlay #lorasPage；现改为 renderInto(container) 把
+    // sidebar + toolbar + grid 渲染到传入容器（settings 顶级 tab 的 wrap 容器）。
+    // 调用方：settings.js → renderLorasPane → window.lorasModule.renderInto(wrap)
+    async function renderInto(container, opts) {
+        if (!container) return;
+        if (!document.getElementById('lorasModuleRoot')) {
+            const root = buildRoot();
+            container.appendChild(root);
+            bindRootEvents(root);
+        }
         await reloadAll();
     }
 
-    function close() {
-        const page = document.getElementById('lorasPage');
-        if (page) page.style.display = 'none';
-        const main = document.querySelector('main');
-        const header = document.querySelector('header');
-        if (main) main.style.display = '';
-        if (header) header.style.display = '';
+    function buildRoot() {
+        const root = document.createElement('div');
+        root.id = 'lorasModuleRoot';
+        // D-LAYOUT：填满 settings 子模块容器（setPromptsSubBody 是 flex:1; min-height:0; overflow:hidden）
+        // 左侧 + 顶部 各留 10px 空白（外层大盒子留白，避免内容贴边；右/下保持 0 紧贴 setLorasWrap）
+        root.style.cssText = 'display:flex; flex-direction:column; height:100%; min-height:0; background:#ffffff; padding:10px 0 0 10px; box-sizing:border-box;';
+        root.innerHTML = `
+            <div style="display:flex; flex:1; min-height:0;">
+                <div id="lpSidebar" style="width:200px; flex-shrink:0; background:#f9fafb; border-right:1px solid #e5e7eb; overflow-y:auto; padding:8px 0;"></div>
+                <div style="flex:1; display:flex; flex-direction:column; min-width:0; background:#ffffff;">
+                    <div id="lpToolbar" style="padding:12px 18px; border-bottom:1px solid #e5e7eb; background:#ffffff; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <button id="lpBtnNew" class="btn btn-primary" type="button" style="font-size:12px; padding:6px 12px;"><i class="fa-solid fa-plus"></i> 新建 Lora</button>
+                        <input id="lpSearch" type="text" placeholder="🔍 搜索名称 / 显示名"
+                               style="flex:1; min-width:200px; padding:7px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; box-sizing:border-box;" />
+                        <select id="lpModelFilter" style="padding:7px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; min-width:180px;">
+                            <option value="">所有模型</option>
+                        </select>
+                        <span id="lpTotalCount" style="font-size:12px; color:#6b7280; margin-left:4px;"></span>
+                    </div>
+                    <div id="lpGrid" style="flex:1; overflow-y:auto; padding:18px; display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px; align-content:start;"></div>
+                </div>
+            </div>
+        `;
+        return root;
     }
 
-    function showPage() {
-        const page = document.getElementById('lorasPage');
-        if (page) page.style.display = 'flex';
-        const main = document.querySelector('main');
-        const header = document.querySelector('header');
-        if (main) main.style.display = 'none';
-        if (header) header.style.display = 'none';
+    function bindRootEvents(root) {
+        const newBtn = root.querySelector('#lpBtnNew');
+        if (newBtn) newBtn.addEventListener('click', () => openEditModal('create'));
+        const searchInput = root.querySelector('#lpSearch');
+        if (searchInput) {
+            let searchTimer = null;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    _filter.searchText = searchInput.value.trim();
+                    applyFilter();
+                }, 150);
+            });
+        }
+        const modelSel = root.querySelector('#lpModelFilter');
+        if (modelSel) {
+            modelSel.addEventListener('change', (e) => {
+                _filter.model = e.target.value;
+                applyFilter();
+            });
+        }
     }
 
     async function reloadAll() {
@@ -95,51 +140,7 @@
         applyFilter();
     }
 
-    // ========== DOM ==========
-    function createPage() {
-        const page = document.createElement('div');
-        page.id = 'lorasPage';
-        page.style.cssText = 'position:fixed; inset:0; background:#f5f6f8; z-index:200; display:none; flex-direction:column; color:#1a1a1a; font-family:system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;';
-        page.innerHTML = `
-            <div id="lpHeaderBar" style="display:flex; align-items:center; padding:14px 20px; border-bottom:1px solid #e5e7eb; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.04); flex-shrink:0;">
-                <button id="lpBtnBack" class="btn" style="margin-right:14px;"><i class="fa-solid fa-arrow-left"></i> 返回</button>
-                <h2 style="margin:0; flex:1; color:#1f2937; font-size:18px; font-weight:600;"><i class="fa-solid fa-puzzle-piece" style="color:#0ea5e9;"></i> Lora 库</h2>
-                <span id="lpTotalCount" style="font-size:12px; color:#6b7280; margin-right:12px;"></span>
-                <button id="lpBtnNew" class="btn btn-primary"><i class="fa-solid fa-plus"></i> 新建 Lora</button>
-            </div>
-            <div style="display:flex; flex:1; min-height:0;">
-                <div id="lpSidebar" style="width:200px; flex-shrink:0; background:#ffffff; border-right:1px solid #e5e7eb; overflow-y:auto; padding:8px 0;"></div>
-                <div style="flex:1; display:flex; flex-direction:column; min-width:0; background:#f5f6f8;">
-                    <div id="lpToolbar" style="padding:14px 18px; border-bottom:1px solid #e5e7eb; background:#ffffff; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                        <input id="lpSearch" type="text" placeholder="🔍 搜索名称 / 显示名"
-                               style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; box-sizing:border-box;" />
-                        <select id="lpModelFilter" style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; min-width:180px;">
-                            <option value="">所有模型</option>
-                        </select>
-                    </div>
-                    <div id="lpGrid" style="flex:1; overflow-y:auto; padding:18px; display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px; align-content:start;"></div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(page);
-
-        // 绑定
-        page.querySelector('#lpBtnBack').addEventListener('click', close);
-        page.querySelector('#lpBtnNew').addEventListener('click', () => openEditModal('create'));
-        const searchInput = page.querySelector('#lpSearch');
-        let searchTimer = null;
-        searchInput.addEventListener('input', () => {
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => {
-                _filter.searchText = searchInput.value.trim();
-                applyFilter();
-            }, 150);
-        });
-        page.querySelector('#lpModelFilter').addEventListener('change', (e) => {
-            _filter.model = e.target.value;
-            applyFilter();
-        });
-    }
+    // ========== DOM（D-LAYOUT：buildRoot + bindRootEvents 抽到上面 renderInto 旁；旧的 createPage fullscreen overlay 已删除）==========
 
     // ========== 侧栏（类型分类 + 计数）==========
     function renderSidebar() {
@@ -1057,15 +1058,14 @@
     }
 
     // ========== utils ==========
-    function escapeHtml(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-    }
-    function escapeAttr(s) { return escapeHtml(s); }
+    // D-WORKBENCH：转义工具统一从 window.dUtil 取（共享，避免 4 处漂移）— 已在 IIFE 顶部解构过
     function showToast(msg, type) {
         if (window.showToast) { window.showToast(msg, type); return; }
         console.log('[loras]', type || 'info', msg);
     }
 
     // ========== 暴露 ==========
-    window.lorasPage = { open, close };
+    // D-LAYOUT：原 lorasPage.open/close（fullscreen overlay）已废弃；
+    // settings 子模块 / 工作台卡片通过 window.lorasModule.renderInto(container) 调用
+    window.lorasModule = { renderInto, openEditModal };
 })();
