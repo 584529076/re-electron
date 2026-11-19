@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test:novel-integrity": "set ELECTRON_RUN_AS_NODE=1 && electron test-novel-integrity.js",
     "test": "set ELECTRON_RUN_AS_NODE=1 && electron test-smoke.js",
     "test:config": "node --test --test-force-exit test-config.js",
     "test:promptgen": "node --test --test-force-exit test-promptgen.js",
@@ -25,23 +26,45 @@
   "build": {
     "appId": "com.cool.re-electron",
     "productName": "ReElectron",
+    "npmRebuild": false,
     "directories": {
       "output": "dist"
     },
     "files": [
-      "*.js",
-      "!test-*.js",
-      "!_shot_*.js",
       "main.js",
       "preload.js",
+      "db.js",
+      "llm.js",
+      "llm-state.js",
+      "nsfw-system.js",
+      "nsfw-parser.js",
+      "nsfw-assembler.js",
+      "prompt-seed.js",
+      "comfyui-process.js",
+      "comfyui-ws.js",
+      "comfyui-state.js",
+      "comfyui-workflow-meta.js",
+      "comfyui-tool-store.js",
+      "comfyui-workflow-applier.js",
+      "workflow-schema-gen.js",
+      "env-check.js",
+      "loras-store.js",
+      "engineering-flow.js",
+      "resource-station.js",
+      "novel.js",
+      "novel-engine.js",
       "web/**/*",
+      "cps-embed/**/*",
+      "lib/**/*.js",
+      "orchestrator/**/*.js",
+      "agents/**/*.json",
+      "agents/**/*.md",
+      "!agents/**/memory/**",
+      "!agents/**/MEMORY.md",
+      "build/icon.ico",
       "package.json"
     ],
     "extraResources": [
-      {
-        "from": "prompts",
-        "to": "prompts"
-      },
       {
         "from": "resources",
         "to": "resources"
@@ -74,6 +97,7 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0"
+    "better-sqlite3": "^12.10.0",
+    "ws": "^8.23.0"
   }
 }

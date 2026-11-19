@@ -123,7 +123,9 @@
         { id: 'comfyui',   icon: 'fa-image',         label: 'ComfyUI 服务' },
         { id: 'llm',       icon: 'fa-microchip',     label: 'LLM 服务' },
         { id: 'ainovel',   icon: 'fa-book',          label: 'AI 小说' },
+        { id: 'nas',       icon: 'fa-hard-drive',    label: 'NAS 地址' },
         { id: 'systeminfo', icon: 'fa-circle-info',  label: '系统信息' },
+        { id: 'envcheck',   icon: 'fa-shield-halved', label: '环境检查' },
     ];
 
     function tabDef(id) { return TAB_DEFS.find(t => t.id === id) || TAB_DEFS[0]; }
@@ -203,7 +205,9 @@
         comfyui: renderComfyuiPane,
         llm: renderLlmPane,
         ainovel: renderAiNovelPane,
+        nas: renderNasPane,
         systeminfo: renderSysteminfoPane,
+        envcheck: renderEnvCheckPane,
     };
 
     // ===== LORA 库管理顶级 tab（D-LAYOUT：原 fullscreen overlay lorasPage 嵌入到 settings content 区）=====
@@ -401,6 +405,7 @@
                 return row;
             }
             fields.innerHTML = renderSourceFields(src);
+            if (src.type === 'nas') _wireNasPreview(row, fields);
 
             // 事件委托：点击「选择地址」按钮 → 弹目录选择对话框 → 写入 .rs-path
             // （fields.innerHTML 在 type 切换时会重渲，用委托避免每次重新绑）
@@ -426,6 +431,7 @@
                 const cur = readSourceFromRow(row);
                 cur.type = e.target.value;
                 fields.innerHTML = renderSourceFields(cur);
+                if (cur.type === 'nas') _wireNasPreview(row, fields);
             });
             row.querySelector('.rs-up').addEventListener('click', () => { moveTab(idx, -1); });
             row.querySelector('.rs-down').addEventListener('click', () => { moveTab(idx, +1); });
@@ -495,9 +501,17 @@
     function renderSourceFields(src) {
         if (src.type === 'nas') {
             return `
-                <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#6b7280; margin-bottom:8px;">路径（HTTP 根 URL + 远程目录）
-                    <input class="rs-path" type="text" value="${escapeAttr(src.path || '')}" placeholder="http://192.168.0.109:5005/home/小芋/003 AI出图/" style="padding:6px 10px; background:#ffffff; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px;">
+                <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#6b7280; margin-bottom:8px;">路径（完整 URL 或相对路径；相对路径会自动用「NAS 地址」拼接）
+                    <input class="rs-path" type="text" value="${escapeAttr(src.path || '')}" placeholder="/home/MyFolder/003 AI出图/" style="padding:6px 10px; background:#ffffff; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px;">
                 </label>
+                <div class="rs-nas-preview" style="font-size:12px; color:#059669; padding:6px 10px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; margin-bottom:8px; font-family:monospace; word-break:break-all;">
+                    <i class="fa-solid fa-link"></i> 实际 URL: <span class="rs-nas-preview-url">—</span>
+                </div>
+                <div class="rs-nas-warn" style="display:none; font-size:12px; color:#b91c1c; padding:6px 10px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; margin-bottom:8px; align-items:center; gap:6px;">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span class="rs-nas-warn-text" style="flex:1;"></span>
+                    <button type="button" class="rs-nas-warn-goto" style="padding:2px 8px; background:#dc2626; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">前往配置</button>
+                </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
                     <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#6b7280;">图片扩展名
                         <input class="rs-imgExts" type="text" value="${escapeAttr((src.imgExts || []).join(','))}" placeholder="jpg,jpeg,png" style="padding:6px 10px; background:#ffffff; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px;">
@@ -558,6 +572,76 @@
         return String(s || '').split(/[,\s]+/).map(x => x.trim().toLowerCase().replace(/^\./, '')).filter(Boolean);
     }
 
+    // NAS 路径预览 + 未配置警告。行级异步函数，从 api.resourceStation.nasConfigGet() 拉配置
+    // 然后在用户键入时实时拼接预览；不每键调 IPC，仅首次拉一次缓存 cfg。
+    async function _wireNasPreview(row, fields) {
+        if (!api.resourceStation || typeof api.resourceStation.nasConfigGet !== 'function') return;
+        const pathInput = fields.querySelector('.rs-path');
+        const previewEl = fields.querySelector('.rs-nas-preview');
+        const previewUrlEl = fields.querySelector('.rs-nas-preview-url');
+        const warnEl = fields.querySelector('.rs-nas-warn');
+        const warnTextEl = fields.querySelector('.rs-nas-warn-text');
+        const gotoBtn = fields.querySelector('.rs-nas-warn-goto');
+        if (!pathInput || !previewEl || !previewUrlEl || !warnEl || !warnTextEl) return;
+
+        let cfg = null;
+
+        const render = () => {
+            const val = (pathInput.value || '').trim();
+            if (!val) {
+                previewUrlEl.textContent = '（空 — 输入路径以预览实际 URL）';
+                previewEl.style.display = 'block';
+                warnEl.style.display = 'none';
+                return;
+            }
+            if (/^https?:\/\//i.test(val)) {
+                // 完整 URL：直接展示原文
+                previewUrlEl.textContent = val;
+                previewEl.style.display = 'block';
+                warnEl.style.display = 'none';
+                return;
+            }
+            if (cfg && cfg.host) {
+                const scheme = cfg.scheme || 'http';
+                const port = cfg.port ? ':' + cfg.port : '';
+                const auth = cfg.username
+                    ? (cfg.username + (cfg.hasPassword ? ':***' : '') + '@')
+                    : '';
+                let rel = val.replace(/\\/g, '/');
+                if (!rel.startsWith('/')) rel = '/' + rel;
+                previewUrlEl.textContent = `${scheme}://${auth}${cfg.host}${port}${rel}`;
+                previewEl.style.display = 'block';
+                warnEl.style.display = 'none';
+            } else {
+                previewEl.style.display = 'none';
+                warnTextEl.textContent = 'NAS 地址未配置。相对路径需要先在【设置 → 资源管理 → NAS 地址】配置 NAS 详情后才能解析。';
+                warnEl.style.display = 'flex';
+            }
+        };
+
+        const reload = async () => {
+            try {
+                const r = await api.resourceStation.nasConfigGet();
+                cfg = (r && r.ok) ? (r.data || null) : null;
+            } catch (_) { cfg = null; }
+            render();
+        };
+
+        if (gotoBtn) {
+            gotoBtn.addEventListener('click', () => {
+                // 切到资源管理面板并滚动到 NAS 地址设置
+                const navBtn = document.querySelector('[data-nav="resources"]') || document.querySelector('[data-nav="settings"]');
+                if (navBtn) navBtn.click();
+                setTimeout(() => {
+                    const target = document.getElementById('setNasHost');
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 250);
+            });
+        }
+        pathInput.addEventListener('input', render);
+        await reload();
+    }
+
     // ===== ComfyUI 服务 =====
     function renderComfyuiPane(container) {
         const card = document.createElement('div');
@@ -586,6 +670,10 @@
                 <label style="font-size:12px; color:#6b7280;">输出目录</label>
                 <input id="setComfyOutput" type="text" placeholder="（可选）ComfyUI 输出拷贝目录" style="padding:7px 11px; background:#ffffff; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px; font-family:monospace;">
                 <button id="setComfyOutputPick" class="btn btn-sm" type="button"><i class="fa-solid fa-folder-open"></i></button>
+
+                <label style="font-size:12px; color:#6b7280;">任务并发数</label>
+                <input id="setComfyConcurrency" type="number" value="1" min="1" max="8" step="1" style="padding:7px 11px; background:#ffffff; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:13px;">
+                <span style="font-size:11px; color:#9ca3af; line-height:1.4;">1=串行；&gt;1 并行提交，需显存足够，改后新任务生效</span>
             </div>
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding-top:14px; border-top:1px solid #e5e7eb;">
                 <span id="setComfyStatusDot" style="width:10px; height:10px; border-radius:50%; background:#6b7280; display:inline-block;"></span>
@@ -610,6 +698,7 @@
             card.querySelector('#setComfyDir').value = cfg.comfyDir || '';
             card.querySelector('#setComfyPort').value = cfg.port || 8188;
             card.querySelector('#setComfyOutput').value = cfg.outputDir || '';
+            card.querySelector('#setComfyConcurrency').value = cfg.concurrency || 1;
 
             refreshStatus();
         })();
@@ -620,6 +709,7 @@
                 comfyDir: card.querySelector('#setComfyDir').value.trim(),
                 port: Number(card.querySelector('#setComfyPort').value) || 8188,
                 outputDir: card.querySelector('#setComfyOutput').value.trim(),
+                concurrency: Math.min(Math.max(Number(card.querySelector('#setComfyConcurrency').value) || 1, 1), 8),
             };
         }
 
@@ -927,6 +1017,189 @@
         btn.addEventListener('click', onClick);
         actions.appendChild(btn);
         return btn;
+    }
+
+
+    async function renderNasPane(container) {
+        const card = document.createElement('div');
+        card.className = 'set-card';
+        card.innerHTML = `<div class="set-card-head">
+    <h3 class="set-card-title"><i class="fa-solid fa-hard-drive" style="color:#6366f1;"></i> NAS 地址</h3>
+    <p class="set-card-desc">保存后，资源站添加视频时只需填写真实资源路径（例如 /home/MyFile/.../video.mp4），系统会自动拼上 NAS 协议、地址、端口和账号密码。</p>
+</div>
+<div style="display:grid; gap:14px; max-width:760px;">
+    <div style="display:grid; grid-template-columns:120px 1fr 160px; gap:10px;">
+        <label>协议<select id="setNasProtocol" style="width:100%; padding:7px 9px; border:1px solid #d1d5db; border-radius:6px;"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label>
+        <label>IP / 主机名<input id="setNasHost" placeholder="192.168.0.100" style="width:100%; padding:7px 9px; border:1px solid #d1d5db; border-radius:6px;"></label>
+        <label>端口<input id="setNasPort" type="number" min="1" max="65535" placeholder="5005" style="width:100%; padding:7px 9px; border:1px solid #d1d5db; border-radius:6px;"></label>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <label>账号<input id="setNasUser" autocomplete="off" style="width:100%; padding:7px 9px; border:1px solid #d1d5db; border-radius:6px;"></label>
+        <label>密码<input id="setNasPassword" type="password" autocomplete="new-password" placeholder="" style="width:100%; padding:7px 9px; border:1px solid #d1d5db; border-radius:6px;"></label>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; padding-top:14px; border-top:1px dashed #e5e7eb;">
+        <span id="setNasStatus" style="font-size:13px; color:#6b7280;"></span>
+        <button id="setNasClearCreds" class="btn btn-sm" type="button">清除账号密码</button>
+        <button id="setNasSave" class="btn btn-sm btn-primary" style="margin-left:auto;"><i class="fa-solid fa-check"></i> 保存</button>
+    </div>
+</div>`;
+        container.appendChild(card);
+
+        const q = selector => card.querySelector(selector);
+        if (!api.resourceStation || typeof api.resourceStation.nasConfigGet !== 'function') {
+            q('#setNasStatus').textContent = 'resourceStation API 不可用';
+            return;
+        }
+
+        const load = async () => {
+            const result = await api.resourceStation.nasConfigGet();
+            if (!result?.ok) {
+                q('#setNasStatus').textContent = '加载失败：' + (result?.error || '未知错误');
+                return;
+            }
+            const cfg = result.data || {};
+            q('#setNasProtocol').value = cfg.scheme || 'http';
+            q('#setNasHost').value = cfg.host || '';
+            q('#setNasPort').value = cfg.port || '';
+            q('#setNasUser').value = cfg.username || '';
+            q('#setNasPassword').value = '';
+            q('#setNasPassword').placeholder = cfg.hasPassword ? '已保存，留空则不修改' : '';
+            q('#setNasStatus').textContent = cfg.host
+                ? '已配置：' + (cfg.scheme || 'http') + '://' + cfg.host + (cfg.port ? ':' + cfg.port : '')
+                : '未配置';
+        };
+        await load();
+
+        const readPayload = () => ({
+            scheme: q('#setNasProtocol').value,
+            host: q('#setNasHost').value.trim(),
+            port: q('#setNasPort').value,
+            username: q('#setNasUser').value.trim(),
+            password: q('#setNasPassword').value,
+            keepPassword: !q('#setNasPassword').value,
+        });
+
+        q('#setNasSave').addEventListener('click', async () => {
+            const button = q('#setNasSave');
+            button.disabled = true;
+            try {
+                const result = await api.resourceStation.nasConfigSet(readPayload());
+                if (!result?.ok) throw new Error(result?.error || '保存失败');
+                q('#setNasPassword').value = '';
+                await load();
+                showToast('NAS 地址已保存', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally { button.disabled = false; }
+        });
+
+        q('#setNasClearCreds').addEventListener('click', async () => {
+            const button = q('#setNasClearCreds');
+            button.disabled = true;
+            try {
+                const payload = { ...readPayload(), username: '', password: '', clearCredentials: true, keepPassword: false };
+                const result = await api.resourceStation.nasConfigSet(payload);
+                if (!result?.ok) throw new Error(result?.error || '清除失败');
+                await load();
+                showToast('已清除账号密码', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally { button.disabled = false; }
+        });
+    }
+
+    // ===== 环境检查（系统信息菜单下面）=====
+    function renderEnvCheckPane(container) {
+        const card = createCard('环境检查', '选择从网盘下载并解压后的 ComfyUI 根目录，软件会自动识别 Python 环境、ComfyUI 核心、插件和模型，确认后写入设置。');
+        container.appendChild(card);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'display:flex; flex-direction:column; gap:14px; margin-top:14px;';
+        card.appendChild(body);
+
+        // 步骤1：选择根目录
+        const pickRow = document.createElement('div');
+        pickRow.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
+        pickRow.innerHTML = `
+            <button id="ecPick" class="btn btn-sm btn-primary" type="button" style="background:#4f46e5;color:#fff;"><i class="fa-solid fa-folder-open"></i> 选择解压根目录</button>
+            <input id="ecRoot" type="text" readonly placeholder="例如 D:\\RxAi-ComfyUI（python_embeded 和 ComfyUI 所在目录）" style="flex:1; min-width:240px; padding:7px 11px; background:#f9fafb; color:#1f2937; border:1px solid #d1d5db; border-radius:6px; font-size:12px; font-family:monospace;">
+        `;
+        body.appendChild(pickRow);
+
+        const result = document.createElement('div');
+        result.id = 'ecResult';
+        body.appendChild(result);
+
+        const apiOk = !!(api.envCheck && typeof api.envCheck.scan === 'function');
+        let scanData = null;
+
+        if (!apiOk) {
+            result.innerHTML = '<div style="padding:20px; color:#dc2626; font-size:12px;">环境检查接口不可用，请重启应用。</div>';
+            return;
+        }
+
+        document.getElementById('ecPick').addEventListener('click', async () => {
+            const pr = await api.envCheck.pickRoot();
+            if (!pr || !pr.ok) { showToast((pr && pr.error) || '选择失败', 'error'); return; }
+            if (pr.canceled) return;
+            document.getElementById('ecRoot').value = pr.path;
+            result.innerHTML = '<div style="padding:20px; color:#6b7280; font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在扫描…</div>';
+            const sr = await api.envCheck.scan(pr.path);
+            if (!sr || !sr.ok) { result.innerHTML = `<div style="padding:20px; color:#dc2626; font-size:12px;">扫描失败：${escapeHtml((sr && sr.error) || '未知')}</div>`; return; }
+            scanData = sr;
+            renderScanResult();
+        });
+
+        function fmtSize(bytes) {
+            if (!bytes) return '0 B';
+            const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let v = bytes, i = 0;
+            while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+            return v.toFixed(1) + ' ' + u[i];
+        }
+        function row(ok, label, detail) {
+            const icon = ok ? '<i class="fa-solid fa-circle-check" style="color:#10b981;"></i>' : '<i class="fa-solid fa-circle-xmark" style="color:#ef4444;"></i>';
+            return `<div style="display:flex; gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px solid #f1f5f9; font-size:12px;">
+                <span style="flex-shrink:0;">${icon}</span>
+                <span><b style="color:#334155;">${escapeHtml(label)}</b>${detail ? `<br><span style="color:#94a3b8; word-break:break-all;">${escapeHtml(detail)}</span>` : ''}</span>
+            </div>`;
+        }
+        function renderScanResult() {
+            if (!scanData) return;
+            const s = scanData;
+            const plugins = s.plugins.filter(p => p.looksLikePlugin);
+            const models = s.models || {};
+            let html = '<div style="padding:14px 16px; background:#fbfcfe; border:1px solid #e6eaf0; border-radius:9px;">';
+            html += row(s.python.found, 'Python 环境', s.python.found ? `${s.python.path}${s.python.hasSitePackages ? ' · 依赖库完整' : ' · ⚠ 缺少 site-packages'}` : '未找到 python.exe（请确认 Python 环境包已解压）');
+            html += row(s.comfy.found, 'ComfyUI 核心', s.comfy.found ? s.comfy.path : '未找到 main.py / comfy 目录（请确认 ComfyUI 核心已解压）');
+            if (s.comfy.found) {
+                html += row(plugins.length > 0, '插件', plugins.length ? `检测到 ${plugins.length} 个：${plugins.slice(0, 8).map(p => escapeHtml(p.name)).join('、')}${plugins.length > 8 ? ' …' : ''}` : 'custom_nodes 里没有检测到插件（可稍后单独下载解压）');
+                html += row((models.totalCount || 0) > 0, '模型', models.exists ? `${models.totalCount || 0} 个 · ${fmtSize(models.totalBytes)}${(models.symlinks || []).some(x => !x.valid) ? ' · ⚠ 存在失效的符号链接' : ''}` : '未找到 models 目录');
+            }
+            for (const p of (s.problems || [])) html += row(false, '问题', p);
+            html += '</div>';
+
+            if (s.config && s.config.canApply) {
+                html += `<div style="display:flex; gap:10px; align-items:center; margin-top:14px; padding-top:14px; border-top:1px solid #e5e7eb;">
+                    <button id="ecApply" class="btn btn-sm btn-primary" type="button" style="background:#059669;color:#fff;"><i class="fa-solid fa-check"></i> 确认安装并应用</button>
+                    <span style="font-size:11px; color:#9ca3af;">应用后会自动填写 ComfyUI 服务的 Python 路径和目录</span>
+                </div>`;
+            } else {
+                html += '<div style="margin-top:14px; padding:10px 12px; background:#fef2f2; border-radius:6px; color:#b91c1c; font-size:12px;">上面的必需项未全部通过，暂不能应用。请补齐后重新扫描。</div>';
+            }
+            result.innerHTML = html;
+            const applyBtn = document.getElementById('ecApply');
+            if (applyBtn) applyBtn.addEventListener('click', async () => {
+                applyBtn.disabled = true;
+                applyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 应用中…';
+                try {
+                    const ar = await api.envCheck.apply({ pythonPath: s.config.pythonPath, comfyDir: s.config.comfyDir });
+                    if (!ar || !ar.ok) { showToast((ar && ar.error) || '应用失败', 'error'); }
+                    else { showToast('环境已应用，Python 路径和 ComfyUI 目录已写入设置', 'success'); }
+                } catch (e) { showToast('应用失败：' + e.message, 'error'); }
+                finally { applyBtn.disabled = false; applyBtn.innerHTML = '<i class="fa-solid fa-check"></i> 确认安装并应用'; }
+            });
+        }
     }
 
     async function renderSysteminfoPane(container) {

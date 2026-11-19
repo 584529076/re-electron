@@ -1,0 +1,153 @@
+/* web/css/dag.css — Sprint 4: DAG 可视化样式 */
+
+.novel-dag-host {
+    position: relative;
+    width: 100%;
+    min-height: 320px;
+    max-height: 70vh;
+    overflow: auto;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.novel-dag-svg {
+    display: block;
+    min-width: 100%;
+}
+
+/* 节点基础 */
+.novel-dag-node {
+    cursor: pointer;
+    transition: filter 120ms ease-out, transform 120ms ease-out;
+    outline: none;
+}
+.novel-dag-node:hover {
+    filter: brightness(1.15) drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+}
+.novel-dag-node:focus-visible {
+    filter: drop-shadow(0 0 0 2px #60a5fa);
+}
+.novel-dag-node:active {
+    transform: translateY(1px);
+}
+
+/* 状态色变体（备用；fill 在 inline 属性已设置，这里仅做边色微调） */
+.novel-dag-node-completed rect { stroke-width: 2; }
+.novel-dag-node-failed rect { stroke-width: 2.5; stroke-dasharray: 4 2; }
+.novel-dag-node-skipped rect { opacity: 0.85; }
+.novel-dag-node-in_progress rect {
+    animation: novel-dag-pulse 1.6s ease-in-out infinite;
+}
+@keyframes novel-dag-pulse {
+    0%, 100% { stroke-opacity: 0.6; }
+    50%      { stroke-opacity: 1; }
+}
+
+/* 进度条动画 */
+.novel-dag-progress {
+    animation: novel-dag-progress-anim 1.4s ease-in-out infinite;
+}
+@keyframes novel-dag-progress-anim {
+    0%   { opacity: 0.6; }
+    50%  { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+/* 边 */
+.novel-dag-edge {
+    transition: stroke 200ms;
+}
+.novel-dag-edge-completed { stroke: #4ade80; }
+.novel-dag-edge-failed    { stroke: #f87171; stroke-dasharray: 4 3; }
+.novel-dag-edge-skipped   { stroke: #facc15; opacity: 0.6; }
+.novel-dag-edge-in_progress { stroke: #60a5fa; }
+
+/* 截断提示 */
+.novel-dag-truncated-note {
+    position: sticky;
+    left: 0;
+    bottom: 0;
+    padding: 6px 10px;
+    background: rgba(220, 38, 38, 0.15);
+    color: #fca5a5;
+    font-size: 12px;
+    border-top: 1px solid #7f1d1d;
+}
+
+/* 详情面板（外部组件使用） */
+.novel-dag-detail-panel {
+    margin-top: 12px;
+    padding: 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    max-height: 240px;
+    overflow: auto;
+}
+.novel-dag-detail-panel h4 {
+    margin: 0 0 8px 0;
+    color: #f1f5f9;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.novel-dag-detail-panel .novel-dag-detail-status {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.novel-dag-detail-panel .novel-dag-detail-status-pending     { background: #475569; color: #f1f5f9; }
+.novel-dag-detail-panel .novel-dag-detail-status-in_progress { background: #2563eb; color: #ffffff; }
+.novel-dag-detail-panel .novel-dag-detail-status-completed   { background: #16a34a; color: #ffffff; }
+.novel-dag-detail-panel .novel-dag-detail-status-failed      { background: #dc2626; color: #ffffff; }
+.novel-dag-detail-panel .novel-dag-detail-status-skipped     { background: #ca8a04; color: #ffffff; }
+
+.novel-dag-detail-panel dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    margin: 8px 0 0 0;
+}
+.novel-dag-detail-panel dt {
+    color: #94a3b8;
+    font-weight: 600;
+}
+.novel-dag-detail-panel dd {
+    margin: 0;
+    word-break: break-all;
+}
+
+/* 控制条 */
+.novel-dag-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+.novel-dag-controls .novel-dag-legend {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+}
+.novel-dag-controls .novel-dag-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.novel-dag-controls .novel-dag-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+}

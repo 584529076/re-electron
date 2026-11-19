@@ -1,0 +1,227 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "schema_version": "1.0.0",
+    "description": "Sprint C 全 agent 能力声明。orchestrator 按 capability 路由 task 到具体 agent。context_needs 声明该 agent 运行时需要的共享上下文 keys（支持 glob 末尾 *）。",
+    "last_updated": "2026-08-12"
+  },
+  "novel-director": {
+    "capabilities": ["director.orchestrate", "director.plan"],
+    "cost_per_call": { "prompt_tokens": 4000, "completion_tokens": 2000 },
+    "avg_latency_ms": 25000,
+    "fallback": [],
+    "tags": ["director", "low-cost", "veto-power"],
+    "context_needs": ["plan.*", "blackboard.*", "tasks.recent_results"],
+    "veto_power": true,
+    "notes": "主编排者。唯一被允许动态生成 plan JSON 的 agent。其他 agent 不要自己决定 plan。"
+  },
+  "task-supervisor": {
+    "capabilities": ["supervision.reflect", "supervision.decide"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 1000 },
+    "avg_latency_ms": 15000,
+    "fallback": ["novel-director"],
+    "tags": ["supervisor", "low-cost"],
+    "context_needs": ["plan.*", "tasks.recent_results", "shared.*"]
+  },
+  "critic": {
+    "capabilities": ["critique.evaluate", "critique.suggest_fix"],
+    "cost_per_call": { "prompt_tokens": 1200, "completion_tokens": 800 },
+    "avg_latency_ms": 12000,
+    "fallback": [],
+    "tags": ["critic", "low-cost"],
+    "context_needs": ["tasks.failed_recent"]
+  },
+  "cost-controller": {
+    "capabilities": ["cost.advisory", "cost.degrade_plan"],
+    "cost_per_call": { "prompt_tokens": 1000, "completion_tokens": 600 },
+    "avg_latency_ms": 10000,
+    "fallback": [],
+    "tags": ["cost", "low-cost"],
+    "context_needs": ["budget.snapshot"]
+  },
+  "outline-architect": {
+    "capabilities": ["legacy.outline.generate"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 4000 },
+    "avg_latency_ms": 30000,
+    "fallback": ["outline-synthesizer"],
+    "tags": ["outline", "high-cost"],
+    "context_needs": ["outline.structure", "characters.list", "world.setting"],
+    "notes": "兼容层入口：供界面的“生成大纲”操作直接调用。它会启动完整大纲工作流，不能作为 DAG 内部的 outline.synthesis / outline.revision worker，避免递归启动同一 plan。"
+  },
+  "outline-synthesizer": {
+    "capabilities": ["outline.synthesis", "outline.revision", "outline.finalize"],
+    "cost_per_call": { "prompt_tokens": 3000, "completion_tokens": 5000 },
+    "avg_latency_ms": 35000,
+    "fallback": [],
+    "tags": ["outline", "high-cost"],
+    "context_needs": ["outline.*", "characters.list", "world.setting"]
+  },
+  "outline-reviewer": {
+    "capabilities": ["outline.review"],
+    "cost_per_call": { "prompt_tokens": 2500, "completion_tokens": 1500 },
+    "avg_latency_ms": 20000,
+    "fallback": [],
+    "tags": ["outline", "review"],
+    "context_needs": ["outline.structure", "characters.list", "world.setting"]
+  },
+  "arc-skeleton": {
+    "capabilities": ["arc.skeleton"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 1500 },
+    "avg_latency_ms": 20000,
+    "fallback": [],
+    "tags": ["arc", "outline", "low-cost"],
+    "context_needs": ["outline.theme", "outline.world", "characters.list"]
+  },
+  "arc-outline-generator": {
+    "capabilities": ["arc.outline"],
+    "cost_per_call": { "prompt_tokens": 2500, "completion_tokens": 5000 },
+    "avg_latency_ms": 30000,
+    "fallback": [],
+    "tags": ["arc", "outline"],
+    "context_needs": ["outline.theme", "outline.world", "characters.list", "arcs.current"]
+  },
+  "arc-summary": {
+    "capabilities": ["arc.summary"],
+    "cost_per_call": { "prompt_tokens": 3000, "completion_tokens": 1500 },
+    "avg_latency_ms": 25000,
+    "fallback": [],
+    "tags": ["arc", "summary"],
+    "context_needs": ["chapters.recent"]
+  },
+  "foreshadowing-extractor": {
+    "capabilities": ["foreshadow.extract"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 1500 },
+    "avg_latency_ms": 18000,
+    "fallback": [],
+    "tags": ["foreshadow", "low-cost"],
+    "context_needs": ["chapters.recent", "foreshadows.list"]
+  },
+  "memory-extractor": {
+    "capabilities": ["memory.extract"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 1500 },
+    "avg_latency_ms": 15000,
+    "fallback": [],
+    "tags": ["memory", "low-cost"],
+    "context_needs": ["chapters.recent", "outline.summary"]
+  },
+  "style-analyst": {
+    "capabilities": ["style.analyze"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 2000 },
+    "avg_latency_ms": 20000,
+    "fallback": [],
+    "tags": ["style"],
+    "context_needs": []
+  },
+  "world-architect": {
+    "capabilities": ["world.design"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 3500 },
+    "avg_latency_ms": 30000,
+    "fallback": [],
+    "tags": ["world"],
+    "context_needs": ["style.guide", "outline.theme"]
+  },
+  "character-architect": {
+    "capabilities": ["character.design"],
+    "cost_per_call": { "prompt_tokens": 2500, "completion_tokens": 4000 },
+    "avg_latency_ms": 30000,
+    "fallback": [],
+    "tags": ["character"],
+    "context_needs": ["world.setting", "outline.theme", "characters.*"]
+  },
+  "plot-architect": {
+    "capabilities": ["plot.structure"],
+    "cost_per_call": { "prompt_tokens": 2500, "completion_tokens": 4000 },
+    "avg_latency_ms": 30000,
+    "fallback": [],
+    "tags": ["plot"],
+    "context_needs": ["outline.theme", "characters.list", "world.setting"]
+  },
+  "theme-architect": {
+    "capabilities": ["theme.analyze"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 2500 },
+    "avg_latency_ms": 20000,
+    "fallback": [],
+    "tags": ["theme"],
+    "context_needs": ["style.guide", "outline.structure"]
+  },
+  "story-architect": {
+    "capabilities": ["architecture.extract", "architecture.regenerate"],
+    "cost_per_call": { "prompt_tokens": 3000, "completion_tokens": 4000 },
+    "avg_latency_ms": 35000,
+    "fallback": [],
+    "tags": ["architecture"],
+    "context_needs": ["outline.*", "characters.list"]
+  },
+  "scene-planner": {
+    "capabilities": ["chapter.plan_scenes"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 2500 },
+    "avg_latency_ms": 20000,
+    "fallback": [],
+    "tags": ["chapter", "plan"],
+    "context_needs": ["outline.chapter_meta", "characters.list", "bible.character_states", "bible.active_threads"]
+  },
+  "chapter-writer": {
+    "capabilities": ["chapter.draft", "chapter.stream"],
+    "cost_per_call": { "prompt_tokens": 3000, "completion_tokens": 8000 },
+    "avg_latency_ms": 45000,
+    "fallback": ["chapter-streamer"],
+    "tags": ["chapter", "high-cost", "stream"],
+    "context_needs": ["outline.chapter_meta", "bible.character_states", "bible.active_threads", "foreshadowing.pending"]
+  },
+  "chapter-streamer": {
+    "capabilities": ["chapter.stream", "chapter.rewrite"],
+    "cost_per_call": { "prompt_tokens": 3000, "completion_tokens": 8000 },
+    "avg_latency_ms": 60000,
+    "fallback": [],
+    "tags": ["chapter", "high-cost", "stream"],
+    "context_needs": ["outline.chapter_meta", "bible.*", "scenes.plan"]
+  },
+  "continuity-checker": {
+    "capabilities": ["review.continuity"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 1500 },
+    "avg_latency_ms": 15000,
+    "fallback": [],
+    "tags": ["review", "continuity"],
+    "context_needs": ["bible.*", "foreshadowing.*"]
+  },
+  "style-editor": {
+    "capabilities": ["review.style"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 1000 },
+    "avg_latency_ms": 12000,
+    "fallback": [],
+    "tags": ["review", "style"],
+    "context_needs": ["style.guide"]
+  },
+  "quality-reviewer": {
+    "capabilities": ["review.quality"],
+    "cost_per_call": { "prompt_tokens": 2000, "completion_tokens": 1200 },
+    "avg_latency_ms": 15000,
+    "fallback": [],
+    "tags": ["review", "quality"],
+    "context_needs": ["outline.chapter_meta", "bible.character_states"]
+  },
+  "character-state-updater": {
+    "capabilities": ["bible.update.character_states"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 1000 },
+    "avg_latency_ms": 12000,
+    "fallback": [],
+    "tags": ["bible"],
+    "context_needs": ["bible.character_states", "characters.list"]
+  },
+  "plot-thread-tracker": {
+    "capabilities": ["bible.update.active_threads"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 1000 },
+    "avg_latency_ms": 12000,
+    "fallback": [],
+    "tags": ["bible", "threads"],
+    "context_needs": ["bible.active_threads", "foreshadowing.*"]
+  },
+  "foreshadowing-extractor": {
+    "capabilities": ["bible.update.foreshadowing", "foreshadowing.detect"],
+    "cost_per_call": { "prompt_tokens": 1500, "completion_tokens": 1000 },
+    "avg_latency_ms": 12000,
+    "fallback": [],
+    "tags": ["bible", "foreshadowing"],
+    "context_needs": ["foreshadowing.*"]
+  }
+}

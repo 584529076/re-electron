@@ -174,6 +174,23 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.novel-lang-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+.novel-lang-badge--zh {
+    background: #fef3c7;
+    color: #92400e;
+}
+.novel-lang-badge--en {
+    background: #dbeafe;
+    color: #1e3a8a;
+}
 .novel-list-item-meta {
     display: flex;
     flex-direction: column;
@@ -2520,3 +2537,734 @@
 .novel-wf-status-completed .novel-wf-text {
     color: #334155;
 }
+
+/* ============ X-3: 状态 pill + 折叠原文 + 格式化卡片 ============ */
+.novel-wf-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.novel-wf-status-pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #f1f5f9;
+    color: #64748b;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.novel-wf-status-running .novel-wf-status-pill {
+    background: #eff6ff;
+    color: #3b82f6;
+    animation: novel-wf-status-running-pulse 1.5s ease-in-out infinite;
+}
+@keyframes novel-wf-status-running-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+.novel-wf-status-completed .novel-wf-status-pill {
+    background: #f0fdf4;
+    color: #16a34a;
+}
+.novel-wf-status-failed .novel-wf-status-pill {
+    background: #fef2f2;
+    color: #dc2626;
+}
+.novel-wf-toggle-raw {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+.novel-wf-toggle-raw:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+/* 折叠的原文 details */
+.novel-wf-raw-details {
+    margin-top: 8px;
+    font-size: 12px;
+}
+.novel-wf-raw-details > summary {
+    cursor: pointer;
+    color: #94a3b8;
+    user-select: none;
+    font-size: 11px;
+    list-style: none;
+    padding: 2px 0;
+}
+.novel-wf-raw-details > summary::-webkit-details-marker { display: none; }
+.novel-wf-raw-details > summary::before {
+    content: '▸ ';
+    display: inline-block;
+    margin-right: 4px;
+    transition: transform 0.15s;
+}
+.novel-wf-raw-details[open] > summary::before { content: '▾ '; }
+.novel-wf-raw-details > summary:hover { color: #64748b; }
+.novel-wf-raw-text {
+    margin: 6px 0 0 0;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: #475569;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+/* 格式化区（completed 时填充） */
+.novel-wf-formatted {
+    margin-top: 4px;
+}
+.novel-wf-text-plain {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.9;
+    color: #1f2937;
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+}
+/* JSON 格式化样式 */
+.novel-wf-json-object, .novel-wf-json-array {
+    border-left: 2px solid #e0e7ff;
+    padding-left: 12px;
+    margin: 4px 0;
+}
+.novel-wf-json-row {
+    line-height: 1.7;
+    font-size: 13px;
+    color: #1e293b;
+    margin: 2px 0;
+}
+.novel-wf-json-key {
+    color: #7c3aed;
+    font-weight: 500;
+}
+.novel-wf-json-string {
+    color: #059669;
+}
+.novel-wf-json-number {
+    color: #2563eb;
+}
+.novel-wf-json-bool {
+    color: #ea580c;
+}
+.novel-wf-json-null {
+    color: #94a3b8;
+    font-style: italic;
+}
+.novel-wf-json-bracket {
+    color: #94a3b8;
+}
+
+/* ============ Sprint X: 思考 / 推理 配置区 ============ */
+.novel-form-section {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+}
+.novel-form-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.novel-form-section-title i {
+    color: #6366f1;
+}
+.novel-form-section-hint {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 400;
+    margin-left: auto;
+}
+.novel-thinking-skills {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px 12px;
+    padding: 6px 0;
+}
+.novel-thinking-skill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #475569;
+    cursor: pointer;
+    user-select: none;
+}
+.novel-thinking-skill input[type="checkbox"] {
+    margin: 0;
+}
+
+/* ============ X-4: 格式化卡片（多 agent schema-aware） ============ */
+.novel-wf-card-group {
+    margin: 4px 0 12px 0;
+}
+.novel-wf-card-group-title {
+    font-size: 12px;
+    color: #64748b;
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+.novel-wf-card {
+    background: #fafbfc;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #94a3b8;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 6px 0;
+}
+.novel-wf-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+.novel-wf-card-meta {
+    font-size: 12px;
+    color: #64748b;
+    margin: 4px 0;
+}
+.novel-wf-card-body {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #334155;
+    margin: 6px 0;
+    white-space: pre-wrap;
+}
+.novel-wf-card-hook {
+    font-size: 12px;
+    color: #b45309;
+    margin: 4px 0;
+    padding: 4px 8px;
+    background: #fffbeb;
+    border-radius: 3px;
+}
+.novel-wf-card-conflict {
+    font-size: 12px;
+    color: #b91c1c;
+    margin: 4px 0;
+    padding: 4px 8px;
+    background: #fef2f2;
+    border-radius: 3px;
+}
+.novel-wf-card-list {
+    margin: 6px 0 0 0;
+    padding-left: 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: #475569;
+}
+.novel-wf-card-more {
+    font-size: 12px;
+    color: #94a3b8;
+    text-align: center;
+    padding: 8px;
+    font-style: italic;
+}
+/* severity variants for issues */
+.novel-wf-card-sev-critical {
+    border-left-color: #dc2626;
+    background: #fef2f2;
+}
+.novel-wf-card-sev-major {
+    border-left-color: #ea580c;
+    background: #fff7ed;
+}
+.novel-wf-card-sev-minor {
+    border-left-color: #f59e0b;
+    background: #fffbeb;
+}
+.novel-wf-card-sev-info {
+    border-left-color: #3b82f6;
+    background: #eff6ff;
+}
+
+/* ============ Thinking Panel（推理 / extended thinking） ============ */
+/* 折叠在正文上方的浅色面板，可点击展开查看推理过程 */
+.novel-wf-thinking {
+    margin: 4px 0 12px 0;
+    border-left: 2px solid #e2e8f0;
+    padding: 0;
+    background: transparent;
+}
+.novel-wf-thinking-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 2px 0 4px 8px;
+    user-select: none;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+.novel-wf-thinking-head:hover {
+    color: #64748b;
+}
+.novel-wf-thinking-toggle {
+    display: inline-block;
+    width: 12px;
+    font-size: 10px;
+    transition: transform 0.15s;
+}
+.novel-wf-thinking[data-collapsed="true"] .novel-wf-thinking-toggle { transform: rotate(0deg); }
+.novel-wf-thinking[data-collapsed="false"] .novel-wf-thinking-toggle { transform: rotate(90deg); }
+.novel-wf-thinking-count {
+    font-size: 11px;
+    letter-spacing: 0.02em;
+}
+/* running 状态：思考面板头部稍变蓝，提示正在思考 */
+.novel-wf-status-running[data-ev-thinking="true"] .novel-wf-thinking-count {
+    color: #6366f1;
+    animation: novel-wf-thinking-pulse 1.6s ease-in-out infinite;
+}
+@keyframes novel-wf-thinking-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+.novel-wf-thinking-body {
+    display: none;
+    padding: 8px 0 4px 12px;
+    border-left: 2px solid #e0e7ff;
+    margin-left: 4px;
+}
+.novel-wf-thinking[data-collapsed="false"] .novel-wf-thinking-body {
+    display: block;
+}
+.novel-wf-thinking-text {
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: #64748b;
+    font-style: italic;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+    letter-spacing: 0.01em;
+    background: #f8fafc;
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+/* ====================================================================
+   Sprint 10: 简化模式 (3 步向导) + 高级模式 toggle
+   ==================================================================== */
+
+.novel-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--novel-border, #e5e7eb);
+    background: var(--novel-header-bg, #fafbfc);
+}
+
+.novel-mode-toggle {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: var(--novel-text-muted, #6b7280);
+    padding: 4px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+.novel-mode-toggle:hover {
+    background: #f3f4f6;
+    color: var(--novel-text, #1f2937);
+}
+.novel-mode-toggle.active {
+    background: #4a90e2;
+    color: white;
+    border-color: #4a90e2;
+}
+
+.novel-wizard {
+    padding: 32px 24px;
+    max-width: 720px;
+    margin: 0 auto;
+    min-height: 360px;
+}
+
+.novel-expert[hidden] { display: none; }
+.novel-wizard[hidden] { display: none; }
+
+/* 高级模式包装层必须继承详情区的剩余高度。
+ * Sprint 10 新增该层后，若没有 min-height:0 + flex，内部 tab pane 的
+ * overflow-y:auto 没有可计算的滚动高度，所有高级页都会表现为“无法下滚”。 */
+.novel-expert {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.novel-expert > .novel-tab-pane {
+    min-height: 0;
+}
+
+/* --- Step 1: 输入创意 --- */
+.wizard-step-1 h2 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--novel-text, #1f2937);
+}
+.wizard-step-1 .wizard-hint {
+    color: var(--novel-text-muted, #6b7280);
+    font-size: 14px;
+    margin-bottom: 24px;
+    line-height: 1.6;
+}
+
+.wizard-idea-input {
+    width: 100%;
+    min-height: 120px;
+    padding: 14px 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 15px;
+    line-height: 1.6;
+    font-family: inherit;
+    resize: vertical;
+    background: #fafbfc;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    box-sizing: border-box;
+}
+.wizard-idea-input:focus {
+    outline: none;
+    border-color: #4a90e2;
+    background: white;
+}
+
+.wizard-title-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-top: 12px;
+    box-sizing: border-box;
+    background: #fafbfc;
+}
+
+.wizard-style-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+.wizard-style-chip {
+    padding: 6px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--novel-text, #374151);
+    transition: all 0.15s ease;
+}
+.wizard-style-chip:hover {
+    border-color: #4a90e2;
+    color: #4a90e2;
+}
+.wizard-style-chip.selected {
+    background: #4a90e2;
+    color: white;
+    border-color: #4a90e2;
+}
+
+.wizard-warn {
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    color: #92400e;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.wizard-warn a {
+    color: #1e3a8a;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-left: 4px;
+}
+
+.wizard-primary-btn {
+    margin-top: 24px;
+    padding: 14px 32px;
+    background: linear-gradient(135deg, #4a90e2, #357abd);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.15s ease;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.3);
+}
+.wizard-primary-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+}
+.wizard-primary-btn:active {
+    transform: translateY(0);
+}
+.wizard-primary-btn:disabled {
+    background: #d1d5db;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.wizard-secondary-btn {
+    margin-top: 12px;
+    padding: 8px 20px;
+    background: transparent;
+    color: var(--novel-text-muted, #6b7280);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.wizard-secondary-btn:hover {
+    background: #f3f4f6;
+}
+
+/* --- Step 2: AI 工作中 --- */
+.wizard-step-2 {
+    text-align: center;
+    padding: 60px 20px;
+}
+.wizard-step-2 .spinner {
+    display: inline-block;
+    width: 56px;
+    height: 56px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #4a90e2;
+    border-radius: 50%;
+    animation: wizard-spin 0.9s linear infinite;
+    margin-bottom: 24px;
+}
+@keyframes wizard-spin {
+    to { transform: rotate(360deg); }
+}
+.wizard-step-2 .wizard-message {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--novel-text, #1f2937);
+    margin-bottom: 12px;
+}
+.wizard-step-2 .wizard-submessage {
+    font-size: 14px;
+    color: var(--novel-text-muted, #6b7280);
+    margin-bottom: 24px;
+    line-height: 1.6;
+}
+.wizard-step-2 .wizard-progress-bar {
+    max-width: 480px;
+    height: 8px;
+    margin: 0 auto 12px auto;
+    background: rgba(74, 144, 226, 0.12);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.wizard-step-2 .wizard-progress-fill {
+    height: 100%;
+    width: 2%;
+    background: linear-gradient(90deg, #4a90e2, #6366f1);
+    border-radius: 4px;
+    transition: width 0.4s ease-out;
+}
+.wizard-step-2 .wizard-progress-meta {
+    max-width: 480px;
+    margin: 0 auto 16px auto;
+    font-size: 13px;
+    color: var(--novel-text-muted, #6b7280);
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.wizard-step-2 .wizard-progress-meta .dot-sep {
+    opacity: 0.4;
+}
+.wizard-step-2 .wizard-agents {
+    max-width: 520px;
+    margin: 0 auto 28px auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+.wizard-step-2 .wizard-agent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--novel-bg-soft, #f8fafc);
+    border-radius: 8px;
+    font-size: 13px;
+    border: 1px solid rgba(0,0,0,0.04);
+}
+.wizard-step-2 .wizard-agent-name {
+    color: var(--novel-text, #1f2937);
+    font-weight: 500;
+}
+.wizard-step-2 .wizard-agent-status {
+    font-size: 12px;
+    color: var(--novel-text-muted, #6b7280);
+    font-variant-numeric: tabular-nums;
+}
+.wizard-step-2 .wizard-agent-status.running {
+    color: #4a90e2;
+}
+.wizard-step-2 .wizard-agent-status.done {
+    color: #10b981;
+}
+.wizard-step-2 .wizard-agent-status.failed {
+    color: #ef4444;
+}
+
+/* --- Step 3: 章节列表 --- */
+.wizard-step-3 .wizard-summary {
+    margin-bottom: 24px;
+}
+.wizard-step-3 .wizard-summary h2 {
+    margin: 0 0 6px 0;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--novel-text, #1f2937);
+}
+.wizard-step-3 .wizard-progress {
+    font-size: 14px;
+    color: var(--novel-text-muted, #6b7280);
+}
+
+.wizard-chapter-list {
+    margin-top: 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+    background: white;
+}
+.wizard-ch-item {
+    display: grid;
+    grid-template-columns: 70px 1fr 100px 80px;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+.wizard-ch-item:last-child {
+    border-bottom: none;
+}
+.wizard-ch-item:hover {
+    background: #f9fafb;
+}
+.wizard-ch-item .ch-no {
+    color: var(--novel-text-muted, #9ca3af);
+    font-size: 13px;
+    font-weight: 500;
+}
+.wizard-ch-item .ch-title {
+    color: var(--novel-text, #1f2937);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.wizard-ch-item .ch-status {
+    font-size: 12px;
+    color: var(--novel-text-muted, #6b7280);
+    text-align: right;
+}
+.wizard-ch-item .ch-words {
+    font-size: 12px;
+    color: var(--novel-text-muted, #9ca3af);
+    text-align: right;
+}
+.wizard-ch-item.done .ch-status {
+    color: #059669;
+}
+.wizard-ch-item.pending .ch-status {
+    color: #d97706;
+}
+.wizard-ch-item.writing {
+    background: #f0f9ff;
+}
+.wizard-ch-item.writing .ch-status {
+    color: #4a90e2;
+    animation: wizard-pulse 1.5s ease-in-out infinite;
+}
+@keyframes wizard-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.wizard-chapter-preview {
+    background: #f8fafc;
+    border-top: 1px solid #e5e7eb;
+    padding: 16px;
+    max-height: 320px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--novel-text, #374151);
+}
+
+.wizard-more-menu {
+    margin-top: 24px;
+    text-align: right;
+}
+.wizard-more-menu a {
+    color: var(--novel-text-muted, #6b7280);
+    text-decoration: none;
+    font-size: 13px;
+    margin-left: 16px;
+    cursor: pointer;
+}
+.wizard-more-menu a:hover {
+    color: #4a90e2;
+}
+
+/* Simple writing progress: stable stages and a readable draft. */
+.wizard-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.wizard-stage { padding: 7px 12px; border: 1px solid var(--novel-border); border-radius: 8px; color: var(--novel-muted); }
+.wizard-stage.current { color: #5b21b6; border-color: #8b5cf6; background: #f5f3ff; }
+.wizard-stage.complete { color: #047857; border-color: #a7f3d0; background: #ecfdf5; }
+.wizard-draft, .wizard-technical { text-align: left; width: 100%; margin: 14px 0; }
+.wizard-draft summary, .wizard-technical summary { cursor: pointer; color: var(--novel-muted); }
+.wizard-draft pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 340px; overflow-y: auto; font: inherit; line-height: 1.9; padding: 16px; border: 1px solid var(--novel-border); border-radius: 8px; background: var(--novel-card); color: var(--novel-text); }
+.wizard-task-issue { color: #92400e; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wizard-step-2 { padding: 28px 20px; }
+.wizard-step-2 .spinner { width: 32px; height: 32px; margin-bottom: 12px; }

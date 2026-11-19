@@ -11,7 +11,7 @@
     'use strict';
 
     const esc = (s) => (window.dUtil && window.dUtil.escapeHtml)
-        ? window.dUtil.escapeHtml(s) : String(s == null ? '' : s);
+        ? window.dUtil.escapeHtml(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const toast = (msg, type) => {
         if (window.showToast) window.showToast(msg, type || 'info');
         else console.log('[novel]', msg);
@@ -96,12 +96,22 @@
 
     // ===== DOM refs (lazy) =====
     let $root, $list, $empty, $detail;
-    let $tabOutline, $tabChapters, $tabLog, $tabWorkspace, $tabArtifacts, $tabKnowledge, $tabScheduler, $tabWorkflow;
+    let $tabOutline, $tabChapters, $tabLog, $tabWorkspace, $tabArtifacts, $tabKnowledge, $tabScheduler, $tabWorkflow, $tabForeshadows, $tabMemory, $tabRelations;
     let $newModal, $newFormStyle, $newCustomStyleRow;
     let $chapterModal, $chapterView, $chapterEdit, $chapterContent, $chapterTextarea;
     let $logModal, $logMeta, $logRequest, $logResponse, $logError, $logErrorWrap;
     let $btnExportTxt, $btnDelete;
     let $providerBadge, $wordCurrent, $wordTarget, $wordProgress;
+    // Sprint 10: wizard + mode toggle
+    let $wizardView, $expertView, $modeToggle;
+
+    // Sprint 10: mode 状态（simple 默认；localStorage 持久化）
+    const SIMPLE_MODE_KEY = 'ainovel:simple-mode';
+    const WIZARD_DRAFT_KEY = 'ainovel:wizard-draft';
+    let _mode = 'simple';
+    let _wizardState = { step: 'idle', novelId: null, message: '', currentChapterNo: 0 };
+    let _wizardProgressTimer = null;
+    let _wizardProgress = null; // { phaseCount, agentTotal, agentDone, currentPhase, currentAgents, transitionText, startedAt }
 
     function _ensureDom() {
         if ($root) return;
@@ -109,14 +119,25 @@
         $list = document.getElementById('novelList');
         $empty = document.getElementById('novelEmpty');
         $detail = document.getElementById('novelDetail');
+        // Sprint 10: wizard + mode toggle DOM
+        $wizardView = document.getElementById('novelWizardView');
+        $expertView = document.getElementById('novelExpertView');
+        $modeToggle = document.getElementById('novelModeToggle');
+        _loadMode();
+        if ($modeToggle) {
+            $modeToggle.addEventListener('click', () => _toggleMode());
+        }
         $tabWorkspace = document.getElementById('novelTabWorkspace');
         $tabWorkflow = document.getElementById('novelTabWorkflow');
         $tabArtifacts = document.getElementById('novelTabArtifacts');
         $tabKnowledge = document.getElementById('novelTabKnowledge');
         $tabOutline = document.getElementById('novelTabOutline');
         $tabChapters = document.getElementById('novelTabChapters');
+        $tabForeshadows = document.getElementById('novelTabForeshadows');
+        $tabMemory = document.getElementById('novelTabMemory');
         $tabLog = document.getElementById('novelTabLog');
         $tabScheduler = document.getElementById('novelTabScheduler');
+        $tabRelations = document.getElementById('novelTabRelations');
         $newModal = document.getElementById('novelNewModal');
         $newFormStyle = document.getElementById('novelFormStyle');
         $newCustomStyleRow = document.getElementById('novelFormCustomStyleRow');
@@ -125,6 +146,27 @@
         $chapterEdit = document.getElementById('novelChapterEdit');
         $chapterContent = document.getElementById('novelChapterContent');
         $chapterTextarea = document.getElementById('novelChapterTextarea');
+        // Sprint 6.3: 初始化 Block 编辑器（章节段落视图）
+        if (window.NovelBlocks && window.NovelBlocks.init && !$chapterModal._novelBlocksInit) {
+            window.NovelBlocks.init({
+                $chapterContent,
+                $chapterModal,
+                $chapterTextarea,
+                toast: window.showToast || ((msg, type) => console.log(`[toast ${type}]`, msg)),
+            });
+            $chapterModal._novelBlocksInit = true;
+        }
+        // Sprint 6.4: 初始化 Skill 开关面板（全局浮动按钮 + modal）
+        if (window.SkillConfig && window.SkillConfig.init && !window._skillConfigInit) {
+            window.SkillConfig.init({
+                onChange: (name, enabled) => {
+                    // 触发后端 _composeSystemPrompt 重新生成时自然会用新 toggle
+                    // 这里只做一个轻量的 UI 提示
+                    console.log('[skill-config]', name, enabled ? 'enabled' : 'disabled');
+                },
+            });
+            window._skillConfigInit = true;
+        }
         $logModal = document.getElementById('novelLogModal');
         $logMeta = document.getElementById('novelLogMeta');
         $logRequest = document.getElementById('novelLogRequest');
@@ -138,8 +180,14 @@
         $wordTarget = document.getElementById('novelWordTarget');
         $wordProgress = document.getElementById('novelWordProgress');
 
-        // 新建按钮
-        document.getElementById('novelBtnNew').addEventListener('click', () => _openNewModal());
+        // 新建按钮 — 简化模式直接进入 wizard Step 1（跳过老 modal），高级模式保留老 modal
+        document.getElementById('novelBtnNew').addEventListener('click', () => {
+            if (_mode === 'simple') {
+                _enterWizardNewFlow();
+            } else {
+                _openNewModal();
+            }
+        });
         // 新建 modal
         document.getElementById('novelNewCancel').addEventListener('click', _closeNewModal);
         document.getElementById('novelNewCancel2').addEventListener('click', _closeNewModal);
@@ -190,6 +238,7 @@
                 // Sprint W: 工作面板钩子（最早期，让 stream 节点能 in-place 更新）
                 try { _wfOnEvent(ev.type, ev); } catch (wfE) { /* best effort */ }
                 if (!ev || !ev.type) return;
+                _onSimpleTaskEvent(ev);
                 // —— Pipeline 事件（Phase 2：多 agent）——
                 if (ev.type === 'pipeline_started')  { _onPipelineStarted(ev); return; }
                 if (ev.type === 'phase_started')     { _onPhaseStarted(ev);    return; }
@@ -200,6 +249,10 @@
                 if (ev.type === 'phase_finished')    { _onPhaseFinished(ev);   return; }
                 if (ev.type === 'pipeline_finished') { _onPipelineFinished(ev); return; }
                 if (ev.type === 'pipeline_failed')   { _onPipelineFailed(ev);  return; }
+                // —— Orchestrator 失败恢复（fallback / retry 信号）——
+                if (ev.type === 'orchestrator_task_failed') { _onOrchestratorTaskFailed(ev); return; }
+                if (ev.type === 'orchestrator_task_skipped'){ _onOrchestratorTaskSkipped(ev); return; }
+                if (ev.type === 'orchestrator_finished')    { /* 只在 orchestrator 出口处用 _onPipelineFinished 收尾 */ return; }
 
                 // —— Auto-progression 事件（Phase 2）——
                 if (ev.type === 'auto_started')        { _onAutoStarted(ev);       return; }
@@ -257,6 +310,7 @@
                     // Phase 3: outline / chapter 已生成 → 清空 pipeline 历史 state，
                     // 让工作台 Tab 切回 idle 视图（否则 Panel 1 仍显示旧的 pipeline 树）
                     if (ev.type === 'outline_generated' || ev.type === 'chapter_generated') {
+                        if (ev.novelId === _st.activeNovelId) _wizardState.step = 'reading';
                         if (ev.novelId === _st.activeNovelId) {
                             _pipeline.phases = [];
                         }
@@ -324,8 +378,9 @@
             const statusLabel = ({planning:'规划中', outlining:'生成大纲', writing:'写作中', paused:'暂停', completed:'完成'})[n.status] || n.status;
             const pct = n.target_word_count ? Math.min(100, Math.round((n.current_word_count || 0) / n.target_word_count * 100)) : 0;
             const isActive = _st.activeNovelId === n.id;
+            const langBadge = (n.language === 'en' ? '<span class="novel-lang-badge novel-lang-badge--en">EN</span>' : '<span class="novel-lang-badge novel-lang-badge--zh">ZH</span>');
             return `<div class="novel-list-item ${isActive ? 'active' : ''}" data-id="${esc(n.id)}" role="listitem">
-                <div class="novel-list-item-title">${esc(n.title)}</div>
+                <div class="novel-list-item-title">${esc(n.title)} ${langBadge}</div>
                 <div class="novel-list-item-meta">
                     <span class="novel-status-pill novel-status-${esc(n.status || 'planning')}">${esc(statusLabel)}</span>
                     <span class="novel-list-item-progress">${(n.current_word_count || 0).toLocaleString()} / ${(n.target_word_count || 0).toLocaleString()} 字 (${pct}%)</span>
@@ -337,6 +392,7 @@
                 _st.activeNovelId = el.dataset.id;
                 _renderList();
                 _renderDetail();
+                if (window.ChatPanel) window.ChatPanel.setNovel(_st.activeNovelId);
             });
         });
         _renderEmpty();
@@ -344,6 +400,14 @@
 
     function _renderEmpty() {
         if (!$empty || !$detail) return;
+        // 简化模式：active novelId 已设但 list 还没拉到（IPC 竞态）→ 显示 detail 让 wizard 可见
+        // 原本的 OR 逻辑「novels.length === 0 || !activeNovelId」会在 create 后立刻 hide detail
+        if (_mode === 'simple' && _st.activeNovelId) {
+            $empty.hidden = true;
+            $detail.hidden = false;
+            if ($btnExportTxt) $btnExportTxt.disabled = false;
+            return;
+        }
         if (_st.novels.length === 0 || !_st.activeNovelId) {
             $empty.hidden = false;
             $detail.hidden = true;
@@ -657,11 +721,32 @@ function _onPhaseStarted(ev) {
     }
 }
 
+// Orchestrator 路径只发 agent_started 不发 phase_started
+// → 第一次收到 agent 事件时自动建 phase，避免 transitionText 卡在 "任务已接收…"
+function _ensurePhase(phaseIndex, phaseName) {
+    if (phaseIndex === undefined || phaseIndex === null) return null;
+    let phase = _pipeline.phases.find(p => p.index === phaseIndex);
+    if (phase) return phase;
+    phase = {
+        name: phaseName || `phase-${phaseIndex}`,
+        index: phaseIndex,
+        status: 'running',
+        agents: [],
+    };
+    _pipeline.phases.push(phase);
+    _pipeline.transitionText = '';
+    if (_pipeline.$progressText) {
+        _pipeline.$progressText.textContent = `${_phaseDisplayName(phase.name)} · 正在启动 agent…`;
+    }
+    _renderPhaseRow(phase);
+    return phase;
+}
+
 function _onAgentStarted(ev) {
     if (!_pipeline.active) return;
     if (ev.novelId !== _pipeline.novelId) return;
     if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
-    const phase = _pipeline.phases.find(p => p.index === ev.phaseIndex);
+    const phase = _ensurePhase(ev.phaseIndex, ev.phaseName);
     if (!phase) return;
     let agent = phase.agents.find(a => a.name === ev.agentName);
     if (!agent) {
@@ -687,7 +772,7 @@ function _onAgentChunk(ev) {
     if (!_pipeline.active) return;
     if (ev.novelId !== _pipeline.novelId) return;
     if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
-    const phase = _pipeline.phases.find(p => p.index === ev.phaseIndex);
+    const phase = _ensurePhase(ev.phaseIndex, ev.phaseName);
     if (!phase) return;
     const agent = phase.agents.find(a => a.name === ev.agentName);
     if (!agent) return;
@@ -699,7 +784,7 @@ function _onAgentFinished(ev) {
     if (!_pipeline.active) return;
     if (ev.novelId !== _pipeline.novelId) return;
     if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
-    const phase = _pipeline.phases.find(p => p.index === ev.phaseIndex);
+    const phase = _ensurePhase(ev.phaseIndex, ev.phaseName);
     if (!phase) return;
     const agent = phase.agents.find(a => a.name === ev.agentName);
     if (!agent) return;
@@ -718,14 +803,56 @@ function _onAgentFailed(ev) {
     if (!_pipeline.active) return;
     if (ev.novelId !== _pipeline.novelId) return;
     if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
-    const phase = _pipeline.phases.find(p => p.index === ev.phaseIndex);
+    const phase = _ensurePhase(ev.phaseIndex, ev.phaseName);
     if (!phase) return;
     const agent = phase.agents.find(a => a.name === ev.agentName);
     if (!agent) return;
     agent.status = 'failed';
     agent.error = ev.error;
-    _pipeline.finishedAgents += 1;
+    // Sprint 11: 失败不立即 +1 finishedAgents
+    //   - 若 fallback/retry 成功：fallback agent 的 _onAgentFinished 会 +1（这次失败最终被"覆盖"）
+    //   - 若 fallback/retry 也失败：_onOrchestratorTaskFailed with willRetry=false 时 +1（终态）
+    //   - 若 orchestrator 决定放弃：_onOrchestratorTaskFailed with willRetry=false 时 +1
+    // 简化策略：失败先不 +1，让后续信号决定
     _updateAgentCardDOM(agent);
+}
+
+// Sprint 11: 透明化 fallback / retry
+// 当 orchestrator_task_failed with willRetry=true 时，对应的 agent 卡片应该显示
+// "切换到 X 重试中..." 而不是简单的"失败"。fallback 成功（_onAgentFinished）会自动覆盖。
+function _onOrchestratorTaskFailed(ev) {
+    if (!_pipeline.active) return;
+    if (ev.novelId !== _pipeline.novelId) return;
+    if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
+    const phase = _ensurePhase(ev.phaseIndex, ev.phaseName);
+    if (!phase) return;
+    const agent = phase.agents.find(a => a.name === ev.fromAgent || a.name === ev.agentName);
+    if (!agent) return;
+    if (ev.willRetry && ev.fallback && ev.newAgent) {
+        agent.status = 'failed';
+        agent.error = `${ev.error || '失败'} → 切换到 ${ev.newAgent} 重试中…`;
+        agent.fallbackTo = ev.newAgent;
+        // finishedAgents: 不动 — fallback agent 后续 _onAgentFinished 时正常 +1
+    } else if (ev.willRetry) {
+        agent.status = 'failed';
+        agent.error = `${ev.error || '失败'} → 重试中…`;
+        // finishedAgents: 不动 — 重试 agent 后续 _onAgentFinished 时正常 +1
+    } else {
+        // 终态失败 — 之前 _onAgentFailed 没 +1，这里补上
+        agent.status = 'failed';
+        _pipeline.finishedAgents += 1;
+    }
+    _updateAgentCardDOM(agent);
+}
+
+// orchestrator_task_skipped (L4 supervisor skip) → agent 视为"已跳过"，finishedAgents +1
+function _onOrchestratorTaskSkipped(ev) {
+    if (!_pipeline.active) return;
+    if (ev.novelId !== _pipeline.novelId) return;
+    if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
+    // 该 task 已被 graph.markSkipped(_onAgentFailed 已经标 failed)；
+    // 计数器补 +1
+    _pipeline.finishedAgents += 1;
 }
 
 function _onPhaseFinished(ev) {
@@ -751,7 +878,25 @@ function _onPipelineFailed(ev) {
     if (!_pipeline.active) return;
     if (ev.novelId !== _pipeline.novelId) return;
     if (ev.jobId && _pipeline.jobId && ev.jobId !== _pipeline.jobId) return;
+    // Sprint 11: 区分「真失败」vs「重复触发」
+    // - 真失败：error 描述具体 agent 失败（LLM 报错、超时等）
+    // - 重复触发：error 是 "已有 plan 在运行" / "已有大纲生成任务进行中" /
+    //   "orchestrator: 0 task 失败" 之类 — 表示另一次 callSkill 抢占了 orchestrator，
+    //   当前的 pipeline 仍然在跑，不要终止它。
+    const err = (ev.error || '').toString();
+    const isStaleDuplicate =
+        /已有\s*(plan|大纲|生成任务)/.test(err)
+        || /orchestrator\s*退出/.test(err)
+        || /orchestrator:\s*0\s*task/.test(err);
+    if (isStaleDuplicate) {
+        // 静默忽略 — UI 继续显示真实 pipeline 的进度
+        console.warn('[wizard] ignore stale pipeline_failed (duplicate trigger):', err);
+        return;
+    }
     _endPipeline(false, ev.error || '未知错误');
+    _wizardState.step = 'reading';
+    _pipeline.phases = [];
+    _renderDetail();
 }
 
 function _renderPhaseRow(phase) {
@@ -888,9 +1033,585 @@ function _phaseDisplayName(name) {
     return map[name] || name;
 }
 
-// ===== Detail (Tabs) =====
-    async function _renderDetail() {
+// ===== Sprint 10: 简化模式 — Mode 管理 + 3 步向导 =====
+    function _loadMode() {
+        try {
+            const stored = localStorage.getItem(SIMPLE_MODE_KEY);
+            _mode = (stored === 'expert') ? 'expert' : 'simple';
+        } catch (e) { _mode = 'simple'; }
+        _updateToggleLabel();
+    }
+    function _updateToggleLabel() {
+        if (!$modeToggle) return;
+        const labelEl = $modeToggle.querySelector('span');
+        if (_mode === 'expert') {
+            $modeToggle.classList.add('active');
+            if (labelEl) labelEl.textContent = '简化';
+        } else {
+            $modeToggle.classList.remove('active');
+            if (labelEl) labelEl.textContent = '高级';
+        }
+    }
+    function _setMode(m) {
+        _mode = m;
+        try { localStorage.setItem(SIMPLE_MODE_KEY, m); } catch (e) {}
+        _updateToggleLabel();
+        _renderDetail();
+    }
+    function _toggleMode() {
+        _setMode(_mode === 'simple' ? 'expert' : 'simple');
+    }
+
+    // ---- 简化模式视图入口 ----
+    async function _renderSimpleView(r) {
+        if ($wizardView) $wizardView.hidden = false;
+        if ($expertView) $expertView.hidden = true;
+        _updateToggleLabel();
+
+        // r 可能为 null（_enterWizardNewFlow 直接进 wizard，还没选小说）
+        const novelId = (r && r.novel) ? r.novel.id : _st.activeNovelId;
+        const chapters = (r && r.chapters) || [];
+        const hasContent = chapters.length > 0;
+
+        // 没选小说：永远 Step 1（创建入口）
+        if (!novelId) {
+            if ($detail) $detail.hidden = false;
+            if ($empty) $empty.hidden = true;
+            _renderWizardStep1(null);
+            return;
+        }
+
+        // 已选小说：按 pipeline / chapters / wizardState 决定 step
+        // 三种来源都算 "writing"：
+        //   1. wizard 显式触发（_submitNewSimple / _submitNew 设 step='writing'）
+        //   2. frontend pipeline 活跃（_startPipeline 设 _pipeline.active=true）
+        //   3. 后端 pipeline_started 事件已 emit（即便 _pipeline.active 还没被前端 _startPipeline 设置）
+        const isWriting = (
+            (_wizardState.step === 'writing' && _wizardState.novelId === novelId) ||
+            (_pipeline.active && _pipeline.novelId === novelId) ||
+            (_auto.active && !_auto.paused && _pipeline.novelId === novelId)
+        );
+
+        // 自动 sync wizardState：当 novel 已有 chapter 时切到 reading（避免刷新页面后停在 Step 1）
+        if (hasContent && _wizardState.novelId !== novelId) {
+            _wizardState.step = 'reading';
+            _wizardState.novelId = novelId;
+        } else if (!hasContent && _wizardState.novelId !== novelId) {
+            // 新小说（IPC 返回后 chapters 必然空）→ reading（等 chapters 出现再切 reading）
+            _wizardState.step = 'idle';
+            _wizardState.novelId = novelId;
+        }
+        if (!isWriting && (hasContent || (_wizardState.step === 'reading' && _wizardState.novelId === novelId))) {
+            _renderWizardStep3(r, chapters);
+        } else if (isWriting) {
+            // 根据 pipeline.kind 决定提示文字
+            let msg = 'AI 工作中...';
+            let sub = '请稍等';
+            if (_pipeline.kind === 'outline') {
+                msg = 'AI 在构思大纲...';
+                sub = '首次生成需 4-6 分钟，请耐心等待';
+            } else if (_pipeline.kind === 'chapter') {
+                const targetCh = (_wizardState.currentChapterNo || (chapters.length + 1));
+                msg = `AI 在写第 ${targetCh} 章...`;
+                sub = '正在生成章节内容';
+            } else if (hasContent === false && _pipeline.kind == null) {
+                // pipeline 还没启动（比如 _submitNew 走老 modal 流程，generateOutline 还在 IPC 返回中）
+                msg = 'AI 在构思大纲...';
+                sub = '首次生成需 4-6 分钟，请耐心等待';
+            }
+            _renderWizardStep2(r, msg, sub);
+        } else {
+            // 区分两种 idle 情况：
+            //   1. 新建流程（_enterWizardNewFlow → r=null）→ Step 1 输入表单
+            //   2. 用户点了左侧已有小说但 0 章节（r.novel 存在，chapters 空）→ Step 3 空列表 + 「开始写第 1 章」CTA
+            if (r && r.novel) {
+                _renderWizardStep3(r, chapters);
+            } else {
+                _renderWizardStep1(r);
+            }
+        }
+    }
+
+    // 简化模式：+ 新建小说 按钮直接进 wizard Step 1（不走老 modal）
+    function _enterWizardNewFlow() {
+        // 重置 wizard state
+        _wizardState.step = 'idle';
+        _wizardState.novelId = null;
+        _wizardState.currentChapterNo = 0;
+        _st.activeNovelId = null;
+        // 显示 detail（隐藏 empty）
+        if ($detail) $detail.hidden = false;
+        if ($empty) $empty.hidden = true;
+        // 渲染 Step 1（不走 _renderDetail，避免 IPC 调用）
+        _renderSimpleView(null);
+    }
+
+    // ---- Step 1: 输入创意 ----
+    function _renderWizardStep1(r) {
+        _stopWizardProgressTracking();
+        const draft = _loadWizardDraft();
+        const styles = ['玄幻', '都市', '科幻', '言情', '历史', '悬疑', '军事', '其他'];
+        const selectedStyle = draft.style || styles[0];
+        const html = `
+<div class="wizard-step-1">
+    <h2>开始写你的小说</h2>
+    <p class="wizard-hint">用一句话告诉我你的想法，AI 会自动写完整本大纲并开始第一章。</p>
+    <div id="wizardWarnContainer"></div>
+    <textarea id="wizardIdea" class="wizard-idea-input" placeholder="例如：一个小职员意外获得了能预知未来的能力，但每次预言都会缩短他的寿命...">${esc(draft.idea || '')}</textarea>
+    <input id="wizardTitle" class="wizard-title-input" type="text" placeholder="书名（可选，留空则自动从核心创意截取）" value="${esc(draft.title || '')}" />
+    <div class="wizard-style-chips" id="wizardStyleChips">
+        ${styles.map(s => `<span class="wizard-style-chip ${s === selectedStyle ? 'selected' : ''}" data-style="${s}">${s}</span>`).join('')}
+    </div>
+    <button id="wizardStartBtn" class="wizard-primary-btn" type="button">▶ 开始写</button>
+    <br>
+    <button class="wizard-secondary-btn" type="button" onclick="window.api && window.showToast && window.showToast('切换到高级模式以编辑章节数 / 目标字数', 'info')">高级设置</button>
+</div>
+        `;
+        if (!$wizardView) return;
+        $wizardView.innerHTML = html;
+        // 绑定 chips
+        $wizardView.querySelectorAll('.wizard-style-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                $wizardView.querySelectorAll('.wizard-style-chip').forEach(c => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                _saveWizardDraft({ style: chip.dataset.style });
+            });
+        });
+        // 绑定 draft 写入
+        $wizardView.querySelector('#wizardIdea').addEventListener('input', (e) => {
+            _saveWizardDraft({ idea: e.target.value });
+        });
+        $wizardView.querySelector('#wizardTitle').addEventListener('input', (e) => {
+            _saveWizardDraft({ title: e.target.value });
+        });
+        // 绑定提交
+        $wizardView.querySelector('#wizardStartBtn').addEventListener('click', () => _submitNewSimple());
+        // LLM 预检
+        _checkLlmConfig();
+    }
+
+    function _loadWizardDraft() {
+        try { return JSON.parse(localStorage.getItem(WIZARD_DRAFT_KEY) || '{}'); }
+        catch (e) { return {}; }
+    }
+    function _saveWizardDraft(patch) {
+        try {
+            const cur = _loadWizardDraft();
+            const merged = Object.assign({}, cur, patch);
+            localStorage.setItem(WIZARD_DRAFT_KEY, JSON.stringify(merged));
+        } catch (e) { /* */ }
+    }
+    function _getSelectedStyle() {
+        if (!$wizardView) return '玄幻';
+        const sel = $wizardView.querySelector('.wizard-style-chip.selected');
+        return sel ? sel.dataset.style : '玄幻';
+    }
+
+    async function _checkLlmConfig() {
+        const warnBox = document.getElementById('wizardWarnContainer');
+        if (!warnBox) return;
+        try {
+            const r = await window.api.ainovel.getProviderConfig();
+            const cfg = r && r.config;
+            if (!cfg || !cfg.provider || !cfg.model) {
+                warnBox.innerHTML = `<div class="wizard-warn">⚠ 还没配置 LLM 模型，请先到【设置 → LLM】里填好才能开始写。<a onclick="window.switchMainView && window.switchMainView('settings')">去设置 →</a></div>`;
+                const btn = document.getElementById('wizardStartBtn');
+                if (btn) btn.disabled = true;
+            } else {
+                warnBox.innerHTML = '';
+                const btn = document.getElementById('wizardStartBtn');
+                if (btn) btn.disabled = false;
+            }
+        } catch (e) { /* */ }
+    }
+
+    let _simpleTask = null;
+
+    function _onSimpleTaskEvent(ev) {
+        if (ev.novelId !== _st.activeNovelId) return;
+        if (ev.type === 'pipeline_started') {
+            _simpleTask = { novelId: ev.novelId, jobId: ev.jobId, stage: 'prepare',
+                pipeline: ev.pipeline, message: ev.pipeline === 'outline' ? '正在准备故事' : '正在准备本章', detail: '', draft: '', startedAt: Date.now() };
+        }
+        if (!_simpleTask || _simpleTask.novelId !== ev.novelId ||
+            (ev.jobId && _simpleTask.jobId && ev.jobId !== _simpleTask.jobId)) return;
+        if (ev.type === 'chapter_progress') {
+            Object.assign(_simpleTask, { stage: ev.stage, message: ev.message, detail: ev.detail || '', chapterNo: ev.chapterNo });
+        }
+        if (ev.type === 'agent_started' && _simpleTask.pipeline === 'outline') {
+            const stage = ({ 'style-analyst': 'prepare', 'world-architect': 'prepare', 'character-architect': 'write',
+                'theme-architect': 'review', 'plot-architect': 'review', 'outline-synthesizer': 'review',
+                'outline-reviewer': 'save', 'story-architect': 'save' })[ev.agentName];
+            if (stage) Object.assign(_simpleTask, { stage, message: _phaseDisplayName(ev.agentName) || ev.role || '正在构思故事',
+                detail: '完成后会整理为可阅读的大纲' });
+        }
+        if (ev.type === 'agent_started' && ev.agentName === 'chapter-streamer') _simpleTask.draft = '';
+        if (ev.type === 'chapter_draft_ready') _simpleTask.draft = ev.content || '';
+        if (ev.type === 'agent_chunk' && ev.agentName === 'chapter-streamer') {
+            _simpleTask.draft = ev.accumulated == null ? _simpleTask.draft + (ev.chunk || '') : ev.accumulated;
+        }
+        if (ev.type === 'pipeline_failed' || ev.type === 'auto_paused' || ev.type === 'auto_cancelled') {
+            _simpleTask.stage = 'failed';
+            _simpleTask.message = ev.type === 'auto_cancelled' ? '已停止' : '已暂停';
+            _simpleTask.detail = ev.error || ev.reason || '可以稍后继续';
+        }
+        if (ev.type === 'chapter_generated' || ev.type === 'outline_generated') _simpleTask.stage = 'done';
+    }
+
+    function _paintSimpleTask() {
+        const task = _simpleTask;
+        if (!task || task.novelId !== _st.activeNovelId) return;
+        const stages = ['prepare', 'write', 'review', 'save'];
+        const labels = task.pipeline === 'outline' ? ['构思设定', '设计人物', '编排剧情', '检查大纲'] : ['准备故事', '写作正文', '检查衔接', '保存章节'];
+        const index = task.stage === 'done' ? 4 : Math.max(0, stages.indexOf(task.stage));
+        const $steps = document.getElementById('wizardSteps');
+        if ($steps) {
+            const html = labels.map((label, i) => `<span class="wizard-stage ${i < index ? 'complete' : i === index ? 'current' : ''}">${i < index ? '✓' : i + 1} ${label}</span>`).join('');
+            if ($steps.innerHTML !== html) $steps.innerHTML = html;
+        }
+        const $msg = document.getElementById('wizardMessage');
+        const $sub = document.getElementById('wizardSubmessage');
+        const $phase = document.getElementById('wizardPhase');
+        const $fill = document.getElementById('wizardProgressFill');
+        if ($msg) $msg.textContent = (task.chapterNo ? `第 ${task.chapterNo} 章 · ` : '') + task.message;
+        if ($sub) $sub.textContent = task.detail;
+        if ($phase) $phase.textContent = task.stage === 'failed' ? '等待继续' : task.stage === 'done' ? '已完成' : labels[index];
+        // Milestones, not a fabricated estimate of model execution time.
+        if ($fill) $fill.style.width = (task.stage === 'done' ? 100 : index * 25 + 5) + '%';
+        const $preview = document.getElementById('wizardDraft');
+        const $count = document.getElementById('wizardDraftCount');
+        if ($preview && $preview.textContent !== task.draft.slice(-5000)) $preview.textContent = task.draft.slice(-5000);
+        if ($count) $count.textContent = task.draft ? `草稿 ${task.draft.length} 字符 · 尚未定稿` : '正文生成后会显示在这里';
+    }
+
+
+    // ---- Step 2: AI 工作中 ----
+    function _renderWizardStep2(r, message, sub) {
+        // 启动 wizard 自己的 progress 跟踪（基于 _pipeline.phases + 事件）
+        _startWizardProgressTracking();
+        const html = `
+<div class="wizard-step-2">
+    <div class="spinner"></div>
+    <div class="wizard-message" id="wizardMessage">${esc(message || 'AI 工作中...')}</div>
+    <div class="wizard-submessage" id="wizardSubmessage">${esc(sub || '完成一个阶段后会在这里更新，无需反复点击')}</div>
+    <div class="wizard-progress-bar"><div class="wizard-progress-fill" id="wizardProgressFill"></div></div>
+    <div class="wizard-progress-meta" id="wizardProgressMeta">
+        <span id="wizardElapsed">已等待 0.0s</span>
+        <span class="dot-sep">·</span>
+        <span id="wizardPhase">准备中...</span>
+    </div>
+    <div class="wizard-steps" id="wizardSteps" aria-label="创作阶段"></div>
+    <details class="wizard-draft" open><summary id="wizardDraftCount">正文草稿</summary><pre id="wizardDraft"></pre></details>
+    <details class="wizard-technical"><summary>查看处理详情</summary><div class="wizard-agents" id="wizardAgents"></div></details>
+    <button class="wizard-secondary-btn" id="wizardStopBtn" type="button">停止写作</button>
+    <button class="wizard-secondary-btn" type="button" onclick="window.novel && window.novel._toggleMode && window.novel._toggleMode()">切换到高级模式查看详情</button>
+</div>
+        `;
+        if ($wizardView) $wizardView.innerHTML = html;
+        const stop = document.getElementById('wizardStopBtn');
+        if (stop) stop.addEventListener('click', async () => {
+            const status = await window.api.ainovel.getAutoStatus(_st.activeNovelId);
+            if (status && status.active) await window.api.ainovel.autoCancel(_st.activeNovelId);
+            else if (window.api.ainovel.orchestratorCancel) await window.api.ainovel.orchestratorCancel();
+        });
+        _tickWizardProgress();
+    }
+
+    function _startWizardProgressTracking() {
+        // 重入安全：如果 tracking 已经在跑，保留 startedAt（不要重置）
+        const wasRunning = !!_wizardProgressTimer;
+        const prevStartedAt = _wizardProgress ? _wizardProgress.startedAt : 0;
+        const prevPipelineStartedAt = _pipeline.startedAt || 0;
+        if (_wizardProgressTimer) { clearInterval(_wizardProgressTimer); _wizardProgressTimer = null; }
+        // 跟踪对象：每次 _renderWizardStep2 重置 pipeline 数据，但保留 startedAt
+        _wizardProgress = {
+            phaseCount: _pipeline.totalPhases || 0,
+            phaseDone: 0,
+            agentTotal: _pipeline.totalAgents || 0,
+            agentDone: _pipeline.finishedAgents || 0,
+            currentPhaseName: '',
+            currentAgents: [],
+            transitionText: '',
+            // 优先用 pipeline 已记录的 startedAt（writeChapter/_startPipeline 启动时设置）；
+            // 否则延续 wizard 上一次的 startedAt；都没有才用 Date.now()
+            startedAt: prevPipelineStartedAt || prevStartedAt || Date.now(),
+        };
+        if (!_wizardProgressTimer) {
+            _wizardProgressTimer = setInterval(_tickWizardProgress, 250);
+        }
+    }
+
+    function _stopWizardProgressTracking() {
+        if (_wizardProgressTimer) { clearInterval(_wizardProgressTimer); _wizardProgressTimer = null; }
+        _wizardProgress = null;
+    }
+
+    function _tickWizardProgress() {
+        const wp = _wizardProgress;
+        if (!wp) return;
+        const $msg = document.getElementById('wizardMessage');
+        const $sub = document.getElementById('wizardSubmessage');
+        const $elapsed = document.getElementById('wizardElapsed');
+        const $phase = document.getElementById('wizardPhase');
+        const $agents = document.getElementById('wizardAgents');
+        const $fill = document.getElementById('wizardProgressFill');
+        if (!$msg) { _stopWizardProgressTracking(); return; }
+
+        // 1) 拉取 _pipeline 实时数据
+        wp.phaseCount = _pipeline.totalPhases || wp.phaseCount;
+        wp.agentTotal = _pipeline.totalAgents || wp.agentTotal;
+        wp.agentDone = _pipeline.finishedAgents || 0;
+        wp.transitionText = _pipeline.transitionText || '';
+
+        // 当前 phase + agents
+        const phases = _pipeline.phases || [];
+        wp.phaseDone = phases.filter(p => p.status === 'done').length;
+        const currentPhase = [...phases].reverse().find(p => p.status === 'running')
+            || phases[phases.length - 1] || null;
+        wp.currentPhaseName = currentPhase ? _phaseDisplayName(currentPhase.name) : '';
+        const runningAgents = currentPhase ? currentPhase.agents.filter(a => a.status === 'running') : [];
+        const allAgents = currentPhase ? currentPhase.agents : [];
+        wp.currentAgents = runningAgents.length > 0 ? runningAgents : allAgents;
+
+        // 2) 已等待时长
+        const sec = (Date.now() - wp.startedAt) / 1000;
+        if ($elapsed) $elapsed.textContent = `已等待 ${sec.toFixed(1)}s`;
+
+        // 3) 顶部主消息
+        // 优先用 transitionText（"正在汇总结果…"之类的阶段间隔文案），否则用 phase 名 + 进度
+        let mainText;
+        if (wp.transitionText) {
+            mainText = wp.transitionText;
+        } else if (wp.currentPhaseName) {
+            if (runningAgents.length > 0) {
+                mainText = `${wp.currentPhaseName} · ${runningAgents.length} 个 AI 在并发工作`;
+            } else if (allAgents.length > 0) {
+                mainText = `${wp.currentPhaseName} · agents 已返回，正在汇总…`;
+            } else {
+                mainText = `${wp.currentPhaseName} · 正在准备…`;
+            }
+        } else {
+            mainText = $msg.textContent || 'AI 工作中...';
+        }
+        if ($msg && mainText !== $msg.dataset.last) {
+            $msg.textContent = mainText;
+            $msg.dataset.last = mainText;
+        }
+
+        // 4) 副标题：阶段进度
+        if ($sub) {
+            let subText = '';
+            if (wp.phaseCount > 0) {
+                subText = `已完成 ${wp.phaseDone} / ${wp.phaseCount} 阶段`;
+                if (wp.agentTotal > 0) {
+                    subText += ` · agents ${wp.agentDone} / ${wp.agentTotal}`;
+                }
+            } else {
+                subText = '准备多 Agent 协作中…';
+            }
+            if (subText !== $sub.dataset.last) { $sub.textContent = subText; $sub.dataset.last = subText; }
+        }
+
+        // 5) 进度条
+        if ($fill) {
+            let pct = 0;
+            if (wp.phaseCount > 0) {
+                // 每个 phase 内部按 agent 进度细分
+                const phaseWeight = 100 / wp.phaseCount;
+                const phaseFrac = currentPhase
+                    ? (allAgents.length === 0 ? 0 :
+                        allAgents.filter(a => a.status === 'done' || a.status === 'failed').length / allAgents.length)
+                    : 0;
+                pct = (wp.phaseDone * phaseWeight) + (phaseFrac * phaseWeight);
+            } else if (wp.agentTotal > 0) {
+                pct = (wp.agentDone / wp.agentTotal) * 100;
+            } else {
+                // 用 elapsed time 估个模糊进度（上限 90%）
+                pct = Math.min(90, (sec / 360) * 90);
+            }
+            pct = Math.max(2, Math.min(100, pct));
+            $fill.style.width = pct.toFixed(1) + '%';
+        }
+
+        // 6) 当前 agent 列表
+        if ($phase) {
+            const phaseText = wp.currentPhaseName || '等待启动...';
+            if (phaseText !== $phase.dataset.last) { $phase.textContent = phaseText; $phase.dataset.last = phaseText; }
+        }
+        if ($agents) {
+            const html = wp.currentAgents.map(a => {
+                const dur = a.startedAt ? ((Date.now() - a.startedAt) / 1000).toFixed(1) : '0.0';
+                return `<div class="wizard-agent-row">
+                    <span class="wizard-agent-name">${esc(_phaseDisplayName(a.name) || a.name)}</span>
+                    <span class="wizard-agent-status ${a.status}">${a.status === 'running' ? '⏳ 调用中 ' + dur + 's' : (a.status === 'done' ? '✓ 完成' : a.status === 'failed' ? '✗ 失败' : '等待')}</span>
+                </div>`;
+            }).join('');
+            if (html !== $agents.dataset.last) { $agents.innerHTML = html; $agents.dataset.last = html; }
+        }
+        _paintSimpleTask();
+    }
+
+    // ---- Step 3: 章节列表 ----
+    async function _renderWizardStep3(r, chapters) {
+        _stopWizardProgressTracking();
+        chapters = chapters || [];
+        const novel = (r && r.novel) || {};
+        const outline = (r && r.outline) || null;
+        // 复用 workspace 的 hasOutline 检测模式（web/js/novel.js:1481）
+        const hasOutline = !!(outline && (outline.world_setting || outline.structure || outline.chapter_list));
+        // 0 章节 + 无大纲 = 上次生成未完成 / 失败 / 从未开始 → 显示恢复 CTA
+        const needsOutline = (chapters.length === 0 && !hasOutline);
+        const done = chapters.filter(c => c.status === 'done' && !c.continuity_dirty);
+        const writing = chapters.find(c => c.status === 'writing' || c.status === 'pending' && _pipeline.active);
+        // CTA dispatch：根据状态选文案 + 行为
+        let ctaLabel, ctaAction, emptyHint;
+        if (needsOutline) {
+            ctaLabel  = '📝 生成大纲';
+            ctaAction = '_wizardGenerateOutline';
+            emptyHint = '大纲未生成（上次可能未完成）。点上面的按钮生成大纲。';
+        } else if (chapters.length === 0) {
+            ctaLabel  = '▶ 开始写第 1 章';
+            ctaAction = '_wizardWriteNext';
+            emptyHint = '尚未开始写作。点上面的按钮开始第 1 章';
+        } else {
+            ctaLabel  = '▶ 下一章';
+            ctaAction = '_wizardWriteNext';
+            emptyHint = null;
+        }
+        const needsCheck = chapters.some(c => c.continuity_dirty);
+        const hasDraft = chapters.some(c => c.draft_content);
+        if (needsCheck) ctaLabel = '检查修改并继续';
+        else if (hasDraft || _auto.paused) ctaLabel = '继续上次任务';
+        const taskIssue = _simpleTask && _simpleTask.novelId === novel.id && _simpleTask.stage === 'failed' ? _simpleTask.detail : '';
+        const html = `
+<div class="wizard-step-3">
+    <div class="wizard-summary">
+        <h2>${esc(novel.title || '我的小说')}</h2>
+        <div class="wizard-progress">已写 ${done.length} / ${chapters.length || novel.chapter_target_count || 30} 章${needsOutline ? ' · 大纲未生成' : ''}</div>
+    </div>
+    <button id="wizardNextBtn" class="wizard-primary-btn" type="button" ${writing ? 'disabled' : ''}>${ctaLabel}</button>
+    ${taskIssue ? `<p class="wizard-task-issue" role="status">${esc(taskIssue)}</p>` : ''}
+    ${needsCheck ? '<p class="wizard-task-issue">正文修改后，后续章节需要依次复核衔接。已有正文仍然保留。</p>' : ''}
+    <div class="wizard-chapter-list">
+        ${emptyHint ? `<div style="padding: 24px; text-align: center; color: #9ca3af;">${esc(emptyHint)}</div>` : chapters.map(c => {
+            const wordText = c.actual_word_count ? `${c.actual_word_count} 字` : '';
+            const statusText = c.continuity_dirty ? '待复核' : c.draft_content ? '草稿已保留' : c.status === 'done' ? '✓ 已完成' : (c.status === 'writing' ? '⏳ 写作中...' : '· 待写');
+            const cls = c.status === 'done' ? 'done' : (c.status === 'writing' ? 'writing' : 'pending');
+            return `<div class="wizard-ch-item ${cls}" data-chapter-id="${esc(c.id)}">
+                <span class="ch-no">第 ${c.chapter_no} 章</span>
+                <span class="ch-title">${esc(c.title || '(无标题)')}</span>
+                <span class="ch-status">${statusText}</span>
+                <span class="ch-words">${wordText}</span>
+            </div>`;
+        }).join('')}
+    </div>
+    <div class="wizard-more-menu">
+        <a id="wizardExportLink">导出 TXT</a>
+        <a id="wizardDeleteLink">删除小说</a>
+    </div>
+</div>
+        `;
+        if ($wizardView) $wizardView.innerHTML = html;
+        const nextBtn = document.getElementById('wizardNextBtn');
+        if (nextBtn) nextBtn.addEventListener('click', () => {
+            if (ctaAction === '_wizardGenerateOutline') _wizardGenerateOutline();
+            else _wizardWriteNext();
+        });
+        // 章节行点击展开预览
+        $wizardView.querySelectorAll('.wizard-ch-item').forEach(row => {
+            row.addEventListener('click', async () => {
+                const chId = row.dataset.chapterId;
+                const next = row.nextElementSibling;
+                if (next && next.classList.contains('wizard-chapter-preview')) {
+                    next.remove();
+                    return;
+                }
+                try {
+                    const detail = await window.api.ainovel.getChapterWithBlocks(_st.activeNovelId, chId);
+                    const preview = document.createElement('div');
+                    preview.className = 'wizard-chapter-preview';
+                    const text = (detail && detail.chapter && (detail.chapter.draft_content || detail.chapter.content)) || '(无内容)';
+                    preview.textContent = text.slice(0, 1500) + (text.length > 1500 ? '...' : '');
+                    row.after(preview);
+                } catch (e) { toast('加载章节失败：' + e.message, 'error'); }
+            });
+        });
+        const exportLink = document.getElementById('wizardExportLink');
+        if (exportLink) exportLink.addEventListener('click', () => _exportActive());
+        const deleteLink = document.getElementById('wizardDeleteLink');
+        if (deleteLink) deleteLink.addEventListener('click', () => _confirmDeleteActive());
+    }
+
+    async function _wizardWriteNext() {
         if (!_st.activeNovelId) return;
+        const btn = document.getElementById('wizardNextBtn');
+        if (btn) btn.disabled = true;
+        try {
+            // 先初始化 pipeline 状态，让 wizard progress 跟踪能读到 _pipeline.phases
+            // _startPipeline 有 re-entry 守卫（已有任务会返回 false）
+            const started = _startPipeline('chapter', _st.activeNovelId, null);
+            if (!started && (_pipeline.active || _stream.active)) {
+                // 已有任务在跑，让 wizard 切到 Step 2 继续显示该任务的进度
+                _wizardState.step = 'writing';
+                _wizardState.novelId = _st.activeNovelId;
+                const r2 = await window.api.ainovel.get(_st.activeNovelId);
+                _renderWizardStep2(r2, 'AI 正在工作中...', '正在生成章节内容');
+                return;
+            }
+            // 调 ainovel:autoStart，loop 会自动找下一个 pending 章节
+            const status = await window.api.ainovel.getAutoStatus(_st.activeNovelId);
+            const r = status && status.active && status.paused
+                ? await window.api.ainovel.autoResume(_st.activeNovelId)
+                : await window.api.ainovel.autoStart(_st.activeNovelId, { autoConfirm: true });
+            if (!r || !r.ok) {
+                toast(r && r.error || '启动失败', 'error');
+                if (btn) btn.disabled = false;
+                _endPipeline(false, r && r.error || '启动失败');
+                return;
+            }
+            _wizardState.step = 'writing';
+            _wizardState.novelId = _st.activeNovelId;
+            const r2 = await window.api.ainovel.get(_st.activeNovelId);
+            _renderWizardStep2(r2, 'AI 在写下一章...', '正在生成章节内容，请稍候');
+        } catch (e) {
+            toast('启动失败：' + e.message, 'error');
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // 简化模式：从 Step 3 直接触发大纲生成
+    // 场景：novel 已存在但 outline 未生成（上次 pipeline 中途关闭 / 生成失败 / 从未开始）
+    // 与 _submitNewSimple:3446-3449 保持一致：先切状态 + 立即渲染 Step 2 进度视图（不等 pipeline_started 事件到达）
+    // _generateOutline 自带 _pipeline.active / _stream.active 守卫（line 2974），不会重复启动
+    async function _wizardGenerateOutline() {
+        if (!_st.activeNovelId) return;
+        // 沿用 expert 模式 line 1541 的确认对话框模式（先确认再改状态，避免回滚）
+        if (!confirm('确认生成大纲？现有大纲（如有）会被覆盖。')) return;
+        // 切到 writing 状态
+        _wizardState.step = 'writing';
+        _wizardState.novelId = _st.activeNovelId;
+        // 立即渲染 Step 2 进度视图（spinner + 进度条 + agent 列表）—— 给用户即时反馈
+        // 即使 pipeline_started 事件还在路上，UI 也已经切换 + 显示「AI 在构思大纲...」+「准备中...」
+        let r = null;
+        try { r = await window.api.ainovel.get(_st.activeNovelId); } catch (e) { /* 失败容错 */ }
+        _renderWizardStep2(r, 'AI 在构思大纲...', '首次生成需 4-6 分钟，请耐心等待');
+        // 临时把 auto_chain_after_outline 设为 true，大纲完成后自动开写第 1 章
+        try { await window.api.ainovel.setSetting('auto_chain_after_outline', 'true'); } catch (e) { /* */ }
+        // 复用现有函数（与 expert 模式 line 1538、1541、1811 等一致）
+        await _generateOutline();
+    }
+
+    // ===== Detail (Tabs) =====
+    async function _renderDetail() {
+        // 简化模式 + 无 active novel：直接进 wizard Step 1（不走 IPC）
+        if (!_st.activeNovelId) {
+            if (_mode === 'simple') {
+                if ($detail) $detail.hidden = false;
+                if ($empty) $empty.hidden = true;
+                _renderSimpleView(null);
+            }
+            return;
+        }
         try {
             const r = await window.api.ainovel.get(_st.activeNovelId);
             if (!r || !r.ok) {
@@ -903,28 +1624,45 @@ function _phaseDisplayName(name) {
                 if (ar && ar.ok) r.architecture = ar.architecture;
             } catch (e) { /* 架构缺失不阻塞 */ }
             _renderHeader(r);
-            // Phase 3: 5 个 tab 分发
-            if (_st.activeTab === 'workspace') {
-                _renderWorkspace(r);
-            } else if (_st.activeTab === 'workflow') {
-                await _renderWorkflow(r);
-            } else if (_st.activeTab === 'artifacts') {
-                _renderArtifacts(r);
-            } else if (_st.activeTab === 'knowledge') {
-                await _renderKnowledge(r);
-            } else if (_st.activeTab === 'chapters') {
-                _renderChapters(r);
-            } else if (_st.activeTab === 'log') {
-                await _renderLog(r);
-            } else if (_st.activeTab === 'scheduler') {
-                await _renderScheduler(r);
-            } else if (_st.activeTab === 'outline') {
-                // 旧大纲编辑表单（从成果 tab 点「编辑大纲」触发）
-                _renderOutline(r);
+            // Sprint 10: mode dispatch — simple 走 3 步向导，expert 走原 11 tab
+            if (_mode === 'simple') {
+                await _renderSimpleView(r);
+            } else {
+                _renderExpertView(r);
             }
         } catch (e) {
             console.error('[novel] renderDetail:', e);
             toast('加载失败：' + e.message, 'error');
+        }
+    }
+
+    // Sprint 10: 高级模式（原 11 tab 视图）
+    async function _renderExpertView(r) {
+        if ($wizardView) $wizardView.hidden = true;
+        if ($expertView) $expertView.hidden = false;
+        if ($modeToggle) {
+            $modeToggle.classList.add('active');
+            const labelEl = $modeToggle.querySelector('span');
+            if (labelEl) labelEl.textContent = '简化';
+        }
+        // Phase 3: 5 个 tab 分发
+        if (_st.activeTab === 'workspace') {
+            _renderWorkspace(r);
+        } else if (_st.activeTab === 'workflow') {
+            await _renderWorkflow(r);
+        } else if (_st.activeTab === 'artifacts') {
+            _renderArtifacts(r);
+        } else if (_st.activeTab === 'knowledge') {
+            await _renderKnowledge(r);
+        } else if (_st.activeTab === 'chapters') {
+            _renderChapters(r);
+        } else if (_st.activeTab === 'log') {
+            await _renderLog(r);
+        } else if (_st.activeTab === 'scheduler') {
+            await _renderScheduler(r);
+        } else if (_st.activeTab === 'outline') {
+            // 旧大纲编辑表单（从成果 tab 点「编辑大纲」触发）
+            _renderOutline(r);
         }
     }
 
@@ -1697,9 +2435,24 @@ ${themes.length ? `<div class="novel-ws-output-section">
                 </div>`;
             const btn = document.getElementById('novelBtnGenOutline');
             if (btn) btn.addEventListener('click', _generateOutline);
+            // 仍然渲染 arcs 面板（在空状态下让用户能看到 arcs 工具）
+            if (window.ArcsPanel) {
+                const $arcsWrap = document.createElement('div');
+                $arcsWrap.id = 'novelOutlineArcsWrap';
+                $tabOutline.appendChild($arcsWrap);
+                window.ArcsPanel.render($arcsWrap, r.novel.id, r.novel);
+            }
             return;
         }
         _renderOutlineForm($tabOutline, r);
+        // Sprint 7.1: 在 outline 表单后追加 arcs 面板
+        if (window.ArcsPanel) {
+            const $arcsWrap = document.createElement('div');
+            $arcsWrap.id = 'novelOutlineArcsWrap';
+            $arcsWrap.style.marginTop = '24px';
+            $tabOutline.appendChild($arcsWrap);
+            window.ArcsPanel.render($arcsWrap, r.novel.id, r.novel);
+        }
     }
 
     // 把大纲表单渲染到任意 pane（Phase 3: 成果 tab edit 模式复用）
@@ -1930,6 +2683,8 @@ ${themes.length ? `<div class="novel-ws-output-section">
             <div class="novel-sched-subnav">
                 <button class="novel-sched-subtab ${_sched.section === 'blackboard' ? 'active' : ''}" type="button" data-sched-tab="blackboard"><i class="fa-solid fa-chalkboard"></i> 黑板</button>
                 <button class="novel-sched-subtab ${_sched.section === 'tasks' ? 'active' : ''}" type="button" data-sched-tab="tasks"><i class="fa-solid fa-list-check"></i> 任务图</button>
+                <!-- Sprint 4: DAG 可视化（实时拓扑图） -->
+                <button class="novel-sched-subtab ${_sched.section === 'dag' ? 'active' : ''}" type="button" data-sched-tab="dag"><i class="fa-solid fa-diagram-project"></i> DAG</button>
                 <button class="novel-sched-subtab ${_sched.section === 'inbox' ? 'active' : ''}" type="button" data-sched-tab="inbox"><i class="fa-solid fa-inbox"></i> 收件箱</button>
                 <button class="novel-sched-subtab ${_sched.section === 'director' ? 'active' : ''}" type="button" data-sched-tab="director"><i class="fa-solid fa-clapperboard"></i> 编剧</button>
             </div>
@@ -1967,6 +2722,7 @@ ${themes.length ? `<div class="novel-ws-output-section">
         try {
             if (_sched.section === 'blackboard') await _renderSchedBlackboard($body, novelId);
             else if (_sched.section === 'tasks') await _renderSchedTasks($body, novelId);
+            else if (_sched.section === 'dag') await _renderSchedDag($body, novelId, r);
             else if (_sched.section === 'inbox') await _renderSchedInbox($body, novelId);
             else await _renderSchedDirector($body, novelId);
         } catch (e) {
@@ -2054,6 +2810,151 @@ ${themes.length ? `<div class="novel-ws-output-section">
             else toast((cr && cr.error) || '创建失败', 'error');
         });
     }
+
+    // Sprint 4: DAG 可视化（实时拓扑图）
+    // 从 orchestrator.getPlanSnapshot() 拉数据；订阅 ainovel:event:update 做 in-place 更新
+    let _dagRenderer = null;     // { setData, destroy, getNode }
+    let _dagUnsubscribe = null;  // event listener cleanup
+    async function _renderSchedDag($body, novelId, r) {
+        // 销毁旧实例
+        if (_dagRenderer) {
+            try { _dagRenderer.destroy(); } catch (e) {}
+            _dagRenderer = null;
+        }
+        if (typeof _dagUnsubscribe === 'function') {
+            try { _dagUnsubscribe(); } catch (e) {}
+            _dagUnsubscribe = null;
+        }
+
+        $body.innerHTML = `
+            <div class="novel-sched-hint"><i class="fa-solid fa-circle-info"></i>
+                当前 orchestrator 正在跑的 plan —— 节点按状态染色；点击节点查看 input/output/agent/attempt 等详情。
+                <span style="margin-left:8px; color:#94a3b8;">（静态 fallback plan 见下方"备选视图"）</span>
+            </div>
+            <div class="novel-dag-controls">
+                <button class="btn btn-sm" type="button" data-dag-act="refresh"><i class="fa-solid fa-rotate"></i> 刷新</button>
+                <span id="novelDagSummary"></span>
+                <span class="novel-dag-legend">
+                    <span class="novel-dag-legend-item"><span class="novel-dag-legend-dot" style="background:#475569"></span>pending</span>
+                    <span class="novel-dag-legend-item"><span class="novel-dag-legend-dot" style="background:#2563eb"></span>in_progress</span>
+                    <span class="novel-dag-legend-item"><span class="novel-dag-legend-dot" style="background:#16a34a"></span>completed</span>
+                    <span class="novel-dag-legend-item"><span class="novel-dag-legend-dot" style="background:#dc2626"></span>failed</span>
+                    <span class="novel-dag-legend-item"><span class="novel-dag-legend-dot" style="background:#ca8a04"></span>skipped</span>
+                </span>
+            </div>
+            <div id="novelDagHost" class="novel-dag-host" style="min-height: 360px;"></div>
+            <div id="novelDagDetail"></div>`;
+
+        const $host = document.getElementById('novelDagHost');
+        const $summary = document.getElementById('novelDagSummary');
+        const $detail = document.getElementById('novelDagDetail');
+
+        function refreshSummary(snap) {
+            if (!$summary) return;
+            if (!snap || !snap.tasks || !snap.tasks.length) {
+                $summary.textContent = '（暂无运行中的 plan）';
+                return;
+            }
+            const counts = { pending: 0, in_progress: 0, completed: 0, failed: 0, skipped: 0 };
+            for (const t of snap.tasks) counts[t.status] = (counts[t.status] || 0) + 1;
+            $summary.textContent = `共 ${snap.tasks.length} task · pending ${counts.pending} · 进行中 ${counts.in_progress} · 完成 ${counts.completed} · 失败 ${counts.failed} · 跳过 ${counts.skipped}`;
+        }
+
+        async function loadAndRender() {
+            const api = window.api.ainovel;
+            let snap = null;
+            try {
+                const r0 = await api.orchestratorSnapshot();
+                if (r0 && r0.ok && r0.snapshot) snap = r0.snapshot;
+            } catch (e) { /* ignore */ }
+
+            if (!snap || !snap.tasks || !snap.tasks.length) {
+                // 兜底：用静态 buildOutlinePlan（如果 orchestrator 当前没在跑）
+                try {
+                    const pl = await api.orchestratorPlanOutline(novelId);
+                    if (pl && pl.ok && pl.plan && pl.plan.tasks) {
+                        // 转 snapshot 形状
+                        const tasks = pl.plan.tasks.map(t => ({
+                            id: t.id, capability: t.capability, type: t.type || 'agent_call',
+                            status: t.status || 'pending', depends_on: t.depends_on || [],
+                            agentName: null, attempt: 1, input: t.input || null, meta: t.meta || {},
+                            result: null, error: null,
+                        }));
+                        const edges = [];
+                        for (const t of tasks) for (const d of (t.depends_on || [])) edges.push({ from: d, to: t.id });
+                        snap = { novelId, planName: pl.plan.name || 'outline-static', tasks, edges };
+                        $summary && ($summary.textContent = '（orchestrator 未运行；显示静态 outline plan）');
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            if (!snap || !snap.tasks || !snap.tasks.length) {
+                $host.innerHTML = '<div class="novel-outline-empty"><i class="fa-regular fa-rectangle-list"></i><p>暂无 plan —— 大纲 / 章节生成后会显示在这里</p></div>';
+                refreshSummary(null);
+                return;
+            }
+
+            if (!window.NovelDag) {
+                $host.innerHTML = '<div class="novel-outline-empty" style="color:#fca5a5;">DAG 渲染器未加载</div>';
+                return;
+            }
+
+            _dagRenderer = window.NovelDag.mount($host);
+            _dagRenderer.setData(snap);
+            refreshSummary(snap);
+
+            $host.addEventListener('novel-dag:select', (ev) => {
+                const t = ev.detail && ev.detail.task;
+                if (!t) return;
+                const html = `
+                    <div class="novel-dag-detail-panel">
+                        <h4>
+                            <span>${esc(t.id)}</span>
+                            <span class="novel-dag-detail-status novel-dag-detail-status-${esc(t.status || 'pending')}">${esc(t.status || 'pending')}</span>
+                        </h4>
+                        <dl>
+                            <dt>capability</dt><dd>${esc(t.capability || '')}</dd>
+                            <dt>agent</dt><dd>${esc(t.agentName || '—')}</dd>
+                            <dt>attempt</dt><dd>${t.attempt || 1}</dd>
+                            <dt>depends_on</dt><dd>${(t.depends_on || []).map(esc).join(', ') || '—'}</dd>
+                            ${t.meta && t.meta.source ? `<dt>source</dt><dd>${esc(t.meta.source)}</dd>` : ''}
+                            ${t.error ? `<dt>error</dt><dd style="color:#fca5a5;">${esc(t.error)}</dd>` : ''}
+                            ${t.result ? `<dt>result</dt><dd><pre style="margin:0; white-space:pre-wrap; word-break:break-all;">${esc(JSON.stringify(t.result, null, 2).slice(0, 1200))}</pre></dd>` : ''}
+                        </dl>
+                    </div>`;
+                if ($detail) $detail.innerHTML = html;
+            });
+        }
+
+        // 订阅 ainovel:event:update（orchestrator_* 事件）做 in-place 更新
+        // 注意：novel.js 在初始化时已经订阅 onUpdate；这里再加一个临时监听
+        try {
+            if (window.api && window.api.ainovel && window.api.ainovel.onUpdate) {
+                _dagUnsubscribe = window.api.ainovel.onUpdate((ev, payload) => {
+                    if (!payload || !payload.type) return;
+                    // 仅关心 orchestrator 任务事件
+                    if (payload.type.startsWith('orchestrator_task_') ||
+                        payload.type === 'orchestrator_started' ||
+                        payload.type === 'orchestrator_finished' ||
+                        payload.type === 'orchestrator_failed') {
+                        // 防抖：连续事件合并为一次重渲染
+                        if (_dagRefreshTimer) clearTimeout(_dagRefreshTimer);
+                        _dagRefreshTimer = setTimeout(() => {
+                            _dagRefreshTimer = null;
+                            loadAndRender();
+                        }, 200);
+                    }
+                });
+            }
+        } catch (e) { console.warn('DAG event subscribe failed:', e); }
+
+        const $refresh = $body.querySelector('[data-dag-act="refresh"]');
+        if ($refresh) $refresh.addEventListener('click', () => loadAndRender());
+
+        await loadAndRender();
+    }
+
+    let _dagRefreshTimer = null;
 
     async function _renderSchedInbox($body, novelId) {
         // agent 列表（缓存）
@@ -2205,9 +3106,32 @@ ${themes.length ? `<div class="novel-ws-output-section">
         else if (tab === 'artifacts') $tabArtifacts && $tabArtifacts.classList.add('active');
         else if (tab === 'knowledge') $tabKnowledge && $tabKnowledge.classList.add('active');
         else if (tab === 'chapters') $tabChapters && $tabChapters.classList.add('active');
+        else if (tab === 'foreshadows') {
+            $tabForeshadows && $tabForeshadows.classList.add('active');
+            // Sprint 7.2: 渲染伏笔面板
+            if (window.ForeshadowsPanel && _st.activeNovelId) {
+                const novel = _st.novels.find(n => n.id === _st.activeNovelId);
+                window.ForeshadowsPanel.render($tabForeshadows, _st.activeNovelId, novel);
+            }
+        }
+        else if (tab === 'memory') {
+            $tabMemory && $tabMemory.classList.add('active');
+            // Sprint 7.3: 渲染叙事记忆面板
+            if (window.MemoryPanel && _st.activeNovelId) {
+                const novel = _st.novels.find(n => n.id === _st.activeNovelId);
+                window.MemoryPanel.render($tabMemory, _st.activeNovelId, novel);
+            }
+        }
         else if (tab === 'log') $tabLog && $tabLog.classList.add('active');
         else if (tab === 'scheduler') $tabScheduler && $tabScheduler.classList.add('active');
         else if (tab === 'outline') $tabOutline && $tabOutline.classList.add('active');
+        else if (tab === 'relations') {
+            $tabRelations && $tabRelations.classList.add('active');
+            // Sprint 8.3: 渲染关系图谱
+            if (window.RelationsPanel && _st.activeNovelId) {
+                window.RelationsPanel.render(_st.activeNovelId);
+            }
+        }
         _renderDetail();
     }
 
@@ -2304,6 +3228,10 @@ ${themes.length ? `<div class="novel-ws-output-section">
             if (startEdit) _enterChapterEdit();
             $chapterModal.style.display = 'flex';
             $chapterModal.classList.add('active');
+            // Sprint 6.3: 加载 blocks（用于"段落视图"）
+            if (window.NovelBlocks && window.NovelBlocks.loadChapter) {
+                window.NovelBlocks.loadChapter(_st.activeNovelId, chapterId);
+            }
         } catch (e) {
             toast('加载失败：' + e.message, 'error');
         }
@@ -2675,6 +3603,89 @@ ${themes.length ? `<div class="novel-ws-output-section">
         $newModal.classList.remove('active');
         $newModal.style.display = 'none';
     }
+    // Sprint 10: 简化模式 — 单步创建 + 自动触发大纲 + 第 1 章
+    async function _submitNewSimple() {
+        const ideaEl = document.getElementById('wizardIdea');
+        const titleEl = document.getElementById('wizardTitle');
+        if (!ideaEl) return;
+        const idea = (ideaEl.value || '').trim();
+        if (!idea) { toast('请写一句话故事', 'warn'); return; }
+        const title = (titleEl && titleEl.value || '').trim() || idea.slice(0, 20);
+
+        // 1. LLM 预检
+        let cfg = null;
+        try {
+            const r = await window.api.ainovel.getProviderConfig();
+            cfg = r && r.config;
+        } catch (e) { /* */ }
+        if (!cfg || !cfg.provider || !cfg.model) {
+            toast('请先在【设置 → LLM】配置模型', 'error');
+            return;
+        }
+
+        // 2. 创建小说
+        const btn = document.getElementById('wizardStartBtn');
+        if (btn) btn.disabled = true;
+        let createR;
+        try {
+            createR = await window.api.ainovel.create({
+                title,
+                core_idea: idea,
+                style: _getSelectedStyle(),
+                chapter_target_count: 30,
+                target_word_count: 1000000,
+            });
+        } catch (e) {
+            toast('创建失败：' + e.message, 'error');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (!createR || !createR.ok) {
+            toast(createR && createR.error || '创建失败', 'error');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        const novelId = createR.novelId;
+        _st.activeNovelId = novelId;
+        // 清空 draft
+        try { localStorage.removeItem(WIZARD_DRAFT_KEY); } catch (e) { /* */ }
+        // 关闭老式 modal（如果开着）
+        _closeNewModal();
+        // 刷新列表
+        await _refreshList();
+
+        // 3. 切到 Step 2
+        _wizardState.step = 'writing';
+        _wizardState.novelId = novelId;
+        const r2 = await window.api.ainovel.get(novelId);
+        _renderWizardStep2(r2, 'AI 在构思大纲...', '首次生成需 4-6 分钟，请耐心等待');
+
+        // 4. 关键：临时把 auto_chain_after_outline 设为 true，让大纲完成后自动开写第 1 章
+        try {
+            await window.api.ainovel.setSetting('auto_chain_after_outline', 'true');
+        } catch (e) { /* */ }
+        // 5. 用与 expert 模式一致的 _startPipeline 初始化 pipeline 状态
+        //    （_pipeline.active / kind / startedAt / phases），让 wizard 的 progress 跟踪能读到
+        //    注意：simple 模式下我们仍然渲染 pipeline view 到 hidden expert view 的 workspace pane
+        //    （_pipeline.$pane 走 fallback 到 $tabWorkspace，DOM 写入但不可见，事件仍然正常 emit）
+        if (!_startPipeline('outline', novelId, null)) {
+            // 已有任务在跑（极少见）— 直接返回，让用户等
+            if (btn) btn.disabled = false;
+            return;
+        }
+        // 6. 触发大纲生成
+        try {
+            const r = await window.api.ainovel.generateOutline(novelId);
+            if (!r || !r.ok) {
+                _endPipeline(false, r && r.error || '生成失败');
+                if (btn) btn.disabled = false;
+                return;
+            }
+        } catch (e) {
+            _endPipeline(false, '生成失败：' + e.message);
+            if (btn) btn.disabled = false;
+        }
+    }
     async function _submitNew() {
         const title = document.getElementById('novelFormTitle').value.trim();
         const coreIdea = document.getElementById('novelFormCoreIdea').value.trim();
@@ -2699,6 +3710,12 @@ ${themes.length ? `<div class="novel-ws-output-section">
             toast('已创建，开始生成大纲...', 'success');
             _closeNewModal();
             _st.activeNovelId = r.novelId;
+            // 简化模式：设置 wizard state 让 _renderSimpleView 渲染 Step 2（而不是 Step 1 输入框）
+            if (_mode === 'simple') {
+                _wizardState.step = 'writing';
+                _wizardState.novelId = r.novelId;
+                _wizardState.currentChapterNo = 0;
+            }
             await _refreshList();
             await _renderDetail();
             // 用流式模式触发大纲生成（防重复 + 实时预览）；失败由 generation_failed 事件驱动
@@ -2838,6 +3855,32 @@ ${themes.length ? `<div class="novel-ws-output-section">
                             <input id="ainovelMaxTokens" type="number" min="256" max="32000" step="256" value="4000">
                         </div>
                     </div>
+                    <div class="novel-form-section">
+                        <div class="novel-form-section-title">
+                            <i class="fa-solid fa-brain"></i> 思考 / 推理
+                            <span class="novel-form-section-hint" id="ainovelThinkingSupportHint"></span>
+                        </div>
+                        <div class="novel-form-row" id="ainovelThinkingBudgetRow">
+                            <label>思考预算 (tokens)</label>
+                            <input id="ainovelThinkingBudget" type="number" min="0" max="32000" step="256" value="0">
+                            <div class="novel-settings-hint">Anthropic extended thinking 的 budget_tokens；0 = 关闭思考</div>
+                        </div>
+                        <div class="novel-form-row" id="ainovelReasoningEffortRow" hidden>
+                            <label>推理强度 (OpenAI o1/o3)</label>
+                            <select id="ainovelReasoningEffort">
+                                <option value="">不指定</option>
+                                <option value="low">low</option>
+                                <option value="medium">medium</option>
+                                <option value="high">high</option>
+                            </select>
+                            <div class="novel-settings-hint">OpenAI o1/o3 系列使用；推理 token 不在流里，只能在最终结果中获取</div>
+                        </div>
+                        <div class="novel-form-row" id="ainovelThinkingEnabledSkillsRow">
+                            <label>哪些 Agent 开启思考</label>
+                            <div id="ainovelThinkingSkills" class="novel-thinking-skills"></div>
+                            <div class="novel-settings-hint">未勾选 = 该 provider 默认行为；勾选后该 agent 调用会启用思考</div>
+                        </div>
+                    </div>
                     <div class="novel-settings-actions">
                         <button id="ainovelTestBtn" class="btn" type="button"><i class="fa-solid fa-plug"></i> 测试连接</button>
                         <button id="ainovelSaveBtn" class="btn btn-primary" type="button"><i class="fa-solid fa-check"></i> 保存</button>
@@ -2859,6 +3902,67 @@ ${themes.length ? `<div class="novel-ws-output-section">
         const $saveBtn = container.querySelector('#ainovelSaveBtn');
         const $result = container.querySelector('#ainovelTestResult');
         const $baseUrlHint = container.querySelector('#ainovelBaseUrlHint');
+        const $thinkingBudget = container.querySelector('#ainovelThinkingBudget');
+        const $thinkingBudgetRow = container.querySelector('#ainovelThinkingBudgetRow');
+        const $reasoningEffort = container.querySelector('#ainovelReasoningEffort');
+        const $reasoningEffortRow = container.querySelector('#ainovelReasoningEffortRow');
+        const $thinkingSkills = container.querySelector('#ainovelThinkingSkills');
+        const $thinkingSupportHint = container.querySelector('#ainovelThinkingSupportHint');
+
+        // 已知 agent 列表（与 _skills 注册对应；从 novel-engine 暴露的接口拿）
+        let _knownSkills = [];
+        try {
+            const sR = await window.api.ainovel.listSkills ? window.api.ainovel.listSkills() : null;
+            _knownSkills = (sR && sR.ok && sR.skills) ? sR.skills : [];
+        } catch (e) { _knownSkills = []; }
+        // 兜底：内置 18 个 skill 的常见名（万一 listSkills 不存在）
+        if (!_knownSkills.length) {
+            _knownSkills = [
+                'style-analyst', 'world-architect', 'character-architect',
+                'theme-architect', 'plot-architect', 'outline-synthesizer',
+                'outline-reviewer', 'story-architect', 'outline-architect',
+                'scene-planner', 'chapter-streamer', 'continuity-checker',
+                'style-editor', 'quality-reviewer', 'character-state-updater',
+                'plot-thread-tracker', 'foreshadowing-extractor', 'chapter-writer',
+            ];
+        }
+
+        function _syncThinkingUI() {
+            const p = $provider.value;
+            const m = $model.value.trim();
+            // 调用 novel.supportsThinking 探测（通过 main 进程的 ainovel:supportsThinking）
+            window.api.ainovel.supportsThinking({ provider: p, model: m }).then((r) => {
+                const kind = (r && r.kind) || null;
+                if (kind === 'extended') {
+                    $thinkingBudgetRow.hidden = false;
+                    $reasoningEffortRow.hidden = true;
+                    $thinkingSupportHint.textContent = '✓ Anthropic extended thinking';
+                } else if (kind === 'reasoning') {
+                    $thinkingBudgetRow.hidden = true;
+                    $reasoningEffortRow.hidden = false;
+                    $thinkingSupportHint.textContent = '✓ OpenAI/DeepSeek reasoning（推理 token 仅在最终结果）';
+                } else if (kind === 'think-tags') {
+                    $thinkingBudgetRow.hidden = true;
+                    $reasoningEffortRow.hidden = true;
+                    $thinkingSupportHint.textContent = '✓ 本地推理模型（deepseek-r1 / qwq），通过 <think> 标签提取思考';
+                } else {
+                    $thinkingBudgetRow.hidden = true;
+                    $reasoningEffortRow.hidden = true;
+                    $thinkingSupportHint.textContent = '✗ 当前模型不支持思考';
+                }
+            }).catch(() => {
+                $thinkingSupportHint.textContent = '';
+            });
+            // 重新渲染 skill 多选框
+            const enabled = _enabledSkillsCache || [];
+            $thinkingSkills.innerHTML = _knownSkills.map((s) => {
+                const checked = enabled.indexOf(s) !== -1 ? 'checked' : '';
+                return `<label class="novel-thinking-skill"><input type="checkbox" data-skill="${s}" ${checked}>${s}</label>`;
+            }).join('');
+        }
+        let _enabledSkillsCache = [];
+        $provider.addEventListener('change', _syncThinkingUI);
+        $model.addEventListener('change', _syncThinkingUI);
 
         function _syncProviderUI() {
             const p = $provider.value;
@@ -2867,10 +3971,13 @@ ${themes.length ? `<div class="novel-ws-output-section">
             $baseUrlHint.textContent = (p === 'anthropic')
                 ? 'Anthropic 路径会自动补 /v1/messages'
                 : (p === 'ollama' ? '本地 Ollama 服务地址' : '');
+            _syncThinkingUI();
         }
         $provider.addEventListener('change', _syncProviderUI);
 
         function _readCfg() {
+            const enabledSkills = Array.from($thinkingSkills.querySelectorAll('input[type="checkbox"]:checked'))
+                .map((el) => el.dataset.skill);
             return {
                 provider: $provider.value,
                 base_url: $baseUrl.value.trim(),
@@ -2878,6 +3985,9 @@ ${themes.length ? `<div class="novel-ws-output-section">
                 model: $model.value.trim(),
                 temperature: parseFloat($temp.value) || 0.8,
                 max_tokens: parseInt($maxTokens.value) || 4000,
+                thinking_budget: Math.max(0, parseInt($thinkingBudget.value) || 0),
+                reasoning_effort: $reasoningEffort.value || null,
+                thinking_enabled_skills: enabledSkills,
             };
         }
         function _setResult(text, kind) {
@@ -2895,8 +4005,12 @@ ${themes.length ? `<div class="novel-ws-output-section">
                 $model.value = c.model || '';
                 $temp.value = c.temperature != null ? c.temperature : 0.8;
                 $maxTokens.value = c.max_tokens != null ? c.max_tokens : 4000;
+                $thinkingBudget.value = c.thinking_budget != null ? c.thinking_budget : 0;
+                $reasoningEffort.value = c.reasoning_effort || '';
+                _enabledSkillsCache = Array.isArray(c.thinking_enabled_skills) ? c.thinking_enabled_skills : [];
             } else {
                 $provider.value = 'openai';
+                _enabledSkillsCache = [];
             }
             _syncProviderUI();
         } catch (e) {
@@ -3252,13 +4366,16 @@ ${themes.length ? `<div class="novel-ws-output-section">
 
     function _onAutoChapterFailed(ev) {
         if (!_st.activeNovelId || ev.novelId !== _st.activeNovelId) return;
-        toast(`第 ${ev.chapterNo} 章失败：${ev.error || '未知错误'}（15s 后自动重试）`, 'warn');
+        toast(`第 ${ev.chapterNo} 章已暂停：${ev.error || '未知错误'}，可继续上次任务`, 'warn');
     }
 
     function _onAutoPaused(ev) {
         if (!_st.activeNovelId || ev.novelId !== _st.activeNovelId) return;
         _auto.paused = true;
         toast('自动写作已暂停', 'info');
+        _wizardState.step = 'reading';
+        _pipeline.phases = [];
+        _renderDetail();
         _refreshAutoBarUI();
     }
 
@@ -3274,7 +4391,11 @@ ${themes.length ? `<div class="novel-ws-output-section">
         _auto.active = false;
         _auto.paused = false;
         toast('已取消', 'info');
+        _wizardState.step = 'reading';
+        _pipeline.phases = [];
+        _endPipeline(false, '已停止');
         _refreshAutoBarUI();
+        _renderDetail();
     }
 
     function _onAutoFinished(ev) {
@@ -3580,6 +4701,9 @@ async function _renderWorkflow(r) {
     _wfRebuildNodeCache();
     _wfApplyFiltersClient();
 
+    // X-3/X-4: 历史事件格式化（已完成的 agent 在渲染后填充 [data-formatted]）
+    _wfFormatHistoricalNodes();
+
     // 工具栏交互
     document.getElementById('novelWfAutoScroll').addEventListener('change', (e) => {
         _wf.autoScroll = e.target.checked;
@@ -3666,20 +4790,29 @@ function _wfRenderNodeHTML(ev) {
     if (!initialText && !hasAgent && !isRunning) return '';
 
     const kindClass = `novel-wf-kind-${esc(ev.kind || 'other')}`;
-    const agentName = ev.agent || '—';
-    const textCls = extracted.cls ? ` ${extracted.cls}` : '';
+    // 兜底文字：避免显示成单一的 "—"，对用户更可读
+    const agentName = ev.agent || '(未知 agent)';
+    // 标记孤儿节点（agent 字段缺失），方便后续样式 / 调试识别
+    const orphanAttr = hasAgent ? '' : ' data-ev-orphan="true"';
 
-    // 极简节点：dot + body(body = agent 名 + 文字)。无任何背景/边框/阴影。
-    const textBlock = `<div class="novel-wf-text${textCls}" data-stream-text>${esc(initialText)}</div>`;
-
+    // 节点结构（X-3 重构）：
+    //   - head: agent 名 + 状态 pill（生成中··· / 已生成）
+    //   - 格式化区（completed 才填充，running 时为空）
+    //   - 折叠的原文 details（running 时累积，completed 时定格）
     return `
-        <div class="novel-wf-node novel-wf-status-${esc(ev.status || 'pending')} ${kindClass}" data-ev-id="${esc(ev.id)}" data-ev-agent="${esc(ev.agent || '')}" data-ev-status="${esc(ev.status || '')}" data-ev-kind="${esc(ev.kind || '')}">
+        <div class="novel-wf-node novel-wf-status-${esc(ev.status || 'pending')} ${kindClass}" data-ev-id="${esc(ev.id)}" data-ev-agent="${esc(ev.agent || '')}" data-ev-status="${esc(ev.status || '')}" data-ev-kind="${esc(ev.kind || '')}"${orphanAttr}>
             <div class="novel-wf-dot"></div>
             <div class="novel-wf-body">
                 <div class="novel-wf-head">
                     <span class="novel-wf-agent" data-agent="${esc(agentName)}">${esc(agentName)}</span>
+                    <span class="novel-wf-status-pill" data-status-pill>${isRunning ? '生成中…' : '已生成'}</span>
+                    <button class="novel-wf-toggle-raw" data-toggle-raw type="button">查看原文</button>
                 </div>
-                ${textBlock}
+                <div class="novel-wf-formatted" data-formatted></div>
+                <details class="novel-wf-raw-details" data-raw-details>
+                    <summary>原文</summary>
+                    <pre class="novel-wf-raw-text" data-stream-text>${esc(initialText)}</pre>
+                </details>
             </div>
         </div>`;
 }
@@ -3702,6 +4835,72 @@ function _wfRebuildNodeCache() {
     document.querySelectorAll('#novelWfTimeline .novel-wf-node').forEach(node => {
         const id = node.dataset.evId;
         if (id) _wf.nodeByEvId.set(id, node);
+    });
+}
+
+// X-3/X-4: 渲染历史事件后，把每个已完成 agent 的 [data-formatted] 区域填上格式化卡片
+// 历史事件不会经过 _wfHandleAgentFinished，所以渲染完 DOM 后需要再走一遍格式化
+// 只针对 kind=agent + status=completed 且尚未格式化（[data-formatted] 空）的节点
+// 优先用 ev.output（完整 JSON），回退到 [data-stream-text]（截断到 3000 字的 lastText）
+function _wfFormatHistoricalNodes() {
+    const $tl = document.getElementById('novelWfTimeline');
+    if (!$tl) return;
+    const $nodes = $tl.querySelectorAll('.novel-wf-node[data-ev-kind="agent"][data-ev-status="completed"]');
+    const evById = new Map();
+    (_wf.events || []).forEach((e) => { if (e && e.id) evById.set(e.id, e); });
+    $nodes.forEach(($n) => {
+        // 防御：没有 [data-formatted] 容器（旧版本渲染的节点） → 跳过
+        const $formatted = $n.querySelector('[data-formatted]');
+        if (!$formatted) return;
+        // 已经格式化过
+        if ($formatted.dataset.formatted === 'true') return;
+        // 已经写过任何子节点（避免覆盖实时事件已经写过的东西）
+        if ($formatted.childElementCount > 0) {
+            $formatted.dataset.formatted = 'true';
+            return;
+        }
+        const agent = $n.dataset.evAgent || '';
+        // 优先：完整 ev.output（agent_finished 时引擎存的完整 JSON 对象）
+        const ev = evById.get($n.dataset.evId);
+        let finalText = '';
+        if (ev && ev.output) {
+            if (typeof ev.output === 'string') finalText = ev.output;
+            else {
+                try { finalText = JSON.stringify(ev.output, null, 2); } catch (e) {}
+            }
+        }
+        // 回退：[data-stream-text] 里已经渲染好的 lastText（截断 3000 字）
+        if (!finalText.trim()) {
+            const $txt = $n.querySelector('[data-stream-text]');
+            finalText = ($txt && $txt.textContent) || '';
+        }
+        if (!finalText.trim()) return;
+        const html = _wfRenderFormatted(finalText, agent);
+        if (html) {
+            $formatted.innerHTML = html;
+        } else {
+            $formatted.innerHTML = `<div class="novel-wf-text-plain">${esc(finalText)}</div>`;
+        }
+        $formatted.dataset.formatted = 'true';
+        // 同时把"查看原文"切换按钮 wire 上（防御：历史节点可能没绑过）
+        const $toggle = $n.querySelector('[data-toggle-raw]');
+        if ($toggle && !$toggle._wired) {
+            $toggle._wired = true;
+            $toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const $details = $n.querySelector('[data-raw-details]');
+                if (!$details) return;
+                const willOpen = !$details.open;
+                $details.open = willOpen;
+                $toggle.textContent = willOpen ? '收起原文' : '查看原文';
+            });
+        }
+        // thinking 面板：标记为完成（旧事件没有 thinking 数据，但显示 "—" 不好看）
+        const $panel = $n.querySelector('.novel-wf-thinking');
+        if ($panel) {
+            const $cnt = $panel.querySelector('[data-thinking-count]');
+            if ($cnt) $cnt.textContent = '无思考数据';
+        }
     });
 }
 
@@ -3748,6 +4947,9 @@ function _wfOnEvent(evType, ev) {
         case 'stream':                  // 兼容旧的 'stream' 事件（chapter-writer 老路径）
             _wfHandleAgentChunk(ev);
             break;
+        case 'agent_thinking_chunk':    // 推理 / extended thinking 的 token 流
+            _wfHandleAgentThinkingChunk(ev);
+            break;
         case 'agent_finished':
             _wfHandleAgentFinished(ev);
             break;
@@ -3760,16 +4962,17 @@ function _wfOnEvent(evType, ev) {
     }
 }
 
-// agent_started：创建一个新节点（status=running），用 agentName|chapterId|jobId 作为 key
+// agent_started：创建一个新节点（status=running），用稳定 id 作 key
+// Sprint W: key 用 stableId (wf-novelId-agentName-jobId-run) 而非拼接字符串，
+// 避免 chunk / finished 缺字段时 key 错位导致防御性重复建节点
 function _wfHandleAgentStarted(ev) {
     const agentName = ev.agentName || ev.agent || ev.skill || '—';
-    const key = _wfKeyFor(ev);
-    // 同一个 key 已经存在 running 节点 → 防御（避免重复 created）
+    const stableId = ev.id || _wfIdForStable(ev);
+    const key = stableId;
+    // 同一个 stableId 已经存在 running 节点 → 防御（避免重复 created）
+    if (_wf.nodeByEvId.has(stableId)) return;
     if (_wf.streamNodeByKey.has(key)) return;
 
-    // 用与 engine 一致的 id 格式（_wfIdFor 生成的 wf-novelId-agentName-jobId-run），
-    // 这样 live stub 与 DB 行 id 相同，跨刷新 / 跨 tab 切换都能去重（同一行只显示一次）
-    const stableId = ev.id || `wf-${ev.novelId}-${agentName}-${ev.jobId || 'run'}-run`;
     const stub = {
         id: stableId,
         novel_id: ev.novelId,
@@ -3804,15 +5007,22 @@ function _wfHandleAgentChunk(ev) {
     _wfUpdateStreamNode($node, ev);
 }
 
-// agent_finished：把 running 节点标记为 completed，定格文字
-function _wfHandleAgentFinished(ev) {
+// agent_thinking_chunk：推理 / extended thinking token 流
+// 渲染到节点顶部一个可折叠的「思考中…」面板里（不占用正文区）
+function _wfHandleAgentThinkingChunk(ev) {
     const key = _wfKeyFor(ev);
-    const $node = _wf.streamNodeByKey.get(key);
+    let $node = _wf.streamNodeByKey.get(key);
     if (!$node) {
-        // 没有 running 节点 → 防御建一个 completed 节点
         _wfHandleAgentStarted(ev);
+        $node = _wf.streamNodeByKey.get(key);
     }
-    const $n = _wf.streamNodeByKey.get(key);
+    if (!$node) return;
+    _wfUpdateThinkingNode($node, ev);
+}
+
+// agent_finished：把 running 节点标记为 completed，定格文字 + 格式化 JSON
+function _wfHandleAgentFinished(ev) {
+    const $n = _wfFindRunningNode(ev);
     if (!$n) return;
 
     // 最终文字：优先 ev.output.text/_wfExtractFinalText，其次 $n._streamText（流式累积）
@@ -3823,8 +5033,6 @@ function _wfHandleAgentFinished(ev) {
             $txt.textContent = finalText;
             $txt._lastRenderedText = finalText;
         }
-        // completed 时移除 error / hint class
-        $txt.classList.remove('is-error', 'is-hint');
     }
 
     // 状态：running → completed
@@ -3834,16 +5042,257 @@ function _wfHandleAgentFinished(ev) {
     const $dot = $n.querySelector('.novel-wf-dot');
     if ($dot) $dot.classList.add('novel-wf-dot-completed');
     // 关闭闪烁光标动画（如果 CSS 是依赖 ::after，可通过移除 status class 关掉）
+
+    // status pill：running → 已生成（X-3）
+    const $pill = $n.querySelector('[data-status-pill]');
+    if ($pill) $pill.textContent = '已生成';
+
+    // 思考面板：定格 + 把"思考中"改成"思考完成"
+    const $panel = $n.querySelector('.novel-wf-thinking');
+    if ($panel) {
+        const $cnt = $panel.querySelector('[data-thinking-count]');
+        const finalThinkLen = ($n._thinkingText || '').length;
+        if ($cnt) $cnt.textContent = finalThinkLen > 0 ? `思考完成 · ${finalThinkLen} 字` : '';
+        $n.dataset.evThinking = 'done';
+    }
+
+    // X-3: 尝试解析 finalText 为 JSON，格式化渲染到 [data-formatted]
+    const $formatted = $n.querySelector('[data-formatted]');
+    if ($formatted && finalText) {
+        const formatted = _wfRenderFormatted(finalText, $n.dataset.evAgent || '');
+        if (formatted) {
+            $formatted.innerHTML = formatted;
+            $n.dataset.evFormatted = 'true';
+        } else {
+            // 解析失败：当作文本输出
+            $formatted.innerHTML = `<div class="novel-wf-text-plain">${esc(finalText)}</div>`;
+            $n.dataset.evFormatted = 'false';
+        }
+    }
+
+    // X-3: wire up "查看原文" 切换按钮
+    const $toggle = $n.querySelector('[data-toggle-raw]');
+    if ($toggle && !$toggle._wired) {
+        $toggle._wired = true;
+        $toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const $details = $n.querySelector('[data-raw-details]');
+            if (!$details) return;
+            const willOpen = !$details.open;
+            $details.open = willOpen;
+            $toggle.textContent = willOpen ? '收起原文' : '查看原文';
+        });
+    }
+}
+
+// X-3: 把 finalText 尝试解析为 JSON 并格式化为可读卡片
+// 返回 HTML 字符串或 null（解析失败时调用方回退到纯文本）
+// X-4: 对常见 schema（candidates / chapters / issues / score 等）走专用卡片渲染
+function _wfRenderFormatted(finalText, agentName) {
+    if (!finalText) return null;
+    let raw = finalText.trim();
+    const fence = raw.match(/```(?:json)?\s*([\s\S]+?)```/i);
+    if (fence) raw = fence[1].trim();
+    let obj = null;
+    try { obj = JSON.parse(raw); } catch (e) { obj = null; }
+    if (!obj) {
+        const braceStart = raw.indexOf('{');
+        const bracketStart = raw.indexOf('[');
+        let start = -1;
+        if (braceStart >= 0 && bracketStart >= 0) start = Math.min(braceStart, bracketStart);
+        else start = Math.max(braceStart, bracketStart);
+        if (start >= 0) {
+            const endChar = raw[start] === '{' ? '}' : ']';
+            const end = raw.lastIndexOf(endChar);
+            if (end > start) {
+                try { obj = JSON.parse(raw.slice(start, end + 1)); } catch (e) { obj = null; }
+            }
+        }
+    }
+    if (!obj || typeof obj !== 'object') return null;
+
+    // X-4: 专用卡片（按 schema 路由）
+    if (agentName === 'world-architect' && Array.isArray(obj.candidates)) {
+        return _wfCardsForCandidates(obj.candidates, '候选世界设定');
+    }
+    if (agentName === 'character-architect') {
+        if (Array.isArray(obj.protagonistCandidates)) {
+            return _wfCardsForCandidates(obj.protagonistCandidates, '候选主角');
+        }
+        if (Array.isArray(obj.supportingCast)) {
+            return _wfCardsForCandidates(obj.supportingCast, '主要配角');
+        }
+    }
+    if (agentName === 'plot-architect' && obj.plotStructure) {
+        return _wfCardsForPlotStructure(obj.plotStructure);
+    }
+    if (agentName === 'outline-synthesizer' && Array.isArray(obj.chapters)) {
+        return _wfCardsForChapters(obj.chapters);
+    }
+    if (Array.isArray(obj.issues) && (agentName === 'continuity-checker' || agentName === 'style-editor' || agentName === 'outline-reviewer' || agentName === 'quality-reviewer')) {
+        return _wfCardsForIssues(obj.issues, agentName);
+    }
+    if (agentName === 'quality-reviewer') {
+        return _wfCardForQualityReviewer(obj);
+    }
+    if (agentName === 'style-analyst') {
+        return _wfCardForStyleGuide(obj);
+    }
+
+    // 兜底：如果对象有一个长文本字段（chapter-streamer 输出 {text: ...}），按正文渲染
+    if (typeof obj.text === 'string' && obj.text.length > 200) {
+        return `<div class="novel-wf-text-plain">${esc(obj.text)}</div>`;
+    }
+    if (typeof obj.content === 'string' && obj.content.length > 200) {
+        return `<div class="novel-wf-text-plain">${esc(obj.content)}</div>`;
+    }
+
+    // 默认：通用 JSON 树
+    return _wfJsonToHtml(obj, agentName, 0);
+}
+
+// X-4: 候选类（world-architect / character-architect）的卡片渲染
+function _wfCardsForCandidates(items, groupTitle) {
+    if (!items || !items.length) return `<div class="novel-wf-text-plain">无候选</div>`;
+    const cards = items.map((it, i) => {
+        const name = it.name || it.title || it.protagonistName || `候选 ${i + 1}`;
+        const era = it.era || it.background || '';
+        const setting = it.setting || it.personality || it.description || '';
+        const hook = it.hook || it.hookLine || '';
+        const conflict = it.conflictPotential || it.coreConflict || '';
+        const special = Array.isArray(it.specialRules) ? it.specialRules : (Array.isArray(it.specialTraits) ? it.specialTraits : []);
+        return `
+            <div class="novel-wf-card">
+                <div class="novel-wf-card-title">${i + 1}. ${esc(name)}</div>
+                ${era ? `<div class="novel-wf-card-meta">${esc(era)}</div>` : ''}
+                ${setting ? `<div class="novel-wf-card-body">${esc(setting)}</div>` : ''}
+                ${hook ? `<div class="novel-wf-card-hook">⚡ ${esc(hook)}</div>` : ''}
+                ${conflict ? `<div class="novel-wf-card-conflict">🔥 ${esc(conflict)}</div>` : ''}
+                ${special.length ? `<ul class="novel-wf-card-list">${special.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+            </div>`;
+    }).join('');
+    return `<div class="novel-wf-card-group"><div class="novel-wf-card-group-title">${esc(groupTitle)} · ${items.length}</div>${cards}</div>`;
+}
+
+// X-4: 剧情结构（plot-architect）
+function _wfCardsForPlotStructure(ps) {
+    if (!ps || typeof ps !== 'object') return _wfJsonToHtml(ps, '', 0);
+    const acts = ['act1_manifestation', 'act2_rising', 'act3_climax', 'act4_resolution'];
+    const titles = {
+        act1_manifestation: '第一幕 · 起',
+        act2_rising: '第二幕 · 承',
+        act3_climax: '第三幕 · 转',
+        act4_resolution: '第四幕 · 合',
+    };
+    const cards = acts.map(k => {
+        const v = ps[k];
+        if (!v) return '';
+        const title = (v.title || v.name) || titles[k];
+        const summary = v.summary || v.description || v.content || '';
+        const beats = Array.isArray(v.beats) ? v.beats : (Array.isArray(v.key_beats) ? v.key_beats : []);
+        return `<div class="novel-wf-card">
+            <div class="novel-wf-card-title">${esc(title)}</div>
+            ${summary ? `<div class="novel-wf-card-body">${esc(summary)}</div>` : ''}
+            ${beats.length ? `<ul class="novel-wf-card-list">${beats.map(b => `<li>${esc(typeof b === 'string' ? b : (b.description || b.name || JSON.stringify(b)))}</li>`).join('')}</ul>` : ''}
+        </div>`;
+    }).filter(Boolean).join('');
+    return cards ? `<div class="novel-wf-card-group"><div class="novel-wf-card-group-title">剧情结构 · ${acts.filter(k => ps[k]).length} 幕</div>${cards}</div>` : _wfJsonToHtml(ps, '', 0);
+}
+
+// X-4: 章节大纲（outline-synthesizer）
+function _wfCardsForChapters(chapters) {
+    if (!chapters.length) return '';
+    const cards = chapters.slice(0, 80).map((ch, i) => {
+        const title = ch.title || ch.name || `第 ${ch.chapterNo || (i + 1)} 章`;
+        const summary = ch.summary || ch.synopsis || ch.description || '';
+        const beats = Array.isArray(ch.beats) ? ch.beats : (Array.isArray(ch.key_beats) ? ch.key_beats : []);
+        return `<div class="novel-wf-card">
+            <div class="novel-wf-card-title">第 ${ch.chapterNo || (i + 1)} 章 · ${esc(title)}</div>
+            ${summary ? `<div class="novel-wf-card-body">${esc(summary)}</div>` : ''}
+            ${beats.length ? `<ul class="novel-wf-card-list">${beats.map(b => `<li>${esc(typeof b === 'string' ? b : (b.description || b.name || JSON.stringify(b)))}</li>`).join('')}</ul>` : ''}
+        </div>`;
+    }).join('');
+    const more = chapters.length > 80 ? `<div class="novel-wf-card-more">…还有 ${chapters.length - 80} 章</div>` : '';
+    return `<div class="novel-wf-card-group"><div class="novel-wf-card-group-title">章节大纲 · ${chapters.length} 章</div>${cards}${more}</div>`;
+}
+
+// X-4: 问题列表（continuity-checker / style-editor）
+function _wfCardsForIssues(issues, agentName) {
+    if (!issues.length) return `<div class="novel-wf-text-plain">未发现问题 ✓</div>`;
+    const titleMap = { 'continuity-checker': '一致性检查', 'style-editor': '风格编辑' };
+    const cards = issues.map((it, i) => {
+        const sev = (it.severity || it.level || 'info').toLowerCase();
+        const sevLabel = { 'critical': '严重', 'major': '重要', 'minor': '次要', 'info': '提示' }[sev] || sev;
+        const desc = it.description || it.message || it.text || JSON.stringify(it);
+        const loc = it.location || it.chapter || it.context || '';
+        return `<div class="novel-wf-card novel-wf-card-sev-${esc(sev)}">
+            <div class="novel-wf-card-title">${i + 1}. [${esc(sevLabel)}] ${loc ? `· ${esc(loc)}` : ''}</div>
+            <div class="novel-wf-card-body">${esc(desc)}</div>
+        </div>`;
+    }).join('');
+    return `<div class="novel-wf-card-group"><div class="novel-wf-card-group-title">${titleMap[agentName] || agentName} · ${issues.length} 项</div>${cards}</div>`;
+}
+
+// X-4: 评分（quality-reviewer）
+function _wfCardForQualityReviewer(obj) {
+    const score = obj.score != null ? obj.score : (obj.overallScore != null ? obj.overallScore : null);
+    const pass = obj.pass != null ? obj.pass : (obj.approved != null ? obj.approved : null);
+    const issues = Array.isArray(obj.issues) ? obj.issues : [];
+    const summary = obj.summary || obj.feedback || '';
+    return `
+        <div class="novel-wf-card-group">
+            <div class="novel-wf-card-group-title">质量评审${score != null ? ` · ${score} 分` : ''}${pass != null ? ` · ${pass ? '通过 ✓' : '不通过 ✗'}` : ''}</div>
+            ${summary ? `<div class="novel-wf-text-plain">${esc(summary)}</div>` : ''}
+            ${issues.length ? _wfCardsForIssues(issues, 'quality-reviewer') : ''}
+        </div>`;
+}
+
+// X-4: 风格指南（style-analyst）
+function _wfCardForStyleGuide(obj) {
+    const styleGuide = obj.styleGuide || obj;
+    const parts = [];
+    if (styleGuide.narrativeVoice) parts.push(`<div class="novel-wf-card-meta"><b>叙事视角：</b>${esc(styleGuide.narrativeVoice)}</div>`);
+    if (styleGuide.vocabularyHints && Array.isArray(styleGuide.vocabularyHints)) {
+        parts.push(`<div class="novel-wf-card-meta"><b>词汇取向：</b>${styleGuide.vocabularyHints.map(esc).join('、')}</div>`);
+    }
+    if (styleGuide.avoidances && Array.isArray(styleGuide.avoidances)) {
+        parts.push(`<div class="novel-wf-card-meta"><b>避免：</b>${styleGuide.avoidances.map(esc).join('、')}</div>`);
+    }
+    if (styleGuide.comparableReferences && Array.isArray(styleGuide.comparableReferences)) {
+        parts.push(`<div class="novel-wf-card-meta"><b>参考：</b>${styleGuide.comparableReferences.map(esc).join('、')}</div>`);
+    }
+    if (!parts.length) return _wfJsonToHtml(obj, '', 0);
+    return `<div class="novel-wf-card-group"><div class="novel-wf-card-group-title">风格指南</div><div class="novel-wf-card">${parts.join('')}</div></div>`;
+}
+
+function _wfJsonToHtml(value, agentName, depth) {
+    if (value == null) return '<span class="novel-wf-json-null">null</span>';
+    if (typeof value === 'string') return `<span class="novel-wf-json-string">"${esc(value)}"</span>`;
+    if (typeof value === 'number') return `<span class="novel-wf-json-number">${value}</span>`;
+    if (typeof value === 'boolean') return `<span class="novel-wf-json-bool">${value}</span>`;
+    if (Array.isArray(value)) {
+        if (value.length === 0) return '<span class="novel-wf-json-bracket">[]</span>';
+        // 数组：每个元素渲染为一行
+        const items = value.map((v, i) =>
+            `<div class="novel-wf-json-row"><span class="novel-wf-json-key">${i}</span>: ${_wfJsonToHtml(v, agentName, depth + 1)}</div>`
+        ).join('');
+        return `<div class="novel-wf-json-array">${items}</div>`;
+    }
+    // 对象：每个 key 渲染为一行
+    const keys = Object.keys(value);
+    if (keys.length === 0) return '<span class="novel-wf-json-bracket">{}</span>';
+    const rows = keys.map(k =>
+        `<div class="novel-wf-json-row">` +
+        `<span class="novel-wf-json-key">${esc(k)}</span>: ` +
+        `${_wfJsonToHtml(value[k], agentName, depth + 1)}` +
+        `</div>`
+    ).join('');
+    return `<div class="novel-wf-json-object">${rows}</div>`;
 }
 
 // agent_failed：把 running 节点标记为 failed + 显示 error 文字
 function _wfHandleAgentFailed(ev) {
-    const key = _wfKeyFor(ev);
-    let $node = _wf.streamNodeByKey.get(key);
-    if (!$node) {
-        _wfHandleAgentStarted(ev);
-        $node = _wf.streamNodeByKey.get(key);
-    }
+    const $node = _wfFindRunningNode(ev);
     if (!$node) return;
 
     const errText = (ev && ev.error) ? String(ev.error) : 'agent 调用失败';
@@ -3861,10 +5310,90 @@ function _wfHandleAgentFailed(ev) {
     if ($dot) $dot.classList.add('novel-wf-dot-failed');
 }
 
-// key 生成：agentName|chapterId|jobId（包含 agentName 是关键，避免并行 reviewer 互相覆盖）
+// key 生成：用稳定 id (与 novel-engine.js _wfIdFor / _wfIdForStable 一致)
+// 之前用 `agentName|chapterId|jobId` 但 chunk 漏 jobId 时 key 错位导致重复建节点。
+// 统一用 stableId 后 started/chunk/finished 一定算出同一 key，in-place 更新才稳。
 function _wfKeyFor(ev) {
-    const agent = ev.agentName || ev.agent || ev.skill || '?';
-    return `${agent}|${ev.chapterId || ev.chapterNo || ''}|${ev.jobId || ''}`;
+    return ev.id || _wfIdForStable(ev);
+}
+
+// 与 novel-engine.js _wfIdFor 保持一致的稳定 id 格式（前端独立算一份，
+// 不依赖后端必须在每条事件 payload 里带 id）。
+function _wfIdForStable(ev) {
+    const novelId = ev.novelId || (ev.id && ev.id.split('-')[1]) || '';
+    const agentKey = ev.agentName || ev.agent || ev.skill || '?';
+    const jobId = ev.jobId || 'run';
+    return `wf-${novelId}-${agentKey}-${jobId}-run`;
+}
+
+// 多级查找 finished / failed 事件对应的 running 节点：
+// 1) 先按 _wfKeyFor（in-memory fast path）
+// 2) 再按 stableId 在 _wf.nodeByEvId 里查
+// 3) 再扫 DOM，按 agent 名 + status=running 找最后插入的同 agent 节点
+// 4) 仍找不到：构造一个 status=completed/failed 的 stub 直接渲染，
+//    避免再调 _wfHandleAgentStarted（后者会硬塞 status=running，导致双胞胎节点）
+function _wfFindRunningNode(ev) {
+    const key = _wfKeyFor(ev);
+    let $node = _wf.streamNodeByKey.get(key);
+    if ($node) return $node;
+
+    const stableId = ev.id || _wfIdForStable(ev);
+    if (stableId) {
+        $node = _wf.nodeByEvId.get(stableId);
+        if ($node) return $node;
+    }
+
+    // 兜底：按 agent 名扫 DOM（处理 streamNodeByKey / nodeByEvId 都被新小说重置过的极端情况）
+    const agent = (ev.agentName || ev.agent || ev.skill || '').toString();
+    if (agent) {
+        const $tl = document.getElementById('novelWfTimeline');
+        if ($tl) {
+            const $candidates = $tl.querySelectorAll(
+                `.novel-wf-node[data-ev-agent="${CSS.escape(agent)}"][data-ev-status="running"]`
+            );
+            if ($candidates && $candidates.length) {
+                // 取最后一个（最新一次运行）
+                $node = $candidates[$candidates.length - 1];
+                if ($node) return $node;
+            }
+        }
+    }
+
+    // 最后兜底：直接渲染一条 terminal 节点（completed / failed），不走 _wfHandleAgentStarted
+    return _wfAppendTerminalNode(ev, stableId);
+}
+
+// 直接追加一条 completed / failed 节点（不经过 _wfHandleAgentStarted，避免新建 running 节点）
+// 用于：finished/failed 事件到达时内存里没有对应 running 节点
+function _wfAppendTerminalNode(ev, stableId) {
+    const status = ev.type === 'agent_failed' ? 'failed' : 'completed';
+    const agentName = ev.agentName || ev.agent || ev.skill || '(未知 agent)';
+    const summary = status === 'failed'
+        ? `${agentName} 调用失败`
+        : `${agentName} 调用完成`;
+    const stub = {
+        id: stableId || _wfIdForStable(ev),
+        novel_id: ev.novelId || null,
+        ts: Math.floor((ev.endedAt || ev.startedAt || Date.now()) / 1000),
+        kind: 'agent',
+        agent: agentName,
+        phase: ev.phase || ev.phaseName || null,
+        status: status,
+        summary: summary,
+        parent_id: null,
+        duration_ms: ev.duration_ms || ev.durationMs || null,
+        error: ev.error || null,
+    };
+    // 直接调 _wfAppendNodeHTML：它会走和历史事件一样的渲染路径，
+    // 内部用 data-ev-id 查重避免重复插入
+    const $node = _wfAppendNodeHTML(stub);
+    if ($node) {
+        const key = _wfKeyFor(ev);
+        _wf.streamNodeByKey.set(key, $node);
+        _wf.nodeByEvId.set(stub.id, $node);
+        $node._streamText = '';
+    }
+    return $node;
 }
 
 // 从 ev.output 智能提取最终文字（fallback 到 ev._streamText）
@@ -3876,6 +5405,9 @@ function _wfExtractFinalText(ev) {
         if (typeof out === 'string') return out;
         const t = out.text || out.content || out.answer || out.markdown || out.body;
         if (typeof t === 'string' && t.length > 0) return t;
+        // 兜底：JSON 输出的 agent（如 outline-synthesizer 返回 {chapters: [...]}）没有 text 字段，
+        // 序列化整个对象供 _wfRenderFormatted 解析
+        try { return JSON.stringify(out, null, 2); } catch (e) { return ''; }
     }
     return '';
 }
@@ -3934,6 +5466,7 @@ function _wfPassFilter($node) {
 }
 
 // 增量更新流式节点（in-place）
+// X-3：写入 [data-stream-text]（隐藏的原文 details 内）+ 状态 pill
 let _wfStreamUpdateRaf = null;
 const _wfStreamPending = new Map(); // node → 最新 ev
 function _wfUpdateStreamNode($node, ev) {
@@ -3950,21 +5483,26 @@ function _wfUpdateStreamNode($node, ev) {
             const acc = fullText.length;
             n._streamAccum = acc;
 
-            // 把累积全文直接铺到正文区（纯文字，chat-like）
+            // 把累积全文写到 [data-stream-text]（在折叠的 details 里，running 不可见）
             const $prev = n.querySelector('[data-stream-text]');
             if ($prev) {
-                // 节流：如果跟上次一样就跳过（避免重复 textContent 设置）
                 if ($prev._lastRenderedText !== fullText) {
                     $prev.textContent = fullText;
                     $prev._lastRenderedText = fullText;
-                    // 自动滚到最新内容（仅当滚动条已经在底部时）
-                    const nearBottom = $prev.scrollHeight - $prev.scrollTop - $prev.clientHeight < 40;
-                    if (nearBottom) $prev.scrollTop = $prev.scrollHeight;
+                    // details 展开时自动滚到底
+                    const $details = $prev.closest('details');
+                    if ($details && $details.open) {
+                        const nearBottom = $prev.scrollHeight - $prev.scrollTop - $prev.clientHeight < 40;
+                        if (nearBottom) $prev.scrollTop = $prev.scrollHeight;
+                    }
                 }
             }
-            // meta 行字数同步
-            const $cnt = n.querySelector('[data-stream-count]');
-            if ($cnt && $cnt.textContent !== `${acc} 字`) $cnt.textContent = acc > 0 ? `${acc} 字` : '';
+            // status pill + 字数：running 时显示"生成中 · N 字"
+            const $pill = n.querySelector('[data-status-pill]');
+            if ($pill) {
+                const target = acc > 0 ? `生成中 · ${acc} 字` : '生成中…';
+                if ($pill.textContent !== target) $pill.textContent = target;
+            }
 
             n.classList.remove('novel-wf-node-flash');
             void n.offsetWidth;
@@ -3973,6 +5511,77 @@ function _wfUpdateStreamNode($node, ev) {
         _wfStreamPending.clear();
         _wfMaybeAutoScroll();
     });
+}
+
+// 增量更新思考 / reasoning 节点（in-place，节流）
+// 与 _wfUpdateStreamNode 平行，但写到 [data-thinking-text] 而不是 [data-stream-text]
+// 同时更新计数 / 折叠展开状态
+let _wfThinkingUpdateRaf = null;
+const _wfThinkingPending = new Map();
+function _wfUpdateThinkingNode($node, ev) {
+    _wfThinkingPending.set($node, ev);
+    if (_wfThinkingUpdateRaf) return;
+    _wfThinkingUpdateRaf = requestAnimationFrame(() => {
+        _wfThinkingUpdateRaf = null;
+        for (const [n, e] of _wfThinkingPending) {
+            const fullText = (e.accumulated != null)
+                ? String(e.accumulated)
+                : ((n._thinkingText || '') + (e.chunk || ''));
+            n._thinkingText = fullText;
+            const acc = fullText.length;
+
+            // 确保 thinking panel 存在（lazy create）
+            const $panel = _wfEnsureThinkingPanel(n);
+            const $txt = $panel.querySelector('[data-thinking-text]');
+            if ($txt) {
+                if ($txt._lastRenderedText !== fullText) {
+                    $txt.textContent = fullText;
+                    $txt._lastRenderedText = fullText;
+                }
+            }
+            const $cnt = $panel.querySelector('[data-thinking-count]');
+            if ($cnt && $cnt.textContent !== `${acc} 字`) {
+                $cnt.textContent = acc > 0 ? `思考中 · ${acc} 字` : '思考中…';
+            }
+            // 状态：节点进入"思考中"阶段（在 output 之前）
+            n.dataset.evThinking = 'true';
+        }
+        _wfThinkingPending.clear();
+    });
+}
+
+// 确保节点有 thinking panel，没有就 lazy create 并插到正文之前
+function _wfEnsureThinkingPanel($node) {
+    let $panel = $node.querySelector('.novel-wf-thinking');
+    if ($panel) return $panel;
+    $panel = document.createElement('div');
+    $panel.className = 'novel-wf-thinking';
+    $panel.dataset.collapsed = 'true';
+    $panel.innerHTML =
+        '<div class="novel-wf-thinking-head">' +
+        '  <span class="novel-wf-thinking-toggle">▸</span>' +
+        '  <span class="novel-wf-thinking-count" data-thinking-count>思考中…</span>' +
+        '</div>' +
+        '<div class="novel-wf-thinking-body">' +
+        '  <div class="novel-wf-thinking-text" data-thinking-text></div>' +
+        '</div>';
+    // 头点击切换
+    $panel.querySelector('.novel-wf-thinking-head').addEventListener('click', () => {
+        const collapsed = $panel.dataset.collapsed === 'true';
+        $panel.dataset.collapsed = collapsed ? 'false' : 'true';
+        $panel.querySelector('.novel-wf-thinking-toggle').textContent = collapsed ? '▾' : '▸';
+    });
+    // 插到 body 的最前（在 agent-head 之后、stream-text 之前）
+    const $body = $node.querySelector('.novel-wf-body');
+    const $head = $body && $body.querySelector('.novel-wf-head');
+    if ($body && $head && $head.nextSibling) {
+        $body.insertBefore($panel, $head.nextSibling);
+    } else if ($body) {
+        $body.insertBefore($panel, $body.firstChild);
+    } else {
+        $node.appendChild($panel);
+    }
+    return $panel;
 }
 
 // 自动滚动到底（除非用户在向上看）

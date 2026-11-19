@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>selftest</title>
+<style>
+body{background:#111;color:#ddd;font:12px Consolas,monospace;padding:12px}
+#out{white-space:pre-wrap;line-height:1.7}
+.ok{color:#4caf72}.bad{color:#d05050}.warn{color:#d9a038}
+iframe{width:1400px;height:900px;border:1px solid #333}
+</style></head>
+<body>
+<h3 style="color:#4a9eff">界面自检</h3>
+<pre id="out">运行中…</pre>
+<iframe id="f" src="about:blank"></iframe>
+<script>
+var out = [], errs = [];
+var f = document.getElementById('f');
+var o = document.getElementById('out');
+
+function log(s, cls) { out.push(s); }
+
+setTimeout(function () {
+  f.contentWindow.onerror = function (m) { errs.push('JS ERROR: ' + m); return false; };
+  f.src = 'index.html?tab=character&noskip=1';
+  f.onload = run;
+}, 100);
+
+async function run() {
+  try {
+    var w = f.contentWindow, d = f.contentDocument;
+    await sleep(1800);
+
+    // 等待数据加载
+    var tries = 0;
+    while (!w.DATA || !w.DATA.characters) { await sleep(300); if (++tries > 40) throw new Error('数据未加载'); }
+
+    var tabs = ['character','clothing','pose','scene','feature','style','recipe','output'];
+    for (var i = 0; i < tabs.length; i++) {
+      var t = tabs[i];
+      w.CURTAB = t; w.renderTabs(); w.renderPanel();
+      await sleep(60);
+      var n = d.querySelectorAll('#fields .field').length;
+      var cards = d.querySelectorAll('#fields .field').length + d.querySelectorAll('#fields .recipe-card').length + d.querySelectorAll('#fields .pose-card').length;
+      var tok = d.getElementById('tokenNum').textContent;
+      var bad = (t === 'recipe' || t === 'output') ? (n < 1 && cards < 1) : n < 1;
+      log((bad ? 'BAD ' : 'OK  ') + pad(t, 10) + ' fields=' + n + ' cards=' + cards + ' token=' + tok);
+    }
+
+    // 交互：切字段
+    w.CURTAB = 'character'; w.renderTabs(); w.renderPanel(); await sleep(80);
+    var optField = w.DATA.characters.fields.find(function (x) { return x.optional; });
+    var swEl = null;
+    var allFields = d.querySelectorAll('#fields .field');
+    for (var q = 0; q < allFields.length; q++) { var cand = allFields[q].querySelector('.sw'); if (cand) { swEl = cand; break; } }
+    if (swEl && optField) {
+      var before = w.STATE.character[optField.id];
+      swEl.click(); await sleep(120);
+      var after = w.STATE.character[optField.id];
+      log((before !== after ? 'OK  ' : 'BAD ') + ' 字段启停开关 ' + optField.id + ': ' + JSON.stringify(before) + ' → ' + JSON.stringify(after));
+    } else log('BAD 找不到启停开关');
+
+    // 交互：点 chip
+    w.CURTAB = 'clothing'; w.renderTabs(); w.renderPanel(); await sleep(80);
+    var cf = w.DATA.clothing.fields[0];
+    var chip = d.querySelector('#fields .chip');
+    if (chip && cf) {
+      var b0 = JSON.stringify(w.STATE.clothing[cf.id]);
+      chip.click(); await sleep(150);
+      var b1 = JSON.stringify(w.STATE.clothing[cf.id]);
+      log((b0 !== b1 ? 'OK  ' : 'BAD ') + ' chip 点击 ' + cf.id + ': ' + b0 + ' → ' + b1);
+    } else log('BAD 找不到 chip');
+
+    // 弹层：姿势
+    w.openPose('service'); await sleep(120);
+    log((d.querySelectorAll('#poseList .pose-card').length >= 90 ? 'OK  ' : 'BAD ') + ' 姿势库弹层 cards=' + d.querySelectorAll('#poseList .pose-card').length);
+    w.document.getElementById('modalPose').classList.add('hidden');
+
+    // 弹层：LoRA
+    w.openLora(); await sleep(120);
+    log((d.querySelectorAll('#loraList .lora-row').length >= 12 ? 'OK  ' : 'BAD ') + ' LoRA 弹层 rows=' + d.querySelectorAll('#loraList .lora-row').length);
+    w.document.getElementById('modalLora').classList.add('hidden');
+
+    // 弹层：随机
+    w.openRandom(); await sleep(80);
+    log((d.getElementById('modalRandom').classList.contains('hidden') ? 'BAD ' : 'OK  ') + ' 随机弹层可打开');
+    w.doRandom(); await sleep(150);
+    log('OK   随机后 token=' + d.getElementById('tokenNum').textContent);
+    w.document.getElementById('modalRandom').classList.add('hidden');
+
+    // 配方套用
+    w.CURTAB = 'recipe'; w.renderTabs(); w.renderPanel(); await sleep(100);
+    var rc = d.querySelectorAll('#fields .recipe-card');
+    if (rc.length) { rc[0].click(); await sleep(200); log('OK   配方套用后 token=' + d.getElementById('tokenNum').textContent); }
+    else log('BAD 配方卡为空');
+
+    // 重置
+    d.getElementById('btnReset').click(); await sleep(200);
+    log('OK   全部重置后 token=' + d.getElementById('tokenNum').textContent);
+
+    // 存档
+    d.getElementById('btnSave').click(); await sleep(300);
+    log((d.getElementById('modalPreset').classList.contains('hidden') ? 'BAD ' : 'OK  ') + ' 存档弹层');
+    d.getElementById('modalPreset').classList.add('hidden');
+
+    // 预览输出
+    var pos = d.getElementById('posText').value;
+    log((pos.length > 30 ? 'OK  ' : 'BAD ') + ' 正向预览长度=' + pos.length);
+    var neg = d.getElementById('negText').value;
+    log((neg.length > 30 ? 'OK  ' : 'BAD ') + ' 负向预览长度=' + neg.length);
+
+    // 性能：模拟拖动滑条
+    w.CURTAB = 'character'; w.renderTabs(); w.renderPanel(); await sleep(100);
+    var t0 = performance.now();
+    for (var pi = 0; pi < 100; pi++) { w.STATE.character.age = 15 + (pi % 70); w.doRebuild(); }
+    var dt = performance.now() - t0;
+    log((dt / 100 < 8 ? 'OK  ' : 'WARN') + ' 重建性能 ' + (dt / 100).toFixed(2) + 'ms/次（拖动需 <8ms）');
+
+    // 工作流
+    var b = w.LASTBUILD;
+    var wf = w.CPS.buildWorkflow(Object.assign({}, b.param, { positive: b.positive, negative: b.negative, seed: 1 }), {}, null).prompt;
+    log((Object.keys(wf).length === 7 ? 'OK  ' : 'BAD ') + ' 工作流节点数=' + Object.keys(wf).length);
+
+  } catch (e) {
+    log('FATAL ' + e.message);
+  }
+  if (errs.length) { log(''); errs.forEach(function (e) { log(e); }); }
+  out.unshift('通过检查（见下），异常 ' + errs.length + ' 条');
+  o.innerHTML = out.map(function (s) {
+    var cls = s.indexOf('BAD') === 0 || s.indexOf('FATAL') === 0 ? 'bad' : (s.indexOf('WARN') === 0 ? 'warn' : 'ok');
+    return '<span class="' + cls + '">' + s + '</span>';
+  }).join('\n');
+}
+
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function pad(s, n) { while (s.length < n) s += ' '; return s; }
+</script>
+</body></html>

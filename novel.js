@@ -73,8 +73,20 @@ function _estimateTokens(text) {
  * @param {string} opts.user
  * @param {number} [opts.temperature=0.8]
  * @param {number} [opts.max_tokens=4000]
+ * @param {number} [opts.thinking_budget=0]  Anthropic extended thinking 的 budget_tokens；>0 启用
+ * @param {string} [opts.reasoning_effort]  OpenAI o1/o3 的推理强度：'low'|'medium'|'high'
  * @param {AbortSignal} [opts.signal]
- * @returns {Promise<{ text, prompt_tokens, completion_tokens, cost_usd, duration_ms, raw }>}
+ * @returns {Promise<{
+ *   text: string,                  // 最终回答文本
+ *   thinking?: string,              // 思考过程（Anthropic / DeepSeek / Ollama<think>）
+ *   prompt_tokens: number|null,
+ *   completion_tokens: number|null,
+ *   reasoning_tokens?: number|null, // OpenAI o1/o3 的 reasoning_tokens
+ *   cost_usd: number|null,
+ *   duration_ms: number,
+ *   estimated: boolean,
+ *   raw: any,
+ * }>}
  */
 async function generate(opts) {
     const provider = opts.provider;
@@ -85,6 +97,8 @@ async function generate(opts) {
     const user = opts.user || '';
     const temperature = opts.temperature != null ? Number(opts.temperature) : 0.8;
     const maxTokens = opts.max_tokens != null ? Number(opts.max_tokens) : 4000;
+    const thinkingBudget = opts.thinking_budget != null ? Number(opts.thinking_budget) : 0;
+    const reasoningEffort = opts.reasoning_effort || null;
     const signal = opts.signal || null;
 
     if (!provider) throw new Error('novel.generate: provider 必填');
@@ -96,11 +110,22 @@ async function generate(opts) {
 
     let result;
     if (provider === 'openai') {
-        result = await _openai({ baseUrl, apiKey, model, system, user, temperature, maxTokens, signal });
+        result = await _openai({
+            baseUrl, apiKey, model, system, user, temperature, maxTokens,
+            reasoningEffort, signal,
+        });
     } else if (provider === 'anthropic') {
-        result = await _anthropic({ baseUrl, apiKey, model, system, user, temperature, maxTokens, signal });
+        result = await _anthropic({
+            baseUrl, apiKey, model, system, user, temperature, maxTokens,
+            thinkingBudget, signal,
+        });
     } else if (provider === 'ollama') {
-        result = await _ollama({ baseUrl, model, system, user, temperature, maxTokens, signal });
+        result = await _ollama({
+            baseUrl, model, system, user, temperature, maxTokens,
+            // Ollama 本地推理模型（如 deepseek-r1/qwq）通过 <think>...</think> 输出，
+            // 在 _ollamaStream/_ollama 非流式里做后处理
+            parseThinkTags: thinkingBudget > 0, signal,
+        });
     } else {
         throw new Error('novel.generate: 未知 provider: ' + provider);
     }
@@ -109,8 +134,10 @@ async function generate(opts) {
     const costUsd = _estimateCost(model, result.prompt_tokens, result.completion_tokens);
     return {
         text: result.text,
+        thinking: result.thinking || '',
         prompt_tokens: result.prompt_tokens,
         completion_tokens: result.completion_tokens,
+        reasoning_tokens: result.reasoning_tokens || null,
         cost_usd: costUsd,
         duration_ms: durationMs,
         estimated: !!result.estimated,
@@ -118,19 +145,34 @@ async function generate(opts) {
     };
 }
 
+// 检测 OpenAI 模型是否是 reasoning 类（o1 / o3 / deepseek-reasoner）
+function _isReasoningOpenAIModel(model) {
+    if (!model) return false;
+    const m = String(model).toLowerCase();
+    return m.startsWith('o1') || m.startsWith('o3') || m.includes('deepseek-reasoner') || m.includes('deepseek-r1');
+}
+
 // OpenAI 兼容（Chat Completions）
-async function _openai({ baseUrl, apiKey, model, system, user, temperature, maxTokens, signal }) {
+async function _openai(args) {
+    const { baseUrl, apiKey, model, system, user, temperature, maxTokens, reasoningEffort, signal } = args;
     const url = baseUrl + '/chat/completions';
+    const isReasoning = _isReasoningOpenAIModel(model);
     const body = {
         model,
         messages: [
             ...(system ? [{ role: 'system', content: system }] : []),
             { role: 'user', content: user },
         ],
-        temperature,
-        max_tokens: maxTokens,
         stream: false,
     };
+    if (isReasoning) {
+        // reasoning 模型：只支持 max_completion_tokens，不支持 temperature / top_p 等
+        body.max_completion_tokens = maxTokens;
+        if (reasoningEffort) body.reasoning_effort = reasoningEffort;
+    } else {
+        body.temperature = temperature;
+        body.max_tokens = maxTokens;
+    }
     const res = await _fetch(url, {
         method: 'POST',
         headers: {
@@ -145,22 +187,44 @@ async function _openai({ baseUrl, apiKey, model, system, user, temperature, maxT
         throw new Error('OpenAI HTTP ' + res.status + ': ' + (errText || res.statusText).slice(0, 500));
     }
     const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content || '';
+    const msg = data?.choices?.[0]?.message || {};
+    const text = msg.content || '';
+    // reasoning 内容：OpenAI 官方 o1/o3 系列用 reasoning_content；DeepSeek 也有该字段
+    const thinking = msg.reasoning_content || '';
     const promptTokens = data?.usage?.prompt_tokens || null;
     const completionTokens = data?.usage?.completion_tokens || null;
-    return { text, prompt_tokens: promptTokens, completion_tokens: completionTokens, raw: data };
+    const reasoningTokens = data?.usage?.reasoning_tokens || null;
+    return {
+        text, thinking,
+        prompt_tokens: promptTokens, completion_tokens: completionTokens,
+        reasoning_tokens: reasoningTokens,
+        raw: data,
+    };
 }
 
 // Anthropic Messages API
-async function _anthropic({ baseUrl, apiKey, model, system, user, temperature, maxTokens, signal }) {
+// thinkingBudget > 0 启用 extended thinking：会把所有 reasoning 块合并为单一 thinking 字段返回
+async function _anthropic(args) {
+    const { baseUrl, apiKey, model, system, user, temperature, maxTokens, thinkingBudget, signal } = args;
     const url = baseUrl + '/v1/messages';
+    const useThinking = thinkingBudget && thinkingBudget > 0;
     const body = {
         model,
         system: system || undefined,
         messages: [{ role: 'user', content: user }],
-        temperature,
         max_tokens: maxTokens,
     };
+    if (useThinking) {
+        // Anthropic 强制 max_tokens > budget_tokens，否则 400
+        if (maxTokens <= thinkingBudget) {
+            body.max_tokens = thinkingBudget + 4096;
+        }
+        body.thinking = { type: 'enabled', budget_tokens: Number(thinkingBudget) };
+        // 启用 thinking 时不允许同时设 temperature（Anthropic 规则）
+        // 不写 temperature 字段，由 API 用默认 1.0
+    } else {
+        body.temperature = temperature;
+    }
     const res = await _fetch(url, {
         method: 'POST',
         headers: {
@@ -177,14 +241,28 @@ async function _anthropic({ baseUrl, apiKey, model, system, user, temperature, m
         throw new Error('Anthropic HTTP ' + res.status + ': ' + (errText || res.statusText).slice(0, 500));
     }
     const data = await res.json();
-    const text = (Array.isArray(data?.content) ? data.content.find(c => c?.type === 'text')?.text : '') || '';
+    let text = '';
+    let thinking = '';
+    if (Array.isArray(data?.content)) {
+        for (const c of data.content) {
+            if (c?.type === 'text' && c.text) text += c.text;
+            else if (c?.type === 'thinking' && c.thinking) thinking += c.thinking;
+        }
+    }
     const promptTokens = data?.usage?.input_tokens || null;
     const completionTokens = data?.usage?.output_tokens || null;
-    return { text, prompt_tokens: promptTokens, completion_tokens: completionTokens, raw: data };
+    return {
+        text, thinking,
+        prompt_tokens: promptTokens, completion_tokens: completionTokens,
+        raw: data,
+    };
 }
 
 // Ollama Chat API
-async function _ollama({ baseUrl, model, system, user, temperature, maxTokens, signal }) {
+// 本地推理模型（deepseek-r1 / qwq 等）会在 content 里输出 <think>...</think> 标签；
+// parseThinkTags=true 时把 <think> 块剥离到 thinking 字段
+async function _ollama(args) {
+    const { baseUrl, model, system, user, temperature, maxTokens, parseThinkTags, signal } = args;
     const url = baseUrl + '/api/chat';
     const body = {
         model,
@@ -209,17 +287,43 @@ async function _ollama({ baseUrl, model, system, user, temperature, maxTokens, s
         throw new Error('Ollama HTTP ' + res.status + ': ' + (errText || res.statusText).slice(0, 500));
     }
     const data = await res.json();
-    const text = data?.message?.content || '';
+    let rawText = data?.message?.content || '';
+    let thinking = '';
+    if (parseThinkTags) {
+        const split = _splitThinkTags(rawText);
+        thinking = split.thinking;
+        rawText = split.text;
+    }
     // Ollama 不返回 token 数；按字符估算
     const promptTokens = _estimateTokens((system || '') + user);
-    const completionTokens = _estimateTokens(text);
+    const completionTokens = _estimateTokens(rawText);
     return {
-        text,
+        text: rawText,
+        thinking,
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
         estimated: true,
         raw: data,
     };
+}
+
+// 把 <think>...</think> 块从 text 中剥离
+// 多个 <think> 块全部合并到 thinking
+function _splitThinkTags(text) {
+    if (!text || text.indexOf('<think>') === -1) return { text: text || '', thinking: '' };
+    let thinking = '';
+    let out = '';
+    let i = 0;
+    while (i < text.length) {
+        const start = text.indexOf('<think>', i);
+        if (start === -1) { out += text.slice(i); break; }
+        out += text.slice(i, start);
+        const end = text.indexOf('</think>', start);
+        if (end === -1) { thinking += text.slice(start + 7); break; }
+        thinking += text.slice(start + 7, end);
+        i = end + 8;
+    }
+    return { text: out.trim(), thinking: thinking.trim() };
 }
 
 /**
@@ -271,14 +375,47 @@ async function _fetch(url, opts) {
     return undici.fetch(url, opts);
 }
 
+/**
+ * 判断 provider + model 是否支持思考 / 推理 tokens
+ * 返回：
+ *   'extended' — Anthropic 风格 extended thinking（参数 budget_tokens）
+ *   'reasoning' — OpenAI 风格 reasoning_effort（o1/o3）/ DeepSeek 风格 reasoning_content
+ *   'think-tags' — Ollama 本地推理模型用 <think>...</think> 标签
+ *   null       — 不支持
+ */
+function supportsThinking(provider, model) {
+    if (!provider) return null;
+    if (provider === 'anthropic') {
+        // 所有 Claude 4 系列都支持 extended thinking（早期 3.x 不支持）
+        const m = String(model || '').toLowerCase();
+        if (m.includes('claude-3') && !m.includes('claude-3-7')) return null;
+        return 'extended';
+    }
+    if (provider === 'openai') {
+        return _isReasoningOpenAIModel(model) ? 'reasoning' : null;
+    }
+    if (provider === 'ollama') {
+        // 启发式：模型名包含 deepseek-r1 / qwq / qwen3 / reasoner 等
+        const m = String(model || '').toLowerCase();
+        if (m.includes('deepseek-r1') || m.includes('qwq') || m.includes('qwen3') || m.includes('reasoner')) {
+            return 'think-tags';
+        }
+        return null;
+    }
+    return null;
+}
+
 module.exports = {
     generate,
     generateStream,
     testProvider,
+    supportsThinking,
     // 暴露给 main.js 的工具
     PRICING,
     _normalizeModel,
     _estimateCost,
+    _isReasoningOpenAIModel,
+    _splitThinkTags,
 };
 
 // ============ SSE / NDJSON 流式支持 ============
@@ -294,25 +431,32 @@ async function generateStream(opts, onChunk) {
     if (typeof onChunk !== 'function') throw new Error('novel.generateStream: onChunk 必填');
 
     const startedAt = Date.now();
+    const onThinkingChunk = (typeof opts.onThinkingChunk === 'function') ? opts.onThinkingChunk : null;
+    const thinkingBudget = opts.thinking_budget != null ? Number(opts.thinking_budget) : 0;
+    const reasoningEffort = opts.reasoning_effort || null;
     let result;
     if (provider === 'openai') {
         result = await _openaiStream({
             baseUrl, apiKey: opts.api_key, model: opts.model,
             system: opts.system, user: opts.user,
-            temperature: opts.temperature, maxTokens: opts.max_tokens, signal: opts.signal,
-        }, onChunk);
+            temperature: opts.temperature, maxTokens: opts.max_tokens,
+            reasoningEffort, signal: opts.signal,
+        }, onChunk, onThinkingChunk);
     } else if (provider === 'anthropic') {
         result = await _anthropicStream({
             baseUrl, apiKey: opts.api_key, model: opts.model,
             system: opts.system, user: opts.user,
-            temperature: opts.temperature, maxTokens: opts.max_tokens, signal: opts.signal,
-        }, onChunk);
+            temperature: opts.temperature, maxTokens: opts.max_tokens,
+            thinkingBudget, signal: opts.signal,
+        }, onChunk, onThinkingChunk);
     } else if (provider === 'ollama') {
         result = await _ollamaStream({
             baseUrl, model: opts.model,
             system: opts.system, user: opts.user,
-            temperature: opts.temperature, maxTokens: opts.max_tokens, signal: opts.signal,
-        }, onChunk);
+            temperature: opts.temperature, maxTokens: opts.max_tokens,
+            parseThinkTags: thinkingBudget > 0,
+            signal: opts.signal,
+        }, onChunk, onThinkingChunk);
     } else {
         throw new Error('novel.generateStream: 未知 provider: ' + provider);
     }
@@ -321,8 +465,10 @@ async function generateStream(opts, onChunk) {
     const costUsd = _estimateCost(opts.model, result.prompt_tokens, result.completion_tokens);
     return {
         text: result.text,
+        thinking: result.thinking || '',
         prompt_tokens: result.prompt_tokens,
         completion_tokens: result.completion_tokens,
+        reasoning_tokens: result.reasoning_tokens || null,
         cost_usd: costUsd,
         duration_ms: durationMs,
         estimated: !!result.estimated,
@@ -380,20 +526,28 @@ async function _readNdjson(res, onLine) {
 }
 
 // OpenAI 兼容（Chat Completions stream）
-async function _openaiStream(args, onChunk) {
-    const { baseUrl, apiKey, model, system, user, temperature, maxTokens, signal } = args;
+// DeepSeek reasoner / R1 等兼容 OpenAI 接口的推理模型会在 delta.reasoning_content 输出思考；
+// OpenAI 官方 o1/o3 的 reasoning_tokens 不在流里（仅最终 usage），所以 stream 里只能拿到输出文本
+async function _openaiStream(args, onChunk, onThinkingChunk) {
+    const { baseUrl, apiKey, model, system, user, temperature, maxTokens, reasoningEffort, signal } = args;
+    const isReasoning = _isReasoningOpenAIModel(model);
     const body = {
         model,
         messages: [
             ...(system ? [{ role: 'system', content: system }] : []),
             { role: 'user', content: user },
         ],
-        temperature,
-        max_tokens: maxTokens,
         stream: true,
-        // 很多 OpenAI 兼容实现支持 stream_options.include_usage，让末尾再发一段 usage
-        stream_options: { include_usage: true },
     };
+    if (isReasoning) {
+        body.max_completion_tokens = maxTokens;
+        if (reasoningEffort) body.reasoning_effort = reasoningEffort;
+    } else {
+        body.temperature = temperature;
+        body.max_tokens = maxTokens;
+    }
+    // 很多 OpenAI 兼容实现支持 stream_options.include_usage，让末尾再发一段 usage
+    body.stream_options = { include_usage: true };
     const res = await _fetch(baseUrl + '/chat/completions', {
         method: 'POST',
         headers: {
@@ -408,8 +562,10 @@ async function _openaiStream(args, onChunk) {
         throw new Error('OpenAI HTTP ' + res.status + ': ' + (errText || res.statusText).slice(0, 500));
     }
     let accumulated = '';
+    let thinkingAccum = '';
     let promptTokens = null;
     let completionTokens = null;
+    let reasoningTokens = null;
     let raw = null;
     await _readSse(res, (evt) => {
         for (const line of evt.split('\n')) {
@@ -420,33 +576,54 @@ async function _openaiStream(args, onChunk) {
             try {
                 const obj = JSON.parse(payload);
                 raw = obj;
-                const delta = obj?.choices?.[0]?.delta?.content;
-                if (delta) {
-                    accumulated += delta;
-                    onChunk(delta, accumulated);
+                const delta = obj?.choices?.[0]?.delta || {};
+                // reasoning_content：DeepSeek / 部分 OpenAI 兼容实现
+                if (delta.reasoning_content) {
+                    thinkingAccum += delta.reasoning_content;
+                    if (onThinkingChunk) onThinkingChunk(delta.reasoning_content, thinkingAccum);
+                }
+                if (delta.content) {
+                    accumulated += delta.content;
+                    onChunk(delta.content, accumulated);
                 }
                 // OpenAI 在 stream_options.include_usage 时，最后一个 chunk 会带 usage 字段
                 if (obj?.usage) {
                     if (obj.usage.prompt_tokens != null) promptTokens = obj.usage.prompt_tokens;
                     if (obj.usage.completion_tokens != null) completionTokens = obj.usage.completion_tokens;
+                    if (obj.usage.reasoning_tokens != null) reasoningTokens = obj.usage.reasoning_tokens;
                 }
             } catch {}
         }
     });
-    return { text: accumulated, prompt_tokens: promptTokens, completion_tokens: completionTokens, raw };
+    return {
+        text: accumulated, thinking: thinkingAccum,
+        prompt_tokens: promptTokens, completion_tokens: completionTokens,
+        reasoning_tokens: reasoningTokens, raw,
+    };
 }
 
 // Anthropic Messages API stream
-async function _anthropicStream(args, onChunk) {
-    const { baseUrl, apiKey, model, system, user, temperature, maxTokens, signal } = args;
+// thinkingBudget > 0 启用 extended thinking：会处理 content_block_delta 的
+//   delta.type === 'thinking_delta'（传 onThinkingChunk）
+//   delta.type === 'text_delta'（传 onChunk）
+async function _anthropicStream(args, onChunk, onThinkingChunk) {
+    const { baseUrl, apiKey, model, system, user, temperature, maxTokens, thinkingBudget, signal } = args;
+    const useThinking = thinkingBudget && thinkingBudget > 0;
     const body = {
         model,
         system: system || undefined,
         messages: [{ role: 'user', content: user }],
-        temperature,
         max_tokens: maxTokens || 4096,
         stream: true,
     };
+    if (useThinking) {
+        if ((maxTokens || 4096) <= thinkingBudget) {
+            body.max_tokens = thinkingBudget + 4096;
+        }
+        body.thinking = { type: 'enabled', budget_tokens: Number(thinkingBudget) };
+    } else {
+        body.temperature = temperature;
+    }
     const res = await _fetch(baseUrl + '/v1/messages', {
         method: 'POST',
         headers: {
@@ -463,6 +640,7 @@ async function _anthropicStream(args, onChunk) {
         throw new Error('Anthropic HTTP ' + res.status + ': ' + (errText || res.statusText).slice(0, 500));
     }
     let accumulated = '';
+    let thinkingAccum = '';
     let promptTokens = null;
     let completionTokens = null;
     let raw = null;
@@ -479,21 +657,32 @@ async function _anthropicStream(args, onChunk) {
         try {
             const obj = JSON.parse(dataLine);
             raw = obj;
-            if (eventType === 'content_block_delta' && obj?.delta?.type === 'text_delta' && obj?.delta?.text) {
-                accumulated += obj.delta.text;
-                onChunk(obj.delta.text, accumulated);
+            if (eventType === 'content_block_delta') {
+                const d = obj?.delta;
+                if (d?.type === 'thinking_delta' && d.thinking) {
+                    thinkingAccum += d.thinking;
+                    if (onThinkingChunk) onThinkingChunk(d.thinking, thinkingAccum);
+                } else if (d?.type === 'text_delta' && d.text) {
+                    accumulated += d.text;
+                    onChunk(d.text, accumulated);
+                }
             } else if (eventType === 'message_delta' && obj?.usage) {
                 if (obj.usage.input_tokens != null) promptTokens = obj.usage.input_tokens;
                 if (obj.usage.output_tokens != null) completionTokens = obj.usage.output_tokens;
             }
         } catch {}
     });
-    return { text: accumulated, prompt_tokens: promptTokens, completion_tokens: completionTokens, raw };
+    return {
+        text: accumulated, thinking: thinkingAccum,
+        prompt_tokens: promptTokens, completion_tokens: completionTokens, raw,
+    };
 }
 
 // Ollama Chat API stream（NDJSON）
-async function _ollamaStream(args, onChunk) {
-    const { baseUrl, model, system, user, temperature, maxTokens, signal } = args;
+// 本地推理模型（deepseek-r1 / qwq 等）通过 <think>...</think> 输出思考；
+// parseThinkTags=true 时一边累加一边把 think 块切到 thinkingAccum
+async function _ollamaStream(args, onChunk, onThinkingChunk) {
+    const { baseUrl, model, system, user, temperature, maxTokens, parseThinkTags, signal } = args;
     const body = {
         model,
         messages: [
@@ -514,17 +703,60 @@ async function _ollamaStream(args, onChunk) {
         throw new Error('Ollama HTTP ' + res.status + ': ' + (errText || res.statusText).slice(0, 500));
     }
     let accumulated = '';
+    let thinkingAccum = '';
     let promptTokens = null;
     let completionTokens = null;
     let raw = null;
+    // think-tag 解析器：维护一个状态机，跟踪是否在 <think>...</think> 内部
+    let inThink = false;
+    let tagBuf = '';
     await _readNdjson(res, (line) => {
         try {
             const obj = JSON.parse(line);
             raw = obj;
-            const delta = obj?.message?.content;
-            if (delta) {
+            const delta = obj?.message?.content || '';
+            if (!delta) {
+                if (obj?.done) {
+                    if (obj.prompt_eval_count != null) promptTokens = obj.prompt_eval_count;
+                    if (obj.eval_count != null) completionTokens = obj.eval_count;
+                }
+                return;
+            }
+            if (!parseThinkTags) {
                 accumulated += delta;
                 onChunk(delta, accumulated);
+                return;
+            }
+            // 增量解析 <think>...</think>
+            for (const ch of delta) {
+                if (inThink) {
+                    tagBuf += ch;
+                    if (tagBuf.endsWith('</think>')) {
+                        // 切出 thinking 块
+                        const thinkContent = tagBuf.slice(0, -8);
+                        thinkingAccum += thinkContent;
+                        if (onThinkingChunk) onThinkingChunk(thinkContent, thinkingAccum);
+                        tagBuf = '';
+                        inThink = false;
+                    }
+                } else {
+                    tagBuf += ch;
+                    if (tagBuf.endsWith('<think>')) {
+                        // 把 <think> 之前的部分作为 output flush
+                        const outPart = tagBuf.slice(0, -7);
+                        if (outPart) {
+                            accumulated += outPart;
+                            onChunk(outPart, accumulated);
+                        }
+                        tagBuf = '';
+                        inThink = true;
+                    } else if (tagBuf.length > 12) {
+                        // buffer 太长且不在 think 中 → flush
+                        accumulated += tagBuf;
+                        onChunk(tagBuf, accumulated);
+                        tagBuf = '';
+                    }
+                }
             }
             if (obj?.done) {
                 if (obj.prompt_eval_count != null) promptTokens = obj.prompt_eval_count;
@@ -532,8 +764,22 @@ async function _ollamaStream(args, onChunk) {
             }
         } catch {}
     });
+    // 流结束：flush tagBuf
+    if (parseThinkTags && tagBuf) {
+        if (inThink) {
+            thinkingAccum += tagBuf;
+            if (onThinkingChunk) onThinkingChunk(tagBuf, thinkingAccum);
+        } else {
+            accumulated += tagBuf;
+            onChunk(tagBuf, accumulated);
+        }
+    }
     // 兜底：Ollama 没回 usage 时按字符估算
     if (promptTokens == null) promptTokens = _estimateTokens((system || '') + user);
     if (completionTokens == null) completionTokens = _estimateTokens(accumulated);
-    return { text: accumulated, prompt_tokens: promptTokens, completion_tokens: completionTokens, estimated: true, raw };
+    return {
+        text: accumulated, thinking: thinkingAccum,
+        prompt_tokens: promptTokens, completion_tokens: completionTokens,
+        estimated: true, raw,
+    };
 }

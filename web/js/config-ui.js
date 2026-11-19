@@ -255,7 +255,9 @@
             const cur = readSourceFromRow(row);
             cur.type = newType;
             row.querySelector('.cfg-source-fields').innerHTML = renderSourceFields(cur);
+            if (cur.type === 'nas') wireCfgNasPreview(row);
         });
+        if (src.type === 'nas') wireCfgNasPreview(row);
 
         // 上下移
         row.querySelector('.cfg-up').addEventListener('click', () => moveTab(idx, -1));
@@ -277,9 +279,17 @@
         // D-26: 统一 path 字段（nas = http URL，local = 文件夹路径）
         if (src.type === 'nas') {
             return `
-                <label style="display:flex; flex-direction:column; gap:3px; font-size:12px; color:#aaa;">路径（HTTP 根 URL + 远程目录）
-                    <input class="cfg-path" type="text" value="${escapeHtml(src.path || '')}" placeholder="http://192.168.0.109:5005/home/小芋/003 AI出图/" style="padding:5px 8px; background:#0d0d0d; color:#eee; border:1px solid #333; border-radius:3px;">
+                <label style="display:flex; flex-direction:column; gap:3px; font-size:12px; color:#aaa;">路径（完整 URL 或相对路径；相对路径会自动用「NAS 地址」拼接）
+                    <input class="cfg-path" type="text" value="${escapeHtml(src.path || '')}" placeholder="/home/MyFolder/003 AI出图/" style="padding:5px 8px; background:#0d0d0d; color:#eee; border:1px solid #333; border-radius:3px;">
                 </label>
+                <div class="cfg-nas-preview" style="font-size:11px; color:#10b981; padding:4px 8px; background:#022c22; border:1px solid #064e3b; border-radius:3px; margin-top:4px; font-family:monospace; word-break:break-all;">
+                    <i class="fa-solid fa-link"></i> 实际 URL: <span class="cfg-nas-preview-url">—</span>
+                </div>
+                <div class="cfg-nas-warn" style="display:none; font-size:11px; color:#fbbf24; padding:4px 8px; background:#1c1917; border:1px solid #78350f; border-radius:3px; margin-top:4px; align-items:center; gap:6px;">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span class="cfg-nas-warn-text" style="flex:1;"></span>
+                    <button type="button" class="cfg-nas-warn-goto" style="padding:1px 6px; background:#b91c1c; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:10px;">前往配置</button>
+                </div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px;">
                     <label style="display:flex; flex-direction:column; gap:3px; font-size:12px; color:#aaa;">图片扩展名（逗号分隔）
                         <input class="cfg-imgExts" type="text" value="${escapeHtml((src.imgExts || []).join(','))}" placeholder="jpg,jpeg,png" style="padding:5px 8px; background:#0d0d0d; color:#eee; border:1px solid #333; border-radius:3px;">
@@ -338,6 +348,76 @@
 
     function splitExts(s) {
         return String(s || '').split(/[,\s]+/).map((x) => x.trim().toLowerCase().replace(/^\./, '')).filter(Boolean);
+    }
+
+    // NAS 路径预览（旧 configModal 用）。从 api.resourceStation.nasConfigGet() 拉配置，
+    // 然后在用户键入时实时拼接预览；不每键调 IPC，仅首次拉一次缓存 cfg。
+    async function wireCfgNasPreview(row) {
+        if (!window.api || !window.api.resourceStation || typeof window.api.resourceStation.nasConfigGet !== 'function') return;
+        const fields = row.querySelector('.cfg-source-fields');
+        if (!fields) return;
+        const pathInput = fields.querySelector('.cfg-path');
+        const previewEl = fields.querySelector('.cfg-nas-preview');
+        const previewUrlEl = fields.querySelector('.cfg-nas-preview-url');
+        const warnEl = fields.querySelector('.cfg-nas-warn');
+        const warnTextEl = fields.querySelector('.cfg-nas-warn-text');
+        const gotoBtn = fields.querySelector('.cfg-nas-warn-goto');
+        if (!pathInput || !previewEl || !previewUrlEl || !warnEl || !warnTextEl) return;
+
+        let cfg = null;
+
+        const render = () => {
+            const val = (pathInput.value || '').trim();
+            if (!val) {
+                previewUrlEl.textContent = '（空 — 输入路径以预览实际 URL）';
+                previewEl.style.display = 'block';
+                warnEl.style.display = 'none';
+                return;
+            }
+            if (/^https?:\/\//i.test(val)) {
+                previewUrlEl.textContent = val;
+                previewEl.style.display = 'block';
+                warnEl.style.display = 'none';
+                return;
+            }
+            if (cfg && cfg.host) {
+                const scheme = cfg.scheme || 'http';
+                const port = cfg.port ? ':' + cfg.port : '';
+                const auth = cfg.username
+                    ? (cfg.username + (cfg.hasPassword ? ':***' : '') + '@')
+                    : '';
+                let rel = val.replace(/\\/g, '/');
+                if (!rel.startsWith('/')) rel = '/' + rel;
+                previewUrlEl.textContent = `${scheme}://${auth}${cfg.host}${port}${rel}`;
+                previewEl.style.display = 'block';
+                warnEl.style.display = 'none';
+            } else {
+                previewEl.style.display = 'none';
+                warnTextEl.textContent = 'NAS 地址未配置。相对路径需要先在【设置 → 资源管理 → NAS 地址】配置 NAS 详情后才能解析。';
+                warnEl.style.display = 'flex';
+            }
+        };
+
+        const reload = async () => {
+            try {
+                const r = await window.api.resourceStation.nasConfigGet();
+                cfg = (r && r.ok) ? (r.data || null) : null;
+            } catch (_) { cfg = null; }
+            render();
+        };
+
+        if (gotoBtn) {
+            gotoBtn.addEventListener('click', () => {
+                const navBtn = document.querySelector('[data-nav="resources"]') || document.querySelector('[data-nav="settings"]');
+                if (navBtn) navBtn.click();
+                setTimeout(() => {
+                    const target = document.getElementById('setNasHost');
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 250);
+            });
+        }
+        pathInput.addEventListener('input', render);
+        await reload();
     }
 
     function addTabRow(modal) {
@@ -462,12 +542,12 @@
             const wfR = await api.comfyui.listWorkflows();
             const wfDiv = wrap.querySelector('#cfgComfyWfList');
             if (wfR && wfR.ok && Array.isArray(wfR.workflows)) {
-                wfDiv.innerHTML = '<div style="margin-bottom:4px;">已加载 workflow：</div>' + wfR.workflows.map(w => {
-                    const dot = w.broken ? '<span style="color:#f87171;">● 损坏</span>' : (w.hasPositive ? '<span style="color:#34d399;">● 就绪</span>' : '<span style="color:#fbbf24;">● 缺占位符</span>');
-                    return `<div style="padding:2px 0;">${dot} <b>${escapeHtml(w.name)}</b> (${w.mode}) — ${escapeHtml(w.defaultResolution || '?')} — ${escapeHtml(w.notes || '')}</div>`;
+                wfDiv.innerHTML = '<div style="margin-bottom:4px;">已加载工具（schema 制）：</div>' + wfR.workflows.map(w => {
+                    const dot = w.broken ? '<span style="color:#f87171;">● 损坏</span>' : '<span style="color:#34d399;">● 就绪</span>';
+                    return `<div style="padding:2px 0;">${dot} <b>${escapeHtml(w.name)}</b> (${w.mode}) — ${escapeHtml(w.notes || '')}</div>`;
                 }).join('');
             } else {
-                wfDiv.textContent = '无法读取 workflow 列表';
+                wfDiv.textContent = '无法读取工具列表';
             }
 
             // 状态点初始化

@@ -12,6 +12,50 @@ function _listen(channel) {
 }
 
 contextBridge.exposeInMainWorld('api', {
+    engineeringFlow: {
+        load: () => ipcRenderer.invoke('engineeringFlow:load'),
+        save: graph => ipcRenderer.invoke('engineeringFlow:save', graph),
+        run: graph => ipcRenderer.invoke('engineeringFlow:run', graph),
+        status: () => ipcRenderer.invoke('engineeringFlow:status'),
+        cancel: () => ipcRenderer.invoke('engineeringFlow:cancel'),
+        pick: kind => ipcRenderer.invoke('engineeringFlow:pick', kind),
+    },
+    resourceStation: {
+        nasImport: input => ipcRenderer.invoke('resourceStation:nasImport', input),
+        nasImportCancel: requestId => ipcRenderer.invoke('resourceStation:nasImportCancel', requestId),
+        onNasImportProgress: _listen('resourceStation:nasImportProgress'),
+        torrentUpload: () => ipcRenderer.invoke('resourceStation:torrentUpload'),
+        torrentExport: (videoId, attachmentId) => ipcRenderer.invoke('resourceStation:torrentExport', videoId, attachmentId),
+        addMetadata: input => ipcRenderer.invoke('resourceStation:addMetadata', input),
+        videoDuration: (id, sourceId, duration) => ipcRenderer.invoke('resourceStation:videoDuration', id, sourceId, duration),
+        actorList: () => ipcRenderer.invoke('resourceStation:actorList'),
+        actorSave: input => ipcRenderer.invoke('resourceStation:actorSave', input),
+        actorRemove: target => ipcRenderer.invoke('resourceStation:actorRemove', target),
+        actorImages: () => ipcRenderer.invoke('resourceStation:actorImages'),
+        actorImport: url => ipcRenderer.invoke('resourceStation:actorImport', url),
+        onActorImportProgress: _listen('resourceStation:actorImportProgress'),
+        saveCover: (id, sourceId, dataUrl, sourceUrl) => ipcRenderer.invoke('resourceStation:saveCover', id, sourceId, dataUrl, sourceUrl),
+        saveBackdrop: (id, sourceId, dataUrl) => ipcRenderer.invoke('resourceStation:saveBackdrop', id, sourceId, dataUrl),
+        list: () => ipcRenderer.invoke('resourceStation:list'),
+        import: mode => ipcRenderer.invoke('resourceStation:import', mode),
+        update: (id, data) => ipcRenderer.invoke('resourceStation:update', id, data),
+        progress: (id, data) => ipcRenderer.invoke('resourceStation:progress', id, data),
+        remove: id => ipcRenderer.invoke('resourceStation:remove', id),
+        addSource: (id, label) => ipcRenderer.invoke('resourceStation:addSource', id, label),
+        removeSource: (id, sourceId) => ipcRenderer.invoke('resourceStation:removeSource', id, sourceId),
+        image: (id, field) => ipcRenderer.invoke('resourceStation:image', id, field),
+        nasConfigGet: () => ipcRenderer.invoke('resourceStation:nasConfigGet'),
+        nasConfigSet: input => ipcRenderer.invoke('resourceStation:nasConfigSet', input),
+        matchConfirmBatch: selections => ipcRenderer.invoke('resourceStation:matchConfirmBatch', selections),
+        matchActor: (fileId, actorId) => ipcRenderer.invoke('resourceStation:matchActor', fileId, actorId),
+        matchScan: () => ipcRenderer.invoke('resourceStation:matchScan'),
+        matchList: () => ipcRenderer.invoke('resourceStation:matchList'),
+        matchSuggest: fileId => ipcRenderer.invoke('resourceStation:matchSuggest', fileId),
+        matchConfirm: (fileId, videoId, candidate) => ipcRenderer.invoke('resourceStation:matchConfirm', fileId, videoId, candidate),
+        matchIgnore: fileId => ipcRenderer.invoke('resourceStation:matchIgnore', fileId),
+        matchReset: fileId => ipcRenderer.invoke('resourceStation:matchReset', fileId),
+        matchClear: () => ipcRenderer.invoke('resourceStation:matchClear'),
+    },
     prompts: {
         readAll: () => ipcRenderer.invoke('prompts:readAll'),
         writeOne: (id, prompt, tags) => ipcRenderer.invoke('prompts:writeOne', { id, prompt, tags }),
@@ -30,6 +74,12 @@ contextBridge.exposeInMainWorld('api', {
         assetsSet: (cfg) => ipcRenderer.invoke('config:assets:set', cfg),
         assetsPick: () => ipcRenderer.invoke('config:assets:pick'),
         assetsOpen: () => ipcRenderer.invoke('config:assets:open'),
+    },
+    // ========= 环境检查（扫描解压后的 ComfyUI 根目录并应用配置） =========
+    envCheck: {
+        pickRoot: () => ipcRenderer.invoke('envCheck:pickRoot'),
+        scan: (root) => ipcRenderer.invoke('envCheck:scan', root),
+        apply: (payload) => ipcRenderer.invoke('envCheck:apply', payload || {}),
     },
     // ========= D-27 提示词生成（Ollama 本地 LLM） =========
     llm: {
@@ -86,6 +136,12 @@ contextBridge.exposeInMainWorld('api', {
         itemAdd:    (p)  => ipcRenderer.invoke('prompt:library:item:add', p),
         itemUpdate: (p)  => ipcRenderer.invoke('prompt:library:item:update', p),
         itemDelete: (id) => ipcRenderer.invoke('prompt:library:item:delete', id),
+    },
+    // ========= 自定义配方（提示词配方库，存 prompts.db 的 kv）=========
+    recipes: {
+        list:   ()      => ipcRenderer.invoke('recipe:list'),
+        save:   (recipe) => ipcRenderer.invoke('recipe:save', recipe),
+        delete: (id)     => ipcRenderer.invoke('recipe:delete', id),
     },
     // ========= 提示词预览图（<promptsDir>/previews/<id>-<ts>.<ext>）=========
     promptPreview: {
@@ -176,7 +232,13 @@ contextBridge.exposeInMainWorld('api', {
     tools: {
         list: () => ipcRenderer.invoke('tools:list'),
         get: (id) => ipcRenderer.invoke('tools:get', id),
+        getWorkflow: (id) => ipcRenderer.invoke('tools:getWorkflow', id),
         run: (payload) => ipcRenderer.invoke('tools:run', payload),
+        // 2026-11 图形化导入向导 + 免重启刷新
+        reload: () => ipcRenderer.invoke('tools:reload'),
+        import: (payload) => ipcRenderer.invoke('tools:import', payload),
+        generateSchema: (payload) => ipcRenderer.invoke('tools:generateSchema', payload),
+        pickWorkflowFile: () => ipcRenderer.invoke('tools:pickWorkflowFile'),
     },
     // ========= D-QUEUE：任务队列（透明接管 tools:run）==========
     taskQueue: {
@@ -187,6 +249,9 @@ contextBridge.exposeInMainWorld('api', {
         remove:  (queueId) => ipcRenderer.invoke('taskQueue:remove', queueId),
         reorder: (from, to) => ipcRenderer.invoke('taskQueue:reorder', { from, to }),
         resultReadAsDataUrl: (queueId) => ipcRenderer.invoke('taskQueue:result:readAsDataUrl', queueId),
+        resultItems: (queueId) => ipcRenderer.invoke('taskQueue:result:items', queueId),
+        resultSaveAs: (payload) => ipcRenderer.invoke('taskQueue:result:saveAs', payload || {}),
+        findByForm: (payload) => ipcRenderer.invoke('taskQueue:findByForm', payload || {}),
         // 主进程推任务状态变化（added/status/progress/result/removed/reordered）
         onUpdate: _listen('taskQueue:event:update'),
     },
@@ -219,17 +284,27 @@ contextBridge.exposeInMainWorld('api', {
         generateOutline:     (novelId) => ipcRenderer.invoke('ainovel:generateOutline', { novelId }),
         writeChapter:        (novelId, chapterId) => ipcRenderer.invoke('ainovel:writeChapter', { novelId, chapterId }),
         updateChapter:       (novelId, chapterId, patch) => ipcRenderer.invoke('ainovel:updateChapter', { novelId, chapterId, ...patch }),
+        // Sprint 6.1: Block 模型
+        getChapterBlocks:    (novelId, chapterId) => ipcRenderer.invoke('ainovel:chapter:getBlocks', { novelId, chapterId }),
+        getChapterWithBlocks: (novelId, chapterId) => ipcRenderer.invoke('ainovel:chapter:getWithBlocks', { novelId, chapterId }),
+        replaceBlock:        (novelId, chapterId, blockId, text) => ipcRenderer.invoke('ainovel:chapter:replaceBlock', { novelId, chapterId, blockId, text }),
+        deleteBlock:         (novelId, chapterId, blockId) => ipcRenderer.invoke('ainovel:chapter:deleteBlock', { novelId, chapterId, blockId }),
+        insertBlock:         (novelId, chapterId, afterBlockId, text, blockType) => ipcRenderer.invoke('ainovel:chapter:insertBlock', { novelId, chapterId, afterBlockId, text, blockType }),
+        reviseBlock:         (novelId, chapterId, blockId, feedback) => ipcRenderer.invoke('ainovel:chapter:reviseBlock', { novelId, chapterId, blockId, feedback }),
         exportTxt:           (novelId) => ipcRenderer.invoke('ainovel:exportTxt', { novelId }),
         getProviderConfig:   () => ipcRenderer.invoke('ainovel:getProviderConfig'),
         setProviderConfig:   (cfg) => ipcRenderer.invoke('ainovel:setProviderConfig', cfg || {}),
         testProvider:        (cfg) => ipcRenderer.invoke('ainovel:testProvider', cfg || {}),
+        supportsThinking:    (payload) => ipcRenderer.invoke('ainovel:supportsThinking', payload || {}),
         listGenerations:     (novelId) => ipcRenderer.invoke('ainovel:listGenerations', { novelId }),
         getGeneration:       (id) => ipcRenderer.invoke('ainovel:getGeneration', { id }),
         // Phase 2: 自动推进模式
-        autoStart:           (novelId) => ipcRenderer.invoke('ainovel:autoStart', { novelId }),
+        autoStart:           (novelId, opts) => ipcRenderer.invoke('ainovel:autoStart', { novelId, autoConfirm: !!(opts && opts.autoConfirm) }),
         autoPause:           (novelId) => ipcRenderer.invoke('ainovel:autoPause', { novelId }),
         autoResume:          (novelId) => ipcRenderer.invoke('ainovel:autoResume', { novelId }),
         autoCancel:          (novelId) => ipcRenderer.invoke('ainovel:autoCancel', { novelId }),
+        autoSetConfirm:      (novelId, enabled) => ipcRenderer.invoke('ainovel:autoSetConfirm', { novelId, enabled }),
+        confirmChapter:      (novelId, chapterId) => ipcRenderer.invoke('ainovel:chapter:confirm', { novelId, chapterId }),
         getAutoStatus:       (novelId) => ipcRenderer.invoke('ainovel:getAutoStatus', { novelId }),
         // Phase 3: 知识库 CRUD
         getKnowledge:        (novelId, kind) => ipcRenderer.invoke('ainovel:getKnowledge', { novelId, kind: kind || null }),
@@ -248,6 +323,49 @@ contextBridge.exposeInMainWorld('api', {
         listMemoryLogs:         (payload) => ipcRenderer.invoke('ainovel:listMemoryLogs', payload || {}),
         flushMemory:            (payload) => ipcRenderer.invoke('ainovel:flushMemory', payload || {}),
         listSkills:             () => ipcRenderer.invoke('ainovel:listSkills'),
+        // Sprint 6.2: Skill 开关
+        toggleSkill:            (skill, enabled) => ipcRenderer.invoke('ainovel:skills:toggle', { skill, enabled }),
+        enabledSkillsList:      (category) => ipcRenderer.invoke('ainovel:skills:enabledList', { category }),
+        // Sprint 7.1: 卷(arc)层级大纲
+        listArcs:          (novelId) => ipcRenderer.invoke('ainovel:arcs:list', { novelId }),
+        getArc:            (novelId, arcId) => ipcRenderer.invoke('ainovel:arcs:get', { novelId, arcId }),
+        createArc:         (novelId, payload) => ipcRenderer.invoke('ainovel:arcs:create', { novelId, ...payload }),
+        updateArc:         (novelId, arcId, patch) => ipcRenderer.invoke('ainovel:arcs:update', { novelId, arcId, patch }),
+        deleteArc:         (novelId, arcId) => ipcRenderer.invoke('ainovel:arcs:delete', { novelId, arcId }),
+        validateArcs:      (novelId, chapterCount) => ipcRenderer.invoke('ainovel:arcs:validate', { novelId, chapterCount }),
+        generateArcSkeleton: (novelId, payload) => ipcRenderer.invoke('ainovel:arcs:skeleton', { novelId, ...payload }),
+        generateArcOutline:  (novelId, payload) => ipcRenderer.invoke('ainovel:arcs:outline', { novelId, ...payload }),
+        appendArc:         (novelId, payload) => ipcRenderer.invoke('ainovel:arcs:append', { novelId, ...payload }),
+        // Sprint 7.2: 伏笔系统
+        listForeshadows:    (novelId, status) => ipcRenderer.invoke('ainovel:foreshadows:list', { novelId, status }),
+        createForeshadow:   (novelId, payload) => ipcRenderer.invoke('ainovel:foreshadows:create', { novelId, ...payload }),
+        updateForeshadow:   (novelId, id, patch) => ipcRenderer.invoke('ainovel:foreshadows:update', { novelId, id, patch }),
+        deleteForeshadow:   (novelId, id) => ipcRenderer.invoke('ainovel:foreshadows:delete', { novelId, id }),
+        pushForeshadowEvent: (novelId, id, event) => ipcRenderer.invoke('ainovel:foreshadows:pushEvent', { novelId, id, event }),
+        resolveForeshadow:  (novelId, id, resolution) => ipcRenderer.invoke('ainovel:foreshadows:resolve', { novelId, id, resolution }),
+        confirmForeshadows: (novelId, items) => ipcRenderer.invoke('ainovel:foreshadows:confirm', { novelId, items }),
+        generateForeshadowRoadmap: (novelId) => ipcRenderer.invoke('ainovel:foreshadows:roadmap', { novelId }),
+        suggestForeshadows: (novelId, chapterNo) => ipcRenderer.invoke('ainovel:foreshadows:suggest', { novelId, chapterNo }),
+        // Sprint 7.3: 叙事记忆
+        listMemory:       (novelId, opts) => ipcRenderer.invoke('ainovel:memory:list', { novelId, ...(opts || {}) }),
+        createMemory:     (novelId, payload) => ipcRenderer.invoke('ainovel:memory:create', { novelId, ...payload }),
+        updateMemory:     (novelId, id, patch) => ipcRenderer.invoke('ainovel:memory:update', { novelId, id, patch }),
+        deleteMemory:     (novelId, id) => ipcRenderer.invoke('ainovel:memory:delete', { novelId, id }),
+        memoryByChapter:  (novelId, chapter) => ipcRenderer.invoke('ainovel:memory:byChapter', { novelId, chapter }),
+        extractMemory:    (novelId, chapterNo) => ipcRenderer.invoke('ainovel:memory:extract', { novelId, chapterNo }),
+        // Sprint 8.2: 写作冲突（事实核查自动重写耗尽）
+        listConflicts:    (novelId, opts) => ipcRenderer.invoke('ainovel:conflict:list', { novelId, ...(opts || {}) }),
+        getConflict:      (conflictId) => ipcRenderer.invoke('ainovel:conflict:get', { conflictId }),
+        conflictForChapter: (novelId, chapterId) => ipcRenderer.invoke('ainovel:conflict:forChapter', { novelId, chapterId }),
+        resolveConflict:  (conflictId, action) => ipcRenderer.invoke('ainovel:conflict:resolve', { conflictId, action }),
+        clearConflicts:   (novelId, chapterId) => ipcRenderer.invoke('ainovel:conflict:clear', { novelId, chapterId }),
+        // Sprint 8.3: 关系图谱
+        listRelations:    (novelId, opts) => ipcRenderer.invoke('ainovel:relations:list', { novelId, ...(opts || {}) }),
+        getRelation:      (id) => ipcRenderer.invoke('ainovel:relations:get', { id }),
+        createRelation:   (novelId, payload) => ipcRenderer.invoke('ainovel:relations:create', { novelId, ...payload }),
+        updateRelation:   (id, patch) => ipcRenderer.invoke('ainovel:relations:update', { id, patch }),
+        deleteRelation:   (id) => ipcRenderer.invoke('ainovel:relations:delete', { id }),
+        bulkAdoptRelations: (novelId, items) => ipcRenderer.invoke('ainovel:relations:bulkAdopt', { novelId, items }),
         // Sprint H: LLM-driven 多 agent 协作（黑板 / 收件箱 / 任务图 / 编剧调度）
         blackboardList:   (novelId) => ipcRenderer.invoke('ainovel:blackboardList', { novelId }),
         blackboardRead:   (novelId, key) => ipcRenderer.invoke('ainovel:blackboardRead', { novelId, key }),
@@ -276,7 +394,44 @@ contextBridge.exposeInMainWorld('api', {
         getNovelState:        (novelId) => ipcRenderer.invoke('ainovel:getNovelState', { novelId }),
         atomicCommitState:    (novelId, patch) => ipcRenderer.invoke('ainovel:atomicCommitState', { novelId, patch: patch || {} }),
         resetNovelState:      (novelId) => ipcRenderer.invoke('ainovel:resetNovelState', { novelId }),
-        // 主进程推小说事件（outline_generated / chapter_generated / novel_added / pipeline_* / auto_* / knowledge_* 等）
+        // Sprint C-S1: 共享上下文层（前端调试面板用 + orchestrator 内部用）
+        sharedContextSet:     (novelId, key, value, opts) => ipcRenderer.invoke('ainovel:sharedContextSet', Object.assign({ novelId, key, value }, opts || {})),
+        sharedContextGet:     (novelId, key) => ipcRenderer.invoke('ainovel:sharedContextGet', { novelId, key }),
+        sharedContextListKeys:(novelId) => ipcRenderer.invoke('ainovel:sharedContextListKeys', { novelId }),
+        sharedContextStats:   (novelId) => ipcRenderer.invoke('ainovel:sharedContextStats', { novelId }),
+        // Sprint C-S1: 成本追踪
+        costSnapshot:         (novelId) => ipcRenderer.invoke('ainovel:costSnapshot', { novelId }),
+        costAcknowledgeWarn:  (novelId) => ipcRenderer.invoke('ainovel:costAcknowledgeWarn', { novelId }),
+        getCapabilityRegistry: () => ipcRenderer.invoke('ainovel:getCapabilityRegistry'),
+        // Sprint C-S2: orchestrator 控制（前端 DAG view + 调试面板）
+        orchestratorRun:           (plan) => ipcRenderer.invoke('ainovel:orchestrator:run', { plan }),
+        orchestratorCancel:        (reason) => ipcRenderer.invoke('ainovel:orchestrator:cancel', { reason: reason || 'user-cancelled' }),
+        orchestratorPause:        (reason) => ipcRenderer.invoke('ainovel:orchestrator:pause', { reason: reason || 'user-paused' }),
+        orchestratorResume:       (action, extra) => ipcRenderer.invoke('ainovel:orchestrator:resume', { action: action || 'resume', extra }),
+        orchestratorFullStatus:   () => ipcRenderer.invoke('ainovel:orchestrator:fullStatus'),
+        costSnapshot:             (novelId) => ipcRenderer.invoke('ainovel:cost:snapshot', { novelId }),
+        setCostThreshold:         (novelId, usd) => ipcRenderer.invoke('ainovel:cost:setThreshold', { novelId, usd }),
+        orchestratorStatus:        () => ipcRenderer.invoke('ainovel:orchestrator:status'),
+        orchestratorSnapshot:     () => ipcRenderer.invoke('ainovel:orchestrator:snapshot'),
+        orchestratorListCapabilities: () => ipcRenderer.invoke('ainovel:orchestrator:listCapabilities'),
+        orchestratorPlanOutline:   (novelId) => ipcRenderer.invoke('ainovel:orchestrator:planOutline', { novelId }),
+        orchestratorPlanChapter:   (novelId, chapterId) => ipcRenderer.invoke('ainovel:orchestrator:planChapter', { novelId, chapterId }),
+        // Sprint 9.1: AI 助理 chat
+        chatListSessions:    (novelId) => ipcRenderer.invoke('ainovel:chat:listSessions', { novelId }),
+        chatCreateSession:   (novelId, title) => ipcRenderer.invoke('ainovel:chat:createSession', { novelId, title }),
+        chatGetSession:      (sessionId) => ipcRenderer.invoke('ainovel:chat:getSession', { sessionId }),
+        chatDeleteSession:   (sessionId) => ipcRenderer.invoke('ainovel:chat:deleteSession', { sessionId }),
+        chatAppendMessage:   (sessionId, message) => ipcRenderer.invoke('ainovel:chat:appendMessage', { sessionId, message }),
+        chatUpdateSession:   (sessionId, patch) => ipcRenderer.invoke('ainovel:chat:updateSession', { sessionId, patch }),
+        chatTrimHistory:     (sessionId, maxMessages) => ipcRenderer.invoke('ainovel:chat:trimHistory', { sessionId, maxMessages }),
+        chatSendMessage:     (sessionId, message, opts) => ipcRenderer.invoke('ainovel:chat:sendMessage', { sessionId, message, opts: opts || {} }),
+        // Sprint 9.2: 配置变更（pending config changes）
+        configListPendingChanges: (novelId) => ipcRenderer.invoke('ainovel:config:listPendingChanges', { novelId }),
+        configCreatePendingChange: (novelId, change) => ipcRenderer.invoke('ainovel:config:createPendingChange', { novelId, change }),
+        configResolveChange: (id, status) => ipcRenderer.invoke('ainovel:config:resolveChange', { id, status }),
+        configApplyChanges: (novelId, changeIds) => ipcRenderer.invoke('ainovel:config:applyChanges', { novelId, changeIds }),
+        configDismissChanges: (novelId, changeIds) => ipcRenderer.invoke('ainovel:config:dismissChanges', { novelId, changeIds }),
+        // 主进程推小说事件（outline_generated / chapter_generated / novel_added / pipeline_* / auto_* / knowledge_* / orchestrator_* 等）
         onUpdate:            _listen('ainovel:event:update'),
     },
 });

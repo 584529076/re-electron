@@ -409,6 +409,7 @@ function init() {
     const navPromptLibrary = document.getElementById('navPromptLibrary');
     const navWorkbench = document.getElementById('navWorkbench');
     const navNovel = document.getElementById('navNovel');
+    document.getElementById('navResourceStation')?.addEventListener('click', () => switchMainView('resourceStation'));
     const navSettings = document.getElementById('navSettings');
     if (navAssets) {
         navAssets.addEventListener('click', () => switchMainView('assets'));
@@ -445,6 +446,8 @@ function init() {
             'promptLibrary:opened': () => { state.activeNav = 'promptLibrary'; },
             'promptLibrary:closed': () => { _resolveActiveNavAfterClose('promptLibrary'); },
             'novel:opened': () => { state.activeNav = 'novel'; },
+            'resourceStation:opened': () => { state.activeNav = 'resourceStation'; },
+            'resourceStation:closed': () => { _resolveActiveNavAfterClose('resourceStation'); },
             'novel:closed': () => { _resolveActiveNavAfterClose('novel'); },
         };
         const fn = map[e.type];
@@ -465,7 +468,9 @@ function init() {
     }
     function _resolveActiveNavAfterClose(_closedPage) {
         // 关闭一个 page 后，从剩下的可见 page 里挑一个作为 activeNav
-        if (window.settings && window.settings.isOpen && window.settings.isOpen()) {
+        if (window.resourceStation?.isOpen()) {
+            state.activeNav = 'resourceStation';
+        } else if (window.settings && window.settings.isOpen && window.settings.isOpen()) {
             state.activeNav = 'settings';
         } else if (window.workbench && window.workbench.isOpen && window.workbench.isOpen()) {
             state.activeNav = 'workbench';
@@ -484,6 +489,7 @@ function init() {
         'promptGen:opened', 'promptGen:closed',
         'promptLibrary:opened', 'promptLibrary:closed',
         'novel:opened', 'novel:closed',
+        'resourceStation:opened', 'resourceStation:closed',
     ].forEach((evt) => window.addEventListener(evt, _navSyncHandler));
 
     // D-NAVBAR：更新顶部 nav 的 active class + aria-pressed
@@ -493,6 +499,7 @@ function init() {
             promptLibrary: document.getElementById('navPromptLibrary'),
             workbench:     document.getElementById('navWorkbench'),
             novel:         document.getElementById('navNovel'),
+            resourceStation: document.getElementById('navResourceStation'),
             settings:      document.getElementById('navSettings'),
         };
         for (const key of Object.keys(map)) {
@@ -507,6 +514,7 @@ function init() {
     // D-NAVBAR：主视图切换函数 —— 关闭其他所有 page，再切到目标
     // view: 'assets' | 'workbench' | 'settings' | 'novel' | 'promptLibrary'
     function switchMainView(view) {
+        if (view !== 'resourceStation' && window.resourceStation?.isOpen()) window.resourceStation.close();
         // 1. 先关 media preview modal（如打开），避免切页后弹框残留在错误位置
         if (typeof window.closeMediaPreviewModal === 'function') {
             try { window.closeMediaPreviewModal(); } catch (e) {}
@@ -535,7 +543,9 @@ function init() {
 
         // 3. 切到目标
         state.activeNav = view;
-        if (view === 'assets') {
+        if (view === 'resourceStation') {
+            window.resourceStation?.open();
+        } else if (view === 'assets') {
             state.currentView = 'assets';
             state.workbenchPrevFullscreen = null;
         } else if (view === 'workbench') {
@@ -814,10 +824,20 @@ function _initCollapsible(module, header, stateKey) {
 
 /**
  * 初始化瀑布流列（轻微12）
- * 滑块在 input 事件中连续改 --img-width，再同步读 offsetWidth 会出现拿旧值的情况
- * 这里用 rAF 等下一帧布局稳定后再读
+ * 同步创建列，让缓存命中与快速图片加载也始终有可用的渲染目标。
+ * 重建布局时使旧预加载任务失效，避免旧任务占锁或写入新列。
  */
+let _renderEpoch = 0;
+let _galleryLoadEpoch = 0;
 function initWaterfallColumns() {
+    // A new layout owns its own workers and queue, even when old requests are pending.
+    _renderEpoch++;
+    _renderQueue.length = 0;
+    _renderScheduled = false;
+    state.isLoading = false;
+    state.loadedCount = 0;
+    state.renderedIds.clear();
+    state.preloadedMedia = [];
     els.gallery.innerHTML = '';
     state.columns = [];
     state.columnHeights = [];
@@ -836,11 +856,8 @@ function initWaterfallColumns() {
         }
     };
 
-    if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(compute);
-    } else {
-        compute();
-    }
+    // Reading offsetWidth flushes layout. Columns must exist before cached images render.
+    compute();
 }
 
 /**
@@ -866,7 +883,7 @@ function getMediaTypeByExt(ext) {
 
 /**
  * 预加载单个媒体文件（严重5 + 7 + 8 改造点）
- * 内部已并发，但被 renderBatch 用信号量槽位调度实现跨批并发
+ * 由 renderBatch 的有限并发 worker 调度。
  */
 async function preloadOneMedia(mediaData) {
     if (state.renderedIds.has(mediaData.id)) return null;
@@ -887,7 +904,7 @@ async function preloadOneMedia(mediaData) {
 
 /**
  * 批量预加载媒体文件（保留为"批内并发"的纯工具，被 renderBatch 流水线调度使用）
- * 注：原"批间串行"问题已通过 renderBatch 的信号量槽位 + rAF 渲染解决
+ * 注：renderBatch 使用有限并发 worker 和微任务渲染队列。
  */
 async function preloadMediaBatch(startIndex, endIndex) {
     const preloadPromises = [];
@@ -908,6 +925,9 @@ async function preloadMediaBatch(startIndex, endIndex) {
 function preloadSingleImage(src, retry = 0) {
     return new Promise((resolve, reject) => {
         const img = new Image();
+        // 设 crossOrigin='anonymous' + 主进程 onHeadersReceived 钩子注入 CORS 头：
+        // NAS 不返回 ACAO，但钩子按 origin 注册凭证后给响应补上 → Chromium CORS 检查通过 → 图片显示。
+        // 不设 crossOrigin 时，no-cors 模式下 img.width/height 可能为 0（HTMLImageElement 属性受 opaque 响应限制）。
         img.crossOrigin = 'anonymous';
         img.loading = CONFIG.loadPriority;
         img.decoding = 'async';
@@ -1059,22 +1079,25 @@ function renderPreloadedMedia() {
         rendered++;
     }
     
-    state.loadedCount += rendered;
     return rendered;
 }
 
 /**
  * 批量渲染媒体文件（严重5 流水线化）
  * - 维持 preloadBatch 个并发槽位，preload 与 render 流水线
- * - preload 完一个就 push 到 renderQueue，rAF 中串行消费渲染
- * - 批内并发 + 批间并发（不单批 await）
+ * - preload 完成后进入 renderQueue，在微任务中插入 DOM，不依赖绘制回调
+ * - 批内有限并发；完成后按滚动位置继续下一批
  */
 const _renderQueue = [];
 let _renderScheduled = false;
 function _scheduleRender() {
     if (_renderScheduled) return;
     _renderScheduled = true;
-    requestAnimationFrame(() => {
+    const epoch = _renderEpoch;
+    // Loading must progress even if Chromium suspends animation frames (occlusion/minimize).
+    // DevTools or resize must never be required to flush already downloaded images.
+    queueMicrotask(() => {
+        if (epoch !== _renderEpoch) return;
         _renderScheduled = false;
         if (_renderQueue.length === 0) return;
         state.preloadedMedia = _renderQueue.splice(0, _renderQueue.length);
@@ -1085,6 +1108,8 @@ function _scheduleRender() {
 async function renderBatch() {
     if (state.isLoading || state.loadedCount >= state.media.length) return;
 
+    const epoch = _renderEpoch;
+    const media = state.media;
     state.isLoading = true;
     els.sentinel.style.display = 'flex';
 
@@ -1095,31 +1120,34 @@ async function renderBatch() {
 
         const slots = Math.min(CONFIG.preloadBatch, total);
         let cursor = state.loadedCount;
-        let renderDoneTotal = 0;
+
 
         const workers = Array.from({ length: slots }, async () => {
             while (true) {
-                if (cursor >= batchEnd) return;
+                if (epoch !== _renderEpoch || cursor >= batchEnd) return;
                 const i = cursor++;
-                const m = state.media[i];
+                const m = media[i];
                 if (!m) continue;
                 const r = await preloadOneMedia(m);
+                if (epoch !== _renderEpoch) return;
                 if (r) {
                     _renderQueue.push(r);
                     _scheduleRender();
-                    renderDoneTotal++;
                 }
             }
         });
 
         await Promise.all(workers);
+        // Cursor counts attempted files, not successful renders (failed files must not loop).
+        if (epoch === _renderEpoch) state.loadedCount = batchEnd;
 
     } catch (err) {
         console.error('渲染批次失败:', err);
         showToast('媒体文件加载出错，已跳过错误文件');
     } finally {
-        // 等最后一帧渲染完
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        // Flush queued DOM work, without holding the loading lock until a paint occurs.
+        await Promise.resolve();
+        if (epoch !== _renderEpoch) return;
         state.isLoading = false;
         updateEmptyState();
 
@@ -1760,6 +1788,14 @@ function loadNetworkMedia(urls) {
 // ========== D-25 变更：统一 tab 加载器，支持 3 种 source.type ==========
 async function _loadGalleryForTab(tab) {
     if (!tab || !tab.source) return;
+    const loadEpoch = ++_galleryLoadEpoch;
+    if (state.nasScanController) state.nasScanController.abort();
+    state.nasScanController = null;
+    state.nasScanEpoch++;
+    state.isScanningNas = false;
+    els.scanLoading.classList.remove('active');
+    state.media = [];
+    initWaterfallColumns();
     const src = tab.source;
     // 取 config 里的 active tab id，跟 state 对齐
     state.activeTab = tab.id;
@@ -1771,6 +1807,7 @@ async function _loadGalleryForTab(tab) {
             return;
         }
         const ar = await window.api.config.assetsGet();
+        if (loadEpoch !== _galleryLoadEpoch) return;
         if (!ar || !ar.ok) {
             if (typeof showToast === 'function') showToast('拉资产配置失败: ' + (ar && ar.error || '未知'), 'error');
             return;
@@ -1783,21 +1820,21 @@ async function _loadGalleryForTab(tab) {
         // 用 effective src 替换路径（不动原 tab 对象，避免污染缓存）
         const effSrc = { ...src, type: 'local', path: realPath };
         const effTab = { ...tab, source: effSrc };
-        await _loadLocalOrNetworkTab(effTab);
+        await _loadLocalOrNetworkTab(effTab, loadEpoch);
         return;
     }
 
     if (src.type === 'nas') {
         // NAS：复用老的 loadNasGalleryByTab（构造一个假 tabId 参数）
-        await loadNasGalleryByTab(tab.id);
+        await loadNasGalleryByTab(tab.id, tab, loadEpoch);
         return;
     }
 
-    await _loadLocalOrNetworkTab(tab);
+    await _loadLocalOrNetworkTab(tab, loadEpoch);
 }
 
 // 抽出 local / network 的加载逻辑，给「资产」tab 复用（动态路径注入）
-async function _loadLocalOrNetworkTab(tab) {
+async function _loadLocalOrNetworkTab(tab, loadEpoch = _galleryLoadEpoch) {
     const src = tab.source;
     if (state.nasScanController) {
         try { state.nasScanController.abort(); } catch (_) {}
@@ -1817,6 +1854,7 @@ async function _loadLocalOrNetworkTab(tab) {
 
     if (typeof showToast === 'function') showToast(`正在加载 ${tab.name} ...`);
     const r = await window.api.config.loadResource(src);
+    if (loadEpoch !== _galleryLoadEpoch) return;
     if (!r.ok) {
         if (typeof showToast === 'function') showToast('加载失败：' + r.error);
         updateEmptyState();
@@ -1830,6 +1868,7 @@ async function _loadLocalOrNetworkTab(tab) {
     }
     state.media = r.media;
     await renderBatch();
+    if (loadEpoch !== _galleryLoadEpoch) return;
     updateEmptyState();
     if (typeof showToast === 'function') {
         const img = r.media.filter(m => m.type === 'image').length;
@@ -1839,12 +1878,26 @@ async function _loadLocalOrNetworkTab(tab) {
 }
 window._galleryLoader = _loadGalleryForTab;
 
-async function loadNasGalleryByTab(tabId) {
+async function loadNasGalleryByTab(tabId, requestedTab, loadEpoch = _galleryLoadEpoch) {
  // ========== D-25 变更：从 configUI 拿当前 tab 的 source ==========
- const _d25Tab = (window.configUI && window.configUI.getActiveTab && window.configUI.getActiveTab()) || null;
+ const _d25Tab = requestedTab || (window.configUI && window.configUI.getActiveTab && window.configUI.getActiveTab()) || null;
  if (!_d25Tab || !_d25Tab.source) { if (typeof showToast === 'function') showToast('该标签页暂无配置（请先在「配置」中设置）'); return; }
  if (_d25Tab.source.type !== 'nas') { if (typeof showToast === 'function') showToast('请用配置管理：此 Tab 资源类型已变'); return; }
- const nasConfig = _d25Tab.source; // 后面老代码引用 nasConfig（不会冲突，原 CONFIG.nasConfig[tabId] 已废弃）
+
+ // [修复] 之前直接用 _d25Tab.source 当 nasConfig 用，但 source 字段只有 path，
+ // 而 scanNasBfs 需要 nasBaseUrl + rootDir。改走 config:resource:load 拿到拆分后的 nasConfig（含凭证嵌入）
+ let nasConfig;
+ try {
+     const r = await window.api.config.loadResource(_d25Tab.source);
+     if (loadEpoch !== _galleryLoadEpoch) return;
+     if (!r || !r.ok) { if (typeof showToast === 'function') showToast('加载失败：' + (r && r.error || '未知')); return; }
+     nasConfig = r.nasConfig;  // { nasBaseUrl, rootDir, imgExts, videoExts, maxDepth }
+ } catch (e) {
+     if (loadEpoch !== _galleryLoadEpoch) return;
+     console.warn('[NAS] loadResource 异常:', e);
+     if (typeof showToast === 'function') showToast('NAS 配置解析失败：' + (e && e.message || e));
+     return;
+ }
 
 
  // ==========严重1：取消上一次仍在飞的扫描 ==========
@@ -1874,6 +1927,7 @@ async function loadNasGalleryByTab(tabId) {
 
  // ==========严重4：先查缓存 ==========
  const cached = await readNasCache(tabId);
+ if (loadEpoch !== _galleryLoadEpoch || controller.signal.aborted) return;
  if (cached && cached.length >0 && !controller.signal.aborted) {
  state.media = cached;
  state.sourceType = 'nas';
@@ -1894,11 +1948,12 @@ async function loadNasGalleryByTab(tabId) {
  if (label) label.textContent = `正在扫描：${currentPath}（当前深度：${depth}）`;
  });
 
- if (myEpoch !== state.nasScanEpoch) return; // 自己已被更新的扫描取代
- if (controller.signal.aborted) return;
+ if (myEpoch !== state.nasScanEpoch) { console.log(`[diag-bfs] aborted: epoch ${myEpoch} != ${state.nasScanEpoch}`); return; } // 自己已被更新的扫描取代
+ if (controller.signal.aborted) { console.log('[diag-bfs] aborted: signal'); return; }
 
  state.media = media;
  state.sourceType = 'nas';
+ console.log(`[diag-bfs] BFS 完成: media.length=${media.length}, 首3个:`, media.slice(0,3).map(m=>m.src));
 
  if (state.media.length ===0) {
  showToast('NAS目录中未找到媒体文件');
@@ -1947,7 +2002,8 @@ async function scanNasBfs(nasConfig, signal, onProgress) {
  const seenDir = new Set();
 
  // 同层并发拉取
- const tasks = frontier.map(async ([dirPath, depth]) => {
+ // Pass lazy tasks: runWithConcurrency must await each directory before advancing BFS.
+ const tasks = frontier.map(([dirPath, depth]) => async () => {
  if (depth > nasConfig.maxDepth) return;
  if (signal.aborted) return;
  try {
@@ -1964,6 +2020,7 @@ async function scanNasBfs(nasConfig, signal, onProgress) {
  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), perFetchTimeoutMs)),
  ]);
  if (signal.aborted) return;
+ console.log(`[diag-bfs] dir=${dirPath} res.type=${res.type} htmlLen=${html.length} htmlHead=${html.substring(0,80)}`);
 
  const doc = new DOMParser().parseFromString(html, 'text/html');
  const links = Array.from(doc.querySelectorAll('a'));

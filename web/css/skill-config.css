@@ -1,0 +1,252 @@
+/* web/css/skill-config.css — Sprint 6.4: Skill 开关面板样式 */
+
+.skill-config-fab {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(80, 130, 220, 0.25);
+    color: #4f8cff;
+    border: 1px solid rgba(80, 130, 220, 0.4);
+    cursor: pointer;
+    z-index: 8000;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    font-size: 16px;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+.skill-config-fab:hover {
+    background: rgba(80, 130, 220, 0.45);
+    transform: scale(1.08);
+}
+
+.skill-config-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.skill-config-modal[hidden] { display: none; }
+
+.skill-config-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+}
+
+.skill-config-panel {
+    position: relative;
+    width: 720px;
+    max-width: 92vw;
+    max-height: 84vh;
+    background: var(--panel-bg, #1a1a26);
+    border: 1px solid var(--border, #2a2a3a);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.skill-config-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border, #2a2a3a);
+    background: rgba(255,255,255,0.03);
+}
+.skill-config-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary, #4f8cff);
+}
+.skill-config-close {
+    background: transparent;
+    border: 0;
+    color: var(--text-muted, #6b7280);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.skill-config-close:hover { color: var(--text, #e5e7eb); background: rgba(255,255,255,0.06); }
+
+.skill-config-hint {
+    display: flex;
+    gap: 10px;
+    padding: 10px 18px;
+    background: rgba(80, 130, 220, 0.07);
+    border-bottom: 1px solid var(--border, #2a2a3a);
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    line-height: 1.55;
+}
+.skill-config-hint i {
+    color: var(--primary, #4f8cff);
+    font-size: 14px;
+    margin-top: 1px;
+}
+
+.skill-config-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--border, #2a2a3a);
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+}
+.skill-config-summary strong { color: var(--text, #e5e7eb); margin-right: 4px; }
+.skill-config-stat { padding-right: 10px; border-right: 1px solid var(--border, #2a2a3a); }
+.skill-config-stat:last-of-type { border-right: 0; }
+.skill-config-bulk {
+    background: rgba(80, 130, 220, 0.15);
+    color: var(--primary, #4f8cff);
+    border: 1px solid rgba(80, 130, 220, 0.3);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: auto;
+}
+.skill-config-bulk:hover { background: rgba(80, 130, 220, 0.3); }
+
+.skill-config-body {
+    overflow-y: auto;
+    padding: 10px 18px 18px;
+}
+
+.skill-config-loading,
+.skill-config-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted, #6b7280);
+}
+
+.skill-config-cat {
+    margin-top: 12px;
+    border: 1px solid var(--border, #2a2a3a);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.skill-config-cat-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border, #2a2a3a);
+    font-size: 12px;
+}
+.skill-config-cat-name {
+    font-weight: 600;
+    color: var(--primary, #4f8cff);
+}
+.skill-config-cat-count {
+    background: rgba(120,120,120,0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text-muted, #b0b4c0);
+}
+.skill-config-cat-desc {
+    color: var(--text-muted, #6b7280);
+    flex: 1;
+    font-size: 11px;
+}
+.skill-config-cat-bulk {
+    background: transparent;
+    border: 1px solid rgba(120,120,120,0.3);
+    color: var(--text-muted, #b0b4c0);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.skill-config-cat-bulk:hover {
+    background: rgba(80, 130, 220, 0.15);
+    color: var(--primary, #4f8cff);
+    border-color: rgba(80, 130, 220, 0.4);
+}
+
+.skill-config-list {
+    padding: 4px 0;
+}
+
+.skill-config-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.12s ease;
+}
+.skill-config-row:last-child { border-bottom: 0; }
+.skill-config-row:hover { background: rgba(120, 160, 220, 0.06); }
+
+.skill-config-row-info { flex: 1; min-width: 0; }
+.skill-config-row-name {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 13px;
+}
+.skill-config-row-display {
+    font-weight: 600;
+    color: var(--text, #e5e7eb);
+}
+.skill-config-row-id {
+    color: var(--text-muted, #6b7280);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+}
+.skill-config-row-desc {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Toggle switch */
+.skill-config-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+    flex-shrink: 0;
+}
+.skill-config-switch input { opacity: 0; width: 0; height: 0; }
+.skill-config-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: rgba(120,120,120,0.4);
+    border-radius: 20px;
+    transition: background 0.18s ease;
+}
+.skill-config-slider::before {
+    content: "";
+    position: absolute;
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background: #e5e7eb;
+    border-radius: 50%;
+    transition: transform 0.18s ease;
+}
+.skill-config-switch input:checked + .skill-config-slider {
+    background: rgba(80, 180, 100, 0.55);
+}
+.skill-config-switch input:checked + .skill-config-slider::before {
+    transform: translateX(18px);
+}

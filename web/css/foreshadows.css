@@ -1,0 +1,160 @@
+/* web/css/foreshadows.css — Sprint 7.2: 伏笔系统 */
+
+.fs-loading,
+.fs-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted, #6b7280);
+}
+
+.fs-header { margin-bottom: 16px; }
+.fs-hint {
+    display: flex; gap: 8px; align-items: center;
+    padding: 8px 12px;
+    background: rgba(80, 130, 220, 0.07);
+    border: 1px solid rgba(80, 130, 220, 0.2);
+    border-radius: 6px;
+    color: var(--text-muted, #b0b4c0);
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+.fs-hint i { color: var(--primary, #4f8cff); }
+.fs-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.fs-status {
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+}
+.fs-status:empty { display: none; }
+
+.fs-groups { display: flex; flex-direction: column; gap: 14px; }
+
+.fs-group {
+    border: 1px solid var(--border, #2a2a3a);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.fs-group-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border, #2a2a3a);
+}
+.fs-group-label { font-weight: 600; font-size: 13px; }
+.fs-group[data-status="planted"] .fs-group-label { color: #6b8aff; }
+.fs-group[data-status="progressing"] .fs-group-label { color: #d6a06b; }
+.fs-group[data-status="resolved"] .fs-group-label { color: #5ac870; }
+.fs-group[data-status="abandoned"] .fs-group-label { color: #6b7280; }
+.fs-group-count {
+    background: rgba(120,120,120,0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.fs-list { padding: 4px 0; }
+
+.fs-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.fs-item:last-child { border-bottom: 0; }
+
+.fs-item-head {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+}
+
+.fs-item-name {
+    flex: 1; min-width: 160px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text, #e5e7eb);
+    font-size: 13px; font-weight: 600;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+.fs-item-name:hover, .fs-item-name:focus {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(120, 160, 220, 0.3);
+    outline: none;
+}
+
+.fs-item-range {
+    font-size: 11px;
+    color: var(--text-muted, #b0b4c0);
+    background: rgba(120,120,120,0.15);
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.fs-item-status {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border, #2a2a3a);
+    color: var(--text, #e5e7eb);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.fs-item-act {
+    background: transparent;
+    border: 1px solid rgba(120,120,120,0.3);
+    color: var(--text-muted, #b0b4c0);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.fs-item-act:hover {
+    background: rgba(80, 130, 220, 0.15);
+    color: var(--primary, #4f8cff);
+}
+.fs-item-act-danger:hover {
+    background: rgba(220, 80, 80, 0.2);
+    color: #ff7b7b;
+}
+
+.fs-item-desc {
+    width: 100%;
+    box-sizing: border-box;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted, #b0b4c0);
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    resize: vertical;
+    font-family: inherit;
+}
+.fs-item-desc:hover, .fs-item-desc:focus {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(120, 160, 220, 0.3);
+    outline: none;
+}
+
+.fs-item-events,
+.fs-item-resolution {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+}
+.fs-item-resolution { color: #5ac870; }
+.fs-event {
+    display: inline-block;
+    background: rgba(120,120,120,0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin: 2px 4px 2px 0;
+    font-size: 11px;
+}

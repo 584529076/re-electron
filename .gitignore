@@ -1,11 +1,45 @@
+# ===== 依赖 / 打包产物 =====
 node_modules/
-test/
 dist/
-build/
-assets/
+_packtest*/
+*.yml.tmp
+_c.yml
+
+# ===== 测试文件与日志 =====
+test-*.js
+dbg-e2e-*.js
+*.log
+
+# ===== 备份文件（含旧配置，绝不进仓库）=====
+*.bak
+*.bak-*
+backups/
+
+# ===== 运行时数据（首次启动自动生成，不进仓库）=====
 prompts/prompts.db
-tmp/
+prompts/prompts.db-*
+prompts/prompts.db.*
+prompts/*.db-*
+prompts/*.db.*
 prompts/previews/
 prompts/media/
+prompts/resource-artwork/
+prompts/comfyui.pid
+prompts/bG9jYWwtNTNsYXc3.json.bak
+prompts/_ainovel_*/
 loras-covers/
+assets/
+
+# ===== 历史产物 / 截图 / 研究 / 工具 =====
+.test-screenshots/
+screenshots/
+parsed-nsfw-asian/
+scripts/parsed-nsfw-asian/
+_tools/
+research/
+tmp/
 smoke-electron.log
+
+# ===== 打包图标保留（clone 后可直接打包）=====
+build/*
+!build/icon.ico

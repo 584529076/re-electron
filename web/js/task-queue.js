@@ -322,6 +322,14 @@
             const cls = it.status === 'running' ? 'task-card-thumb task-card-thumb-loading' : 'task-card-thumb';
             return `<div class="${cls}"><i class="fa-solid ${iconCls}" aria-hidden="true"></i></div>`;
         }
+        // 落盘产物的 fileUrl（2026-11 流式，优先）
+        if (it.fileUrl) {
+            const isVideo = /^data:video\//i.test(it.result_mime || '') || /\.(mp4|webm|mov|mkv|avi)$/i.test(it.fileUrl);
+            if (isVideo) {
+                return `<div class="task-card-thumb" data-qid="${esc(it.queue_id)}" data-act="preview"><video src="${esc(it.fileUrl)}" muted playsinline preload="metadata"></video></div>`;
+            }
+            return `<div class="task-card-thumb" data-qid="${esc(it.queue_id)}" data-act="preview"><img alt="" src="${esc(it.fileUrl)}"></div>`;
+        }
         // done + 有 result_path 是 data URL → 直接渲染（兼容旧 payload 含 result_path 的场景）
         if (it.result_path && /^data:/i.test(it.result_path)) {
             const isVideo = /^data:video\//i.test(it.result_path);
@@ -360,7 +368,22 @@
             // 占位 Map（防并发：同一 qid 短时间内不会重复发）
             if (_loadedThumbs.has(qid) && _loadedThumbs.get(qid)._loading) continue;
             _loadedThumbs.set(qid, { _loading: true });
-            window.api.taskQueue.resultReadAsDataUrl(qid).then((r) => {
+            // 2026-11 流式缩略图：优先用 resultItems（落盘产物返回 fileUrl，零 base64 开销），
+            // 兼容老 resultReadAsDataUrl（dataUrl）
+            const loadItems = (window.api.taskQueue.resultItems
+                ? window.api.taskQueue.resultItems(qid).then(r => {
+                    if (!r || !r.ok || !Array.isArray(r.items) || !r.items.length) return null;
+                    const it0 = r.items.find(x => x.kind === 'text') || r.items[0];
+                    return {
+                        ok: true,
+                        fileUrl: it0.fileUrl || null,
+                        dataUrl: it0.dataUrl || null,
+                        text: it0.text || null,
+                        mime: it0.mime || null,
+                    };
+                })
+                : Promise.resolve(null));
+            loadItems.then(r => (r && r.ok) ? r : window.api.taskQueue.resultReadAsDataUrl(qid)).then((r) => {
                 if (!r || !r.ok) {
                     // 失败就清掉占位，下次 render 重试
                     _loadedThumbs.delete(qid);
@@ -368,11 +391,15 @@
                 }
                 // 成功：写入持久缓存 + 当前 item
                 _loadedThumbs.set(qid, {
+                    fileUrl: r.fileUrl || null,
                     result_path: r.dataUrl || null,
                     result_text: r.text || null,
+                    result_mime: r.mime || null,
                 });
+                it.fileUrl = r.fileUrl || null;
                 it.result_path = r.dataUrl || null;
                 it.result_text = r.text || null;
+                it.result_mime = r.mime || null;
                 // 该 card 可能已被删除/重排，找不到就放弃
                 const placeholder = $list.querySelector(`.task-card-thumb[data-qid="${qid}"]`);
                 if (!placeholder) return;
@@ -553,13 +580,30 @@
             return;
         }
         try {
-            const r = await window.api.taskQueue.resultReadAsDataUrl(queueId);
-            if (!r || !r.ok) {
-                if (window.showToast) window.showToast(r && r.error || '读取失败', 'error');
-                $previewOverlay.classList.remove('open');
-                return;
+            // 2026-11 流式：优先 resultItems（fileUrl），兼容老 dataUrl
+            let entry = null;
+            if (window.api.taskQueue.resultItems) {
+                const ri = await window.api.taskQueue.resultItems(queueId);
+                if (ri && ri.ok && Array.isArray(ri.items) && ri.items.length) {
+                    const it0 = ri.items.find(x => x.kind === 'text') || ri.items[0];
+                    entry = {
+                        kind: it0.kind || (it0.fileUrl || it0.dataUrl ? 'image' : 'text'),
+                        dataUrl: it0.dataUrl || null,
+                        fileUrl: it0.fileUrl || null,
+                        text: it0.text || null,
+                        mime: it0.mime || null,
+                    };
+                }
             }
-            const entry = { kind: r.kind || (r.dataUrl ? (/^data:video\//i.test(r.dataUrl) ? 'video' : 'image') : 'image'), dataUrl: r.dataUrl, text: r.text, mime: r.mime };
+            if (!entry) {
+                const r = await window.api.taskQueue.resultReadAsDataUrl(queueId);
+                if (!r || !r.ok) {
+                    if (window.showToast) window.showToast(r && r.error || '读取失败', 'error');
+                    $previewOverlay.classList.remove('open');
+                    return;
+                }
+                entry = { kind: r.kind || (r.dataUrl ? (/^data:video\//i.test(r.dataUrl) ? 'video' : 'image') : 'image'), dataUrl: r.dataUrl, fileUrl: null, text: r.text, mime: r.mime };
+            }
             _thumbCache.set(queueId, entry);
             _showPreviewContent(entry);
         } catch (e) {
@@ -571,11 +615,12 @@
         if (!$previewOverlay) return;
         if (entry.text) {
             $previewOverlay.innerHTML = `<pre style="color:#fff;background:rgba(15,23,42,.85);padding:24px;border-radius:8px;max-width:90vw;max-height:90vh;overflow:auto;white-space:pre-wrap;font-family:inherit;font-size:13px;">${esc(entry.text)}</pre>`;
-        } else if (entry.dataUrl) {
+        } else if (entry.dataUrl || entry.fileUrl) {
+            const src = entry.fileUrl || entry.dataUrl;
             if (entry.kind === 'video') {
-                $previewOverlay.innerHTML = `<video src="${esc(entry.dataUrl)}" controls autoplay></video>`;
+                $previewOverlay.innerHTML = `<video src="${esc(src)}" controls autoplay></video>`;
             } else {
-                $previewOverlay.innerHTML = `<img alt="" src="${esc(entry.dataUrl)}">`;
+                $previewOverlay.innerHTML = `<img alt="" src="${esc(src)}">`;
             }
         } else {
             $previewOverlay.innerHTML = '<div style="color:#fff;">无可显示内容</div>';

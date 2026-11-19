@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>提示词生成器</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="embed.css" />
+<script src="../core/engine.js"></script>
+<script src="data-bundle.js"></script>
+<script src="embed-shim.js"></script>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button type="button" class="btn cps-back-btn" id="cpsBackBtn"><i class="fa-solid fa-arrow-left"></i> 关闭提示词生成器</button>
+    <div class="spacer"></div>
+    <div class="token-wrap" title="SDXL 正向提示词预算：75 token 内完整生效，75–120 正常上限，超过 200 自动砍低优先级词">
+      <span class="lbl">TOKEN</span>
+      <div class="token-bar"><div class="fill" id="tokenFill"></div></div>
+      <span class="num" id="tokenNum">0/75</span>
+    </div>
+    <div class="zoom-ctl">
+      <button id="zoomOut" title="缩小界面（Ctrl -）">A−</button>
+      <span id="zoomVal">100%</span>
+      <button id="zoomIn" title="放大界面（Ctrl +）">A+</button>
+    </div>
+    <div class="hdr-actions">
+      <button class="btn" id="btnRandom" title="随机生成：可选择范围（全部 / 当前模块 / 当前值微调）">🎲 随机</button>
+      <button class="btn" id="btnLock" title="锁定所有当前值，随机与重置都不会改动">⌾ 锁定</button>
+      <button class="btn" id="btnReset" title="恢复出厂默认">↺ 全部重置</button>
+      <button class="btn" id="btnSave" title="把当前生成的正向/负向/采样参数保存到提示词库">💾 保存到库</button>
+      <button class="btn primary" id="btnGen" title="生成提示词并发送回工作台">✓ 采用提示词</button>
+    </div>
+    <div class="win-ctl" id="winCtl">
+      <button id="winMin" title="最小化">&#x2014;</button>
+      <button id="winMax" title="最大化">&#x25A2;</button>
+      <button id="winClose" title="关闭">&#x2715;</button>
+    </div>
+  </header>
+
+  <div id="warnbar" class="warnbar hidden"></div>
+
+  <main>
+    <nav id="tabs"></nav>
+    <section id="panel">
+      <div class="panel-head">
+        <h2 id="panelTitle">人物设定</h2>
+        <div class="panel-tools">
+          <button class="mini" id="btnFoldAll" title="把本页所有分组一次收起 / 展开">⌃ 全部收起</button>
+          <button class="mini" id="btnPanelReset" title="只重置当前页签">↺ 重置本页</button>
+          <input id="search" placeholder="搜索本页字段…" title="按中文名或 tag 过滤" />
+        </div>
+      </div>
+      <div id="fields"></div>
+    </section>
+    <div id="splitter" class="splitter" title="拖动调整左右宽度（双击恢复默认）"></div>
+    <aside id="preview">
+      <div class="pv-block grow">
+
+        <div id="onboard" class="onboard hidden">
+          <div class="ob-txt">
+            <b>三步就能出图</b>
+            <span>① 左边选「人物」定长相 → ② 选「动作」定姿势 → ③ 右上角点「出图」。</span>
+            <span>其他页签（服装 / 场景 / 特征 / 画风 / 配方 / LoRA）都可选，不选也有默认值。</span>
+          </div>
+          <button class="mini" id="btnOnboardOk">知道了</button>
+        </div>
+        <div class="pv-head"><span>出图</span><span class="pv-tools"><span id="comfyStatus" class="status">未连接</span><button class="mini" id="btnHidePrompts" title="收起提示词/参数面板，把空间全让给图">收起提示词</button><button class="mini" id="btnComfyUp" title="拉起 ComfyUI 服务（后台静默启动，约 40–60 秒）">启动服务</button><button class="mini" id="btnComfyDown" title="关闭 ComfyUI 服务（释放显存）">退出服务</button></span></div>
+        <div id="progWrap" class="prog-wrap hidden">
+          <div class="prog-top"><span id="progLabel">准备中…</span><span id="progPct">0%</span></div>
+          <div class="prog-bar"><div id="progFill" class="prog-fill"></div></div>
+          <div class="prog-foot"><span id="progStage">等待提交</span><span id="progEta"></span></div>
+        </div>
+        <div id="result" class="result"><div class="empty">点「出图」后在此显示</div></div>
+        <div id="history" class="history" title="最近出图，点击回看，双击用该参数重出"></div>
+        <div class="pv-foot">
+          <button class="mini" id="btnGallery" title="打开图库">图库</button>
+          <button class="mini" id="btnHistory" title="展开/收起最近出图缩略图" style="opacity:.45">历史 ▾</button>
+          <button class="mini" id="btnFolder" title="打开输出目录">输出目录</button>
+          <span class="foot-spacer"></span>
+          <label class="foot-lab" title="一次连续出几张">张数</label>
+          <select id="batchCount" class="mini-sel">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+            <option value="5">5</option><option value="6">6</option><option value="8">8</option>
+          </select>
+          <label class="foot-lab" title="种子决定画面细节。锁定后可复现同一张图">种子</label>
+          <input id="seedInput" class="seed-inp" placeholder="随机" title="留空＝每次随机；填数字＝固定复现" />
+          <button class="mini" id="btnSeedLock" title="锁定当前种子，之后每次出图都用它">🔓</button>
+        </div>
+      </div>
+      <div class="pv-block" id="pvPos">
+        <div class="pv-head foldable"><span class="pv-ttl">正向 PROMPT</span><span class="pv-tools"><button class="mini" id="btnCopyPos" title="复制正向提示词">复制</button><span class="fold-ar">▾</span></span></div>
+        <textarea id="posText" spellcheck="false"></textarea>
+      </div>
+      <div class="pv-block" id="pvNeg">
+        <div class="pv-head foldable"><span class="pv-ttl">负向 PROMPT</span><span class="pv-tools"><button class="mini" id="btnCopyNeg" title="复制负向提示词">复制</button><span class="fold-ar">▾</span></span></div>
+        <textarea id="negText" spellcheck="false"></textarea>
+      </div>
+      <div class="pv-block" id="pvParams">
+        <div class="pv-head foldable"><span class="pv-ttl">采样参数</span><span class="pv-tools"><span class="fold-ar">▾</span></span></div>
+        <div id="params" class="params"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer id="statusbar"><span id="statusText">就绪</span></footer>
+  <div id="tip" class="tip hidden"></div>
+
+  <!-- 图片放大灯箱 -->
+  <div id="lightbox" class="lightbox hidden">
+    <img id="lightboxImg" alt="" />
+    <div class="lb-bar">点击背景或按 Esc 关闭 · 滚轮缩放 · 放大后拖动平移</div>
+  </div>
+
+  <!-- 随机弹层 -->
+  <div id="modalRandom" class="modal hidden">
+    <div class="modal-box">
+      <h3>随机生成</h3>
+      <div class="radios">
+        <label><input type="radio" name="rscope" value="all" checked /> 全部随机（8 个模块）</label>
+        <label><input type="radio" name="rscope" value="module" /> 当前模块 <em id="rscopeName"></em></label>
+        <label><input type="radio" name="rscope" value="value" /> 当前值微调（在现值附近抖动）</label>
+      </div>
+      <div class="row"><span>强度</span><input type="range" id="rIntensity" min="0" max="2" step="1" value="1" />
+        <span id="rIntensityTxt">标准 ±30%</span></div>
+      <p class="hint">被锁定的字段永远不动。范围选「当前模块」时只动当前页签。</p>
+      <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn primary" id="rGo">开始随机</button></div>
+    </div>
+  </div>
+
+  <!-- 姿势弹层 -->
+  <div id="modalPose" class="modal hidden">
+    <div class="modal-box wide">
+      <h3>姿势库 <span class="sub">SFW 单人 / 双人 · NSFW 性爱 / 侍奉</span></h3>
+      <div class="pose-tabs" id="poseTabs"></div>
+      <input id="poseSearch" placeholder="搜索姿势中文名 / tag…" />
+      <div id="poseList" class="pose-grid"></div>
+      <div class="modal-foot"><button class="btn" data-close>关闭</button></div>
+    </div>
+  </div>
+
+  <!-- 图库弹层 -->
+  <div id="modalGallery" class="modal hidden">
+    <div class="modal-box wide">
+      <h3>图库 <span class="sub">点缩略图回填当时的全套参数</span></h3>
+      <div id="galleryList" class="gallery-grid"></div>
+      <div class="modal-foot"><button class="btn" data-close>关闭</button></div>
+    </div>
+  </div>
+
+  
+<!-- 通用引导弹框（训练向导等） -->
+<div id="modalGuide" class="modal hidden">
+  <div class="modal-box guide-box">
+    <div class="guide-h" id="guideTitle">提示</div>
+    <div class="guide-body" id="guideBody"></div>
+    <div class="guide-foot">
+      <button class="btn" id="guideCancel">取消</button>
+      <button class="btn primary" id="guideOk">继续</button>
+    </div>
+  </div>
+</div>
+<div id="modalPicker" class="modal hidden">
+    <div class="modal-box wide pick-box">
+      <h3 id="pickTitle">选择<em id="pickSub" class="sub"></em></h3>
+      <input id="pickSearch" placeholder="搜索中文名或 tag…" />
+      <div id="pickList" class="pick-grid"></div>
+      <div class="modal-foot">
+        <span id="pickHint" class="pick-hint"></span>
+        <button class="btn" id="pickClear">清空</button>
+        <button class="btn primary" id="pickDone">完成</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

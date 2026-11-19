@@ -300,8 +300,10 @@ function killTree(pid) {
 }
 
 function getPromptsDirForLog() {
-    if (app.isPackaged) return path.join(process.resourcesPath, 'prompts');
-    return path.join(__dirname, 'prompts');
+    // 2026-11 打包清单更新：packaged 后用 userData（安装目录不可写），仅存 comfyui.pid 诊断文件
+    const dir = app.isPackaged ? path.join(app.getPath('userData'), 'prompts') : path.join(__dirname, 'prompts');
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    return dir;
 }
 
 module.exports = {

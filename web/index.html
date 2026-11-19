@@ -11,6 +11,15 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/novel.css">
+    <link rel="stylesheet" href="css/resource-station.css">
+    <link rel="stylesheet" href="css/dag.css">  <!-- Sprint 4: DAG 可视化 -->
+    <link rel="stylesheet" href="css/block-edit.css">  <!-- Sprint 6.3: 段落级 Block 编辑器 -->
+    <link rel="stylesheet" href="css/skill-config.css">  <!-- Sprint 6.4: Skill 开关面板 -->
+    <link rel="stylesheet" href="css/arcs.css">  <!-- Sprint 7.1: 卷层级大纲 -->
+    <link rel="stylesheet" href="css/foreshadows.css">  <!-- Sprint 7.2: 伏笔系统 -->
+    <link rel="stylesheet" href="css/memory.css">  <!-- Sprint 7.3: 叙事记忆 -->
+    <link rel="stylesheet" href="css/relations.css">  <!-- Sprint 8.3: 关系图谱 -->
+    <link rel="stylesheet" href="css/engineering-flow.css">
 </head>
 <body>
     <header>
@@ -32,6 +41,9 @@
                 <button id="navNovel" class="main-nav-item" type="button" data-view="novel" aria-pressed="false" title="AI 小说创作（大纲 / 章节 / 多本隔离）">
                     <i class="fa-solid fa-book" aria-hidden="true"></i>
                     <span>AI 小说</span>
+                </button>
+                <button id="navResourceStation" class="main-nav-item" type="button" data-view="resourceStation" aria-pressed="false" title="视频资源管理与播放">
+                    <i class="fa-solid fa-film" aria-hidden="true"></i><span>资源站</span>
                 </button>
                 <button id="navSettings" class="main-nav-item" type="button" data-view="settings" aria-pressed="false" title="资源管理 / 提示词管理 / LORA 库 / ComfyUI / LLM">
                     <i class="fa-solid fa-gear" aria-hidden="true"></i>
@@ -302,14 +314,42 @@
     <!-- 三栏 AI 创作工作台：输入 / 当前输出 / 参数 -->
     <div id="workbench" class="workbench dwp-shell" role="dialog" aria-modal="false" hidden>
         <div class="dwp-topbar">
-            <label class="dwp-tool-label" for="dwpToolSelect">当前工具</label>
-            <select id="dwpToolSelect" class="dwp-tool-select" aria-label="选择 AI 工具">
+            <label class="dwp-tool-label" for="dwpToolSelect" hidden>当前工具</label>
+            <select id="dwpToolSelect" class="dwp-tool-select" aria-label="选择 AI 工具" hidden>
                 <option value="">加载工具中…</option>
             </select>
-            <button id="dwpBtnHistory" class="btn btn-sm" type="button"><i class="fa-solid fa-clock-rotate-left"></i> 查看历史</button>
+            <!-- 2026-11 左上视图 Tab：工具集 / 工程编排 -->
+            <div class="dwp-view-tabs" role="tablist" aria-label="工作台视图">
+                <button id="dwpTabTools" class="dwp-view-tab active" type="button" role="tab" aria-selected="true" data-view="tools"><i class="fa-solid fa-toolbox"></i> 工具集</button>
+                <button id="dwpTabFlow" class="dwp-view-tab" type="button" role="tab" aria-selected="false" data-view="flow"><i class="fa-solid fa-diagram-project"></i> 工程编排</button>
+            </div>
+            <div class="dwp-topbar-actions">
+                <!-- 工具集模式：导入 / 历史 -->
+                <div class="dwp-actions-tools">
+                    <button id="dwpBtnWorkflowManager" class="btn btn-sm" type="button" title="管理工作流"><i class="fa-solid fa-screwdriver-wrench"></i> 工作流管理</button>
+                    <button id="dwpBtnImportWorkflow" class="btn btn-sm" type="button" title="导入 ComfyUI 工作流"><i class="fa-solid fa-file-import"></i> 导入工作流</button>
+                    <button id="dwpBtnHistory" class="btn btn-sm" type="button"><i class="fa-solid fa-clock-rotate-left"></i> 查看历史</button>
+                </div>
+                <!-- 工程编排模式：原编排页 toolbar 的按钮与工程名上移到这里 -->
+                <div class="dwp-actions-flow" hidden>
+                    <input id="ef-name" aria-label="工程名称" maxlength="80" value="我的工程" title="工程名称">
+                    <button data-act="save" type="button" title="保存工程"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+                    <button data-act="export" type="button" title="导出工程 JSON"><i class="fa-solid fa-file-export"></i> 导出</button>
+                    <button data-act="import" type="button" title="导入工程 JSON"><i class="fa-solid fa-file-import"></i> 导入</button>
+                    <button data-act="new" type="button" title="新建工程"><i class="fa-solid fa-file-circle-plus"></i> 新建</button>
+                    <button data-act="validate" type="button" title="检查连线"><i class="fa-solid fa-circle-check"></i> 检查连线</button>
+                    <button data-act="run" class="ef-primary" type="button"><i class="fa-solid fa-play"></i> 运行工程</button>
+                    <button data-act="stop" type="button" hidden><i class="fa-solid fa-stop"></i> 停止</button>
+                </div>
+            </div>
         </div>
 
         <div class="dwp-canvas">
+            <!-- 2026-11：左侧竖排工具 rail（方案 B）——所有工具一眼看全，单击切换 -->
+            <aside class="dwp-tool-rail" id="dwpToolRail" aria-label="AI 工具列表">
+                <div class="dwp-tool-rail-head"><i class="fa-solid fa-toolbox"></i><span>工具</span><span id="dwpToolRailCount" class="dwp-tool-rail-count"></span></div>
+                <div class="dwp-tool-rail-list" id="dwpToolRailList"></div>
+            </aside>
             <section class="dwp-column dwp-input-column" aria-labelledby="dwpInputTitle">
                 <div class="dwp-column-head">
                     <span class="dwp-step">1</span>
@@ -323,7 +363,7 @@
                 </div>
                 <div class="dwp-column-body">
                     <div id="dwpFormPrimary" class="dwp-form-primary">
-                        <div class="dwp-form-empty"><i class="fa-solid fa-keyboard"></i><span>请先在顶部选择工具</span></div>
+                        <div class="dwp-form-empty"><i class="fa-solid fa-keyboard"></i><span>请先在左侧选择工具</span></div>
                     </div>
                 </div>
             </section>
@@ -366,10 +406,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- 中栏底部：尺寸控件（仅当工具有 width + height 字段时填充） -->
-                <div id="dwpFormSize" class="dwp-form-size" hidden>
-                    <div class="dwp-form-size-body"></div>
-                </div>
             </section>
 
             <section class="dwp-column dwp-params-column" aria-labelledby="dwpParamsTitle">
@@ -377,8 +413,12 @@
                     <span class="dwp-step">3</span>
                     <div><h2 id="dwpParamsTitle">详细参数</h2><p id="dwpToolDescription">选择工具后配置工作流</p></div>
                 </div>
+                <!-- 2026-11：尺寸控件（width + height）从输出栏底部移到详细参数栏顶部 -->
+                <div id="dwpFormSize" class="dwp-form-size" hidden>
+                    <div class="dwp-form-size-body"></div>
+                </div>
                 <div id="dwpFormParams" class="dwp-form-params">
-                    <div class="dwp-form-empty"><i class="fa-solid fa-sliders"></i><span>请先在顶部选择工具</span></div>
+                    <div class="dwp-form-empty"><i class="fa-solid fa-sliders"></i><span>请先在左侧选择工具</span></div>
                 </div>
                 <div class="dwp-generate-bar">
                     <span id="dwpRunMeta"></span>
@@ -389,7 +429,59 @@
                 </div>
             </section>
         </div>
+
+        <!-- 2026-11 工作流管理页（两栏：左工作流列表 / 右节点信息与默认值） -->
+        <div id="wfManagePage" class="wfm-page" hidden>
+            <aside class="dwp-tool-rail wfm-rail" id="wfmRail">
+                <div class="dwp-tool-rail-head"><i class="fa-solid fa-diagram-project"></i><span>工作流</span><span id="wfmCount" class="dwp-tool-rail-count"></span></div>
+                <div class="dwp-tool-rail-list" id="wfmList"></div>
+            </aside>
+            <section class="wfm-detail">
+                <header class="wfm-detail-head">
+                    <div><h2 id="wfmTitle">选择一个工作流</h2><p id="wfmSubtitle">左侧点击工作流，查看其全部节点与默认值</p></div>
+                    <button id="wfmBack" class="btn btn-sm" type="button"><i class="fa-solid fa-arrow-left"></i> 返回工具集</button>
+                </header>
+                <div class="wfm-detail-body" id="wfmBody">
+                    <div class="dwp-form-empty"><i class="fa-solid fa-diagram-project"></i><span>请从左侧选择一个工作流</span></div>
+                </div>
+            </section>
+        </div>
+
         <div id="dwpPromptGenHost" class="dwp-prompt-host" hidden></div>
+    </div>
+
+    <!-- 2026-11 图形化导入工作流向导 -->
+    <div id="wfImportModal" class="media-preview-overlay" style="z-index:2200; opacity:1; visibility:visible; display:none; background:rgba(0,0,0,0.6);">
+        <div style="background:#fff; color:#1f2937; border-radius:12px; padding:22px 26px; max-width:720px; width:92%; max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.35);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                <div style="font-size:17px; font-weight:650;"><i class="fa-solid fa-file-import" style="color:#6366f1;"></i> 导入 ComfyUI 工作流</div>
+                <button id="wfImpClose" class="btn btn-sm" type="button" title="关闭"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="wfImpStep1" style="text-align:center; padding:28px 10px;">
+                <p style="font-size:13px; color:#6b7280; line-height:1.7;">选择从 ComfyUI 页面「<b>Save (API Format)</b>」导出的工作流 JSON<br>（普通 Save 的 UI 格式不支持）</p>
+                <button id="wfImpPick" class="btn btn-sm btn-primary" type="button" style="background:#4f46e5; color:#fff;"><i class="fa-solid fa-folder-open"></i> 选择工作流 JSON</button>
+                <div id="wfImpPickMsg" style="font-size:12px; color:#dc2626; margin-top:12px;"></div>
+            </div>
+            <div id="wfImpStep2" hidden>
+                <div style="display:grid; grid-template-columns:110px 1fr; gap:8px 12px; align-items:center; margin-bottom:12px;">
+                    <label style="font-size:12px; color:#6b7280;">工具 ID</label>
+                    <input id="wfImpId" type="text" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:6px; font-family:monospace; font-size:13px;">
+                    <label style="font-size:12px; color:#6b7280;">显示名称</label>
+                    <input id="wfImpName" type="text" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px;">
+                    <label style="font-size:12px; color:#6b7280;">模式</label>
+                    <select id="wfImpMode" style="padding:7px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px;"><option value="sfw">SFW</option><option value="nsfw">NSFW</option></select>
+                </div>
+                <div id="wfImpSummary" style="font-size:12px; color:#6b7280; background:#f8fafc; border-radius:6px; padding:8px 10px; margin-bottom:12px; line-height:1.6;"></div>
+                <div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">可编辑字段（取消勾选则不暴露）</div>
+                <div id="wfImpFields" style="max-height:240px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; padding:8px;"></div>
+                <div id="wfImpOutputs" style="font-size:11px; color:#6b7280; margin-top:10px;"></div>
+                <div id="wfImpWarn" style="font-size:11px; color:#b45309; margin-top:8px; line-height:1.6;"></div>
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:14px; border-top:1px solid #e5e7eb;">
+                    <button id="wfImpBack" class="btn btn-sm" type="button">返回</button>
+                    <button id="wfImpSave" class="btn btn-sm btn-primary" type="button" style="background:#4f46e5; color:#fff;"><i class="fa-solid fa-check"></i> 保存并启用</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ========== AI 小说模块（独立模块，body 级容器，hidden 切换）========== -->
@@ -423,6 +515,14 @@
                     <p>左侧列表选择已有小说，或点击「+ 新建小说」开始</p>
                 </div>
                 <div id="novelDetail" class="novel-detail" hidden>
+                    <!-- Sprint 10: 简化模式 toggle + wizard 容器 -->
+                    <div class="novel-detail-header">
+                        <button id="novelModeToggle" class="novel-mode-toggle" type="button" title="切换到高级模式">
+                            <i class="fa-solid fa-gear"></i> <span>高级</span>
+                        </button>
+                    </div>
+                    <div id="novelWizardView" class="novel-wizard" hidden></div>
+                    <div id="novelExpertView" class="novel-expert">
                     <div class="novel-tabs" role="tablist">
                         <!-- Sprint W: 工作面板（实时时间线，放在工作台之前 — 看 AI 做事的主舞台） -->
                         <button class="novel-tab" type="button" data-tab="workflow" role="tab" aria-selected="false">
@@ -441,6 +541,14 @@
                         <button class="novel-tab" type="button" data-tab="chapters" role="tab" aria-selected="false">
                             <i class="fa-solid fa-list-ol"></i> 章节
                         </button>
+                        <!-- Sprint 7.2: 伏笔系统 -->
+                        <button class="novel-tab" type="button" data-tab="foreshadows" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-seedling"></i> 伏笔
+                        </button>
+                        <!-- Sprint 7.3: 叙事记忆 -->
+                        <button class="novel-tab" type="button" data-tab="memory" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-brain"></i> 记忆
+                        </button>
                         <button class="novel-tab" type="button" data-tab="log" role="tab" aria-selected="false">
                             <i class="fa-solid fa-receipt"></i> 日志
                         </button>
@@ -452,6 +560,10 @@
                         <button class="novel-tab" type="button" data-tab="outline" role="tab" aria-selected="false" hidden id="novelTabOutlineBtn">
                             <i class="fa-solid fa-diagram-project"></i> 大纲编辑
                         </button>
+                        <!-- Sprint 8.3: 关系图谱 -->
+                        <button class="novel-tab" type="button" data-tab="relations" role="tab" aria-selected="false">
+                            <i class="fa-solid fa-people-arrows"></i> 关系图谱
+                        </button>
                         <div class="novel-tabs-spacer"></div>
                         <button id="novelBtnDelete" class="novel-danger-btn" type="button" title="删除整本小说">
                             <i class="fa-solid fa-trash"></i>
@@ -462,10 +574,14 @@
                     <div id="novelTabArtifacts" class="novel-tab-pane"></div>
                     <div id="novelTabKnowledge" class="novel-tab-pane"></div>
                     <div id="novelTabChapters" class="novel-tab-pane"></div>
+                    <div id="novelTabForeshadows" class="novel-tab-pane"></div>
+                    <div id="novelTabMemory" class="novel-tab-pane"></div>
                     <div id="novelTabLog" class="novel-tab-pane"></div>
                     <div id="novelTabScheduler" class="novel-tab-pane"></div>
                     <div id="novelTabOutline" class="novel-tab-pane"></div>
+                    <div id="novelTabRelations" class="novel-tab-pane"></div>
                 </div>
+                </div><!-- /novelExpertView -->
             </section>
         </div>
     </div>
@@ -646,16 +762,38 @@
     </div>
 
     <script src="js/script.js"></script>
+    <script src="js/resource-actors.js"></script>
+    <script src="js/resource-station.js"></script>
     <script src="js/util/path.js"></script> <!-- 共享工具：escapeHtml/escapeAttr/toFileUri -->
+<script src="js/resource-matcher.js"></script> <!-- 独立匹配助手 -->
     <script src="js/config-ui.js"></script> <!-- D-25 配置管理 UI -->
     <script src="js/settings.js"></script> <!-- 统一设置页（resources / prompts / comfyui / llm） -->
-    <script src="js/prompt-gen.js"></script> <!-- D-27 提示词生成 -->
+    <!-- D-PROMPTV2: 原 prompt-gen.js 已替换为 ComfyPromptStudio 嵌入版（工作台内 iframe），bridge 提供兼容全局 -->
+    <script src="js/bridge-for-cps.js"></script>
     <script src="js/ai-tools.js"></script> <!-- AI 工具（声明式 ComfyUI workflow 表单） -->
     <script src="js/loras.js"></script> <!-- Lora 库（管理 / 插入工作流）-->
     <script src="js/workbench-loras.js"></script> <!-- D-WORKBENCH-LORA-MODULE：工作台 LORA 独立模块 -->
     <script src="js/workbench.js"></script> <!-- D-LAYOUT：工作台（4 菜单 + 资产生成历史）-->
+    <script src="js/workflow-manager.js"></script> <!-- 2026-11 工作流管理页 -->
     <script src="js/task-queue.js"></script> <!-- D-QUEUE：任务队列 drawer / 角标 / 拖拽重排 -->
-    <script src="js/prompt-library.js"></script> <!-- 提示词库（自定义分类 + 提示词 CRUD）-->
+    <!-- 配方详情：用 CPS 引擎把配方 patch 编译成正向/负向/采样参数展示 -->
+    <script src="../cps-embed/ui/data-bundle.js"></script>
+    <script src="../cps-embed/core/engine.js"></script>
+    <script src="js/recipes-data.js"></script> <!-- 配方数据：提示词配方库只读展示用 -->
+    <script src="js/prompt-library.js"></script> <!-- 提示词配方库（只读展示）-->
     <script src="js/novel.js"></script> <!-- AI 小说模块（独立 UI）-->
+<script src="js/novel-dag.js"></script> <!-- Sprint 4: DAG 可视化渲染器 -->
+<script src="js/block-editor.js"></script> <!-- Sprint 6.3: 段落级 Block 编辑器 -->
+<script src="js/skill-config.js"></script> <!-- Sprint 6.4: Skill 配置面板 -->
+<script src="js/arcs.js"></script> <!-- Sprint 7.1: 卷层级大纲 -->
+<script src="js/foreshadows.js"></script> <!-- Sprint 7.2: 伏笔系统 -->
+<script src="js/memory.js"></script> <!-- Sprint 7.3: 叙事记忆 -->
+<script src="js/relations.js"></script> <!-- Sprint 8.3: 关系图谱 -->
+<script src="js/chat-panel.js"></script> <!-- Sprint 9.1: AI 助理浮动聊天面板 -->
+<script src="js/i18n.js"></script> <!-- Sprint 9.2: 极简 i18n -->
+<link rel="stylesheet" href="css/chat-panel.css">  <!-- Sprint 9.1: AI 助理聊天面板样式 -->
+<link rel="stylesheet" href="css/resource-matcher.css">  <!-- 独立匹配助手 -->
+    <script src="js/flow-model.js"></script>
+    <script src="js/engineering-flow.js"></script>
 </body>
 </html>

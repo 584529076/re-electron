@@ -1,0 +1,156 @@
+/* web/css/arcs.css — Sprint 7.1: 卷层级大纲面板样式 */
+
+.arcs-loading,
+.arcs-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted, #6b7280);
+}
+
+.arcs-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.arcs-hint {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(80, 130, 220, 0.07);
+    border: 1px solid rgba(80, 130, 220, 0.2);
+    border-radius: 6px;
+    color: var(--text-muted, #b0b4c0);
+    font-size: 12px;
+}
+.arcs-hint i { color: var(--primary, #4f8cff); margin-top: 1px; }
+
+.arcs-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.arcs-status {
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+}
+.arcs-status:empty { display: none; }
+
+.arcs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.arcs-item {
+    border: 1px solid var(--border, #2a2a3a);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+    padding: 10px 12px;
+    transition: background 0.12s ease;
+}
+.arcs-item:hover { background: rgba(120, 160, 220, 0.06); }
+
+.arcs-item-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.arcs-item-idx {
+    font-weight: 600;
+    color: var(--primary, #4f8cff);
+    min-width: 28px;
+}
+
+.arcs-item-title {
+    flex: 1;
+    min-width: 200px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text, #e5e7eb);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+.arcs-item-title:hover,
+.arcs-item-title:focus {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(120, 160, 220, 0.3);
+    outline: none;
+}
+
+.arcs-item-range {
+    font-size: 11px;
+    color: var(--text-muted, #b0b4c0);
+    background: rgba(120,120,120,0.15);
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.arcs-item-act {
+    background: transparent;
+    border: 1px solid rgba(120,120,120,0.3);
+    color: var(--text-muted, #b0b4c0);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.arcs-item-act:hover {
+    background: rgba(80, 130, 220, 0.15);
+    color: var(--primary, #4f8cff);
+    border-color: rgba(80, 130, 220, 0.4);
+}
+.arcs-item-act-danger:hover {
+    background: rgba(220, 80, 80, 0.2);
+    color: #ff7b7b;
+    border-color: rgba(220, 80, 80, 0.4);
+}
+
+.arcs-item-body {
+    margin-top: 8px;
+}
+
+.arcs-item-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted, #6b7280);
+    margin-bottom: 4px;
+}
+
+.arcs-item-goal {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text, #e5e7eb);
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+.arcs-item-goal:hover,
+.arcs-item-goal:focus {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(120, 160, 220, 0.3);
+    outline: none;
+}
+
+.arcs-item-summary {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    line-height: 1.5;
+}

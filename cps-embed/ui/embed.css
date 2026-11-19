@@ -1,0 +1,311 @@
+@charset "UTF-8";
+/* 嵌入模式：只做提示词，隐藏 ComfyUI/生图/图库/训练/窗口控制等无关外壳。
+ * 保留：左上角返回按钮、token/缩放/随机/锁定/重置/存档/采用、左侧 tab、中间字段区、
+ * 右侧正向/负向/采样参数预览、以及选择/姿势/配方/存档等弹层。 */
+/* 左上角「关闭提示词生成器」页面按钮（普通流内元素，非浮动） */
+html.cps-embed #cpsBackBtn{
+  -webkit-app-region:no-drag;
+  flex-shrink:0;
+  margin-right:2px;
+  border-color:var(--line2);
+  color:var(--txt);
+}
+html.cps-embed #cpsBackBtn:hover{background:var(--panel2);border-color:var(--accent);color:var(--accent)}
+
+/* 保留：采用提示词按钮在右上角不会被覆盖（宿主浮动关闭按钮已移除） */
+html.cps-embed #btnGen{margin-left:auto}
+
+/* 「锁定」按钮选中态：蓝底 + 白字 + 白图标 */
+html.cps-embed #btnLock.on{
+  background:var(--accent) !important;
+  border-color:var(--accent) !important;
+  color:#fff !important;
+  font-weight:600;
+}
+html.cps-embed #btnLock.on:hover{background:#4338ca !important;border-color:#4338ca !important;color:#fff !important}
+
+html.cps-embed .win-ctl,
+html.cps-embed #btnSettings,
+html.cps-embed #modalSettings,
+html.cps-embed #modalModel,
+html.cps-embed #modalGallery,
+html.cps-embed #modalGuide,
+html.cps-embed #comfyStatus,
+html.cps-embed #btnComfyUp,
+html.cps-embed #btnComfyDown,
+html.cps-embed #progWrap,
+html.cps-embed #result,
+html.cps-embed #history,
+html.cps-embed #btnHistory,
+html.cps-embed #btnGallery,
+html.cps-embed #btnFolder,
+html.cps-embed #batchCount,
+html.cps-embed #seedInput,
+html.cps-embed #btnSeedLock,
+html.cps-embed .foot-lab,
+html.cps-embed #onboard,
+html.cps-embed #btnCard,
+html.cps-embed #modalCard { display: none !important; }
+
+/* ===== 右侧预览区：嵌入模式只保留「已生成提示词」三块 ===== */
+html.cps-embed #preview > .pv-block.grow { display: none !important; }
+html.cps-embed body.hide-prompts #pvPos,
+html.cps-embed body.hide-prompts #pvNeg,
+html.cps-embed body.hide-prompts #pvParams { display: flex !important; }
+html.cps-embed .pv-block.collapsed #posText,
+html.cps-embed .pv-block.collapsed #negText,
+html.cps-embed .pv-block.collapsed .params { display: block !important; }
+html.cps-embed #pvPos,
+html.cps-embed #pvNeg { flex: 1 1 0 !important; }
+html.cps-embed #pvParams { flex: 0 0 auto !important; }
+html.cps-embed #posText,
+html.cps-embed #negText { height: 100% !important; min-height: 70px; flex: 1 1 auto; }
+
+/* ==================================================================
+   浅色主题覆盖：与主界面白色风格一致（不改动原 style.css / 引擎）
+   ================================================================== */
+html.cps-embed {
+  --bg:#f5f7fb; --bg2:#ffffff; --panel:#ffffff; --panel2:#f8fafc; --panel3:#eef2f7;
+  --line:#e6eaf0; --line2:#d6dce6;
+  --txt:#1f2937; --txt2:#4b5563; --txt3:#9ca3af;
+  --accent:#4f46e5; --accent-soft:#eef2ff; --accent2:#4338ca;
+  --ok:#059669; --warn:#d97706; --err:#dc2626;
+}
+html.cps-embed, html.cps-embed body { background:#f5f7fb !important; color:#1f2937 !important; overflow:auto; }
+html.cps-embed #app { background:#f5f7fb !important; }
+html.cps-embed #topbar { background:#ffffff !important; border-color:#e6eaf0 !important; }
+html.cps-embed #tabs { background:#f8fafc !important; border-color:#e6eaf0 !important; }
+html.cps-embed #tabs .tab { color:#4b5563; }
+html.cps-embed #tabs .tab:hover { background:#eef2f7; color:#1f2937; }
+html.cps-embed #tabs .tab.on { background:#eef2ff; color:#4338ca; border-color:#c7d2fe; }
+html.cps-embed #tabs::before { color:#9ca3af; }
+html.cps-embed main { background:#f5f7fb !important; }
+html.cps-embed .panel-head { border-color:#e6eaf0; }
+html.cps-embed .panel-head h2 { color:#1f2937; }
+html.cps-embed #preview { background:#f8fafc !important; }
+
+/* 顶栏控件 */
+html.cps-embed .token-wrap { background:#fff; border-color:#e6eaf0; color:#4b5563; }
+html.cps-embed .token-wrap .lbl { color:#9ca3af; }
+html.cps-embed .token-wrap .num { color:#1f2937; }
+html.cps-embed .token-bar { background:#e5e7eb; }
+html.cps-embed .zoom-ctl button { background:#fff; border-color:#e6eaf0; color:#4b5563; }
+html.cps-embed .btn { background:#fff; border-color:#e6eaf0; color:#4b5563; }
+html.cps-embed .btn:hover { background:#f8fafc; border-color:#c7d2fe; color:#1f2937; }
+html.cps-embed .btn.primary { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+html.cps-embed .btn.primary:hover { background:#4338ca; border-color:#4338ca; }
+html.cps-embed .mini { background:#fff; border-color:#e6eaf0; color:#6b7280; }
+html.cps-embed .mini:hover { color:#1f2937; border-color:#c7d2fe; background:#f8fafc; }
+
+/* 搜索框 */
+html.cps-embed #search { background:#fff; border-color:#e6eaf0; color:#1f2937; }
+html.cps-embed #search::placeholder { color:#9ca3af; }
+html.cps-embed #search:focus { border-color:#818cf8; background:#fff; }
+
+/* 字段卡 */
+html.cps-embed .field { background:#fff; border-color:#e6eaf0; }
+html.cps-embed .field:hover { border-color:#c7d2fe; background:#fafbff; }
+html.cps-embed .field.disabled { filter:grayscale(.7); }
+html.cps-embed .field.locked { border-color:#fcd34d; }
+html.cps-embed .field-head .name { color:#1f2937; }
+html.cps-embed .field-head .val { color:#4f46e5; background:#eef2ff; border-color:#dbe3f0; }
+html.cps-embed .field.off .val { color:#9ca3af; background:transparent; border-color:#e6eaf0; }
+html.cps-embed .field-head .lockbtn { color:#9ca3af; }
+html.cps-embed .field.locked .name::after { color:#d97706; }
+html.cps-embed .qi { border-color:#d1d5db; color:#6b7280; }
+html.cps-embed .qi:hover { border-color:#818cf8; color:#4f46e5; background:#eef2ff; }
+
+/* 滑条 */
+html.cps-embed input[type=range],
+html.cps-embed .field.f-slider input[type=range] { background:linear-gradient(to right,#4f46e5 0,#4f46e5 var(--p,0%),#e5e7eb var(--p,0%),#e5e7eb 100%); }
+html.cps-embed input[type=range].danger { background:linear-gradient(to right,#d97706 0,#d97706 var(--p,0%),#e5e7eb var(--p,0%),#e5e7eb 100%); }
+html.cps-embed input[type=range]::-webkit-slider-thumb { background:#fff; border-color:#cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,.18); }
+html.cps-embed input[type=range]::-webkit-slider-thumb:hover { background:#fff; box-shadow:0 0 0 1px #4f46e5,0 0 6px rgba(79,70,229,.35); }
+html.cps-embed input[type=range]:active::-webkit-slider-thumb { background:#4f46e5; }
+html.cps-embed input[type=range].danger::-webkit-slider-thumb { background:#d97706; }
+html.cps-embed .slider-row .end { color:#9ca3af; }
+html.cps-embed .seg span { border-top-color:#e5e7eb; }
+html.cps-embed .seg span:hover { border-top-color:#cbd5e1; }
+html.cps-embed .seg span.hot { border-top-color:#fcd34d; }
+html.cps-embed .seg span.cur { border-top-color:#4f46e5; box-shadow:0 -1px 6px rgba(79,70,229,.35); }
+html.cps-embed .field.f-slider { background:#fff; border-color:#e6eaf0; }
+html.cps-embed .field.f-slider:hover { background:#fafbff; border-color:#c7d2fe; }
+html.cps-embed .field.f-slider.locked { background:#fffbeb; border-color:#fcd34d; }
+
+/* 选项 chip / 开关 / 收藏 */
+html.cps-embed .chip { background:#f8fafc; border-color:#e6eaf0; color:#475569; }
+html.cps-embed .chip:hover { border-color:#c7d2fe; color:#1f2937; background:#eef2ff; }
+html.cps-embed .chip.on { background:#4f46e5; border-color:#4f46e5; color:#fff; box-shadow:0 1px 4px rgba(79,70,229,.25); }
+html.cps-embed .sw-power { color:#9ca3af; }
+html.cps-embed .sw-power:hover { color:#4f46e5; }
+html.cps-embed .sw-power.off { color:#cbd5e1; }
+
+/* 分组标题 */
+html.cps-embed .field-group-h { color:#374151; }
+html.cps-embed .field-group-h .fg-name { color:#1f2937; }
+html.cps-embed .field-group-h .fg-note { color:#9ca3af; }
+html.cps-embed .field-group-h .fg-n { color:#6b7280; border-color:#e6eaf0; }
+html.cps-embed .field-group-h .fg-caret { color:#9ca3af; }
+html.cps-embed .field-group-h:hover { background:#eef2ff; }
+html.cps-embed .field-group-h.col .fg-name { color:#6b7280; }
+
+/* 右侧预览块（正向/负向/参数） */
+html.cps-embed .pv-block { background:#fff; border-color:#e6eaf0; }
+html.cps-embed .pv-head,
+html.cps-embed .pv-block .pv-head.foldable { background:#f8fafc; border-color:#e6eaf0; color:#6b7280; }
+html.cps-embed .pv-ttl { color:#374151; }
+html.cps-embed .fold-ar { color:#9ca3af; }
+html.cps-embed #posText, html.cps-embed #negText { color:#1f2937; }
+html.cps-embed #negText { color:#6b7280; }
+html.cps-embed #posText:focus, html.cps-embed #negText:focus { background:#fff; }
+html.cps-embed .params { color:#6b7280; }
+html.cps-embed .params b { color:#1f2937; }
+
+/* 弹窗（选择/姿势/配方/存档） */
+html.cps-embed .modal { background:rgba(15,23,42,.35); }
+html.cps-embed .modal-box { background:#fff; border-color:#e6eaf0; box-shadow:0 20px 50px rgba(15,23,42,.18); }
+html.cps-embed .modal-box h3 { color:#1f2937; }
+html.cps-embed .modal-box h3 .sub { color:#9ca3af; }
+html.cps-embed .modal-foot { border-color:#e6eaf0; }
+html.cps-embed #pickSearch,
+html.cps-embed #poseSearch { background:#fff; border-color:#e6eaf0; color:#1f2937; }
+html.cps-embed .pick-item { background:#fff; border-color:#e6eaf0; }
+html.cps-embed .pick-item:hover { background:#f8fafc; border-color:#c7d2fe; }
+html.cps-embed .pick-item.on { background:#eef2ff; border-color:#818cf8; }
+html.cps-embed .pick-item .pi-cn { color:#1f2937; }
+html.cps-embed .pick-item.on .pi-cn { color:#4338ca; }
+html.cps-embed .pick-item .pi-v { color:#9ca3af; }
+html.cps-embed .pick-item.on .pi-v { color:#4f46e5; }
+html.cps-embed .pose-card,
+html.cps-embed .recipe-card { background:#fff; border-color:#e6eaf0; }
+html.cps-embed .pose-card:hover { background:#f8fafc; border-color:#c7d2fe; }
+html.cps-embed .pose-card.on { background:#eef2ff; border-color:#818cf8; }
+html.cps-embed .pose-card .n { color:#1f2937; }
+html.cps-embed .pose-card .tg { color:#6b7280; }
+html.cps-embed .pose-card .grp { color:#4338ca; border-color:#e6eaf0; }
+html.cps-embed .recipe-card .t { color:#1f2937; }
+html.cps-embed .recipe-card .d { color:#6b7280; }
+html.cps-embed .recipe-card .m { color:#4f46e5; }
+html.cps-embed .hint,
+html.cps-embed .pick-hint { color:#9ca3af; }
+
+/* 状态栏 / 警告条 / 提示气泡 */
+html.cps-embed #statusbar { background:#fff; border-color:#e6eaf0; color:#6b7280; }
+html.cps-embed .warnbar { background:#fffbeb; border-color:#fde68a; color:#92400e; }
+html.cps-embed .tip { background:#fff; border-color:#e6eaf0; color:#1f2937; box-shadow:0 8px 24px rgba(15,23,42,.14); }
+html.cps-embed .preset-item,
+html.cps-embed .preset-list > div { border-color:#e6eaf0; }
+
+/* 补充：高特异性规则的浅色覆盖 */
+html.cps-embed .field.f-slider .val,
+html.cps-embed .cn-param .wv { color:#4f46e5 !important; }
+html.cps-embed .field.f-slider.off .val { color:#9ca3af !important; }
+html.cps-embed .field.f-slider.off .field-head .name { color:#9ca3af !important; }
+html.cps-embed .field.f-slider input[type=range]::-webkit-slider-thumb { box-shadow:0 1px 4px rgba(0,0,0,.18) !important; }
+html.cps-embed .pv-head.foldable:hover { background:#eef2f7 !important; }
+html.cps-embed ::-webkit-scrollbar-thumb { background:#cbd5e1 !important; }
+html.cps-embed ::-webkit-scrollbar-track { background:transparent !important; }
+html.cps-embed .gear-tip,
+html.cps-embed .tip { color:#1f2937 !important; }
+
+/* ==================================================================
+   写死的浅色文字 → 深色（原 style.css 里为深色底准备的亮字，白底上看不清）
+   ================================================================== */
+/* 选中/高亮态文字：白底上改用深蓝，保证可读（不选白） */
+html.cps-embed .btn.on,
+html.cps-embed .radios em,
+html.cps-embed .tip b,
+html.cps-embed .pose-card.hard .n .hardflag,
+html.cps-embed .pose-card .grp,
+html.cps-embed .pick-item.on .pi-cn,
+html.cps-embed .mini.card-hl { color:#4338ca !important; }
+
+/* 普通文字：深色 */
+html.cps-embed .field-head .name,
+html.cps-embed .pick-item .pi-cn,
+html.cps-embed .lora-row .nm,
+html.cps-embed .mini-btn { color:#1f2937 !important; }
+html.cps-embed .chip,
+html.cps-embed .chip .tg,
+html.cps-embed .radios label,
+html.cps-embed .pose-inline .comp-lab,
+html.cps-embed .pose-card .tg,
+html.cps-embed .pick-item .pi-v,
+html.cps-embed .pick-sec,
+html.cps-embed .ts-note .ts-li,
+html.cps-embed .cn-param .lb { color:#4b5563 !important; }
+
+/* 更淡的辅助文字：中灰（比 #9ca3af 深一点，白底可读） */
+html.cps-embed .pick-sum3.dim,
+html.cps-embed .pose-cn-hint,
+html.cps-embed .set-auto-msg,
+html.cps-embed .field.f-slider.untouched .val-def { color:#6b7280 !important; }
+
+/* 蓝色强调文字（原 #cfe0ff / #d7e6ff / #9dc0ee / #bfd4ff）→ 深蓝 */
+html.cps-embed .pick-sum3,
+html.cps-embed .pick-slider .pick-range-v,
+html.cps-embed .pick-sec.pick-sec-top,
+html.cps-embed .tag-cell .tc-en,
+html.cps-embed .set-first b,
+html.cps-embed .ts-note .ts-h,
+html.cps-embed .tag-cell .tc-cn { color:#1e40af !important; }
+
+/* 难还原姿势提示条：浅底 + 深字 */
+html.cps-embed .pose-card.hard .hardnote,
+html.cps-embed .hardbanner {
+  color:#1e40af !important;
+  background:#eef2ff !important;
+  border-color:#c7d2fe !important;
+}
+html.cps-embed .pose-stat { color:#4b5563 !important; border-color:#e6eaf0 !important; }
+html.cps-embed .pose-stat b { color:#1f2937 !important; }
+html.cps-embed .pose-stat .hs { color:#b45309 !important; }
+html.cps-embed .pose-group-h { color:#374151 !important; }
+
+/* 收藏星标：白底上用深金 */
+html.cps-embed .favstar,
+html.cps-embed .pi-star { color:#b45309 !important; }
+html.cps-embed .chip.fav { border-color:#fcd34d !important; }
+html.cps-embed .pick-item.fav { outline-color:#fcd34d !important; }
+html.cps-embed .pose-card.fav { border-color:#fcd34d !important; }
+
+/* 分割线里的 rgba(255,255,255,x) 在白底不可见 → 换成浅灰 */
+html.cps-embed .pick-sec-top ~ .chips,
+html.cps-embed .pick-slider { border-color:#e6eaf0 !important; }
+html.cps-embed .pick-sec.pick-sec-top { border-top-color:#e6eaf0 !important; }
+
+/* 人物卡高亮按钮浅底深字 */
+html.cps-embed .mini.card-hl { background:#eef2ff !important; border-color:#c7d2fe !important; }
+
+/* ===== 中间字段区选项 chip：未选中深灰 / 选中蓝色 ===== */
+html.cps-embed .chips .chip,
+html.cps-embed .field .chip {
+  color:#374151 !important;                 /* 未选中：深灰，白底清晰 */
+  background:#f8fafc !important;
+  border-color:#d6dce6 !important;
+}
+html.cps-embed .chips .chip:hover,
+html.cps-embed .field .chip:hover { background:#eef2ff !important; border-color:#c7d2fe !important; color:#1f2937 !important; }
+html.cps-embed .chip .tg { color:#6b7280 !important; }
+html.cps-embed .chips .chip.on,
+html.cps-embed .field .chip.on {
+  background:#e0e7ff !important;            /* 选中：浅蓝底 */
+  border-color:#6366f1 !important;
+  color:#3730a3 !important;                 /* 蓝色文字 */
+  box-shadow:none !important;
+}
+html.cps-embed .chip.on .tg { color:#4338ca !important; }
+
+/* ===== 多选项字段摘要行（人种→亚洲/欧美、皮肤等）：未选深灰 / 已选蓝色 ===== */
+html.cps-embed .pick-row .pr-sum {
+  color:#3730a3 !important;                 /* 已选词：蓝色 */
+}
+html.cps-embed .pick-row .pr-sum.empty {
+  color:#6b7280 !important;                 /* 未选词（显示"未选择"）：深灰 */
+}
+
+/* 关键：未选词的字段卡原本整块 opacity:.55（发虚看不清），浅色主题下提高不透明度 */
+html.cps-embed .field.off { opacity:.92 !important; }
+html.cps-embed .field.pwroff { opacity:.75 !important; }
+html.cps-embed .field.off .field-head .name { color:#6b7280 !important; }
+html.cps-embed .field:not(.off) .field-head .name { color:#1f2937 !important; }

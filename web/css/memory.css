@@ -1,0 +1,123 @@
+/* web/css/memory.css — Sprint 7.3: 叙事记忆 */
+
+.mem-loading, .mem-empty {
+    text-align: center; padding: 40px 20px;
+    color: var(--text-muted, #6b7280);
+}
+
+.mem-header { margin-bottom: 16px; }
+.mem-hint {
+    display: flex; gap: 8px; align-items: center;
+    padding: 8px 12px;
+    background: rgba(80, 130, 220, 0.07);
+    border: 1px solid rgba(80, 130, 220, 0.2);
+    border-radius: 6px;
+    color: var(--text-muted, #b0b4c0);
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+.mem-hint i { color: var(--primary, #4f8cff); }
+.mem-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.mem-status {
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-muted, #b0b4c0);
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+}
+.mem-status:empty { display: none; }
+
+.mem-timeline { display: flex; flex-direction: column; gap: 12px; }
+
+.mem-chapter {
+    border: 1px solid var(--border, #2a2a3a);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.mem-chapter-head {
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border, #2a2a3a);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary, #4f8cff);
+}
+.mem-list { padding: 4px 0; }
+
+.mem-item {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.mem-item:last-child { border-bottom: 0; }
+
+.mem-item-head {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.mem-item-cat {
+    background: rgba(120,120,120,0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text-muted, #b0b4c0);
+}
+
+.mem-item-imp {
+    width: 50px;
+    background: transparent;
+    border: 1px solid var(--border, #2a2a3a);
+    color: var(--text, #e5e7eb);
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.mem-item-snippet {
+    flex: 1;
+    font-size: 11px;
+    color: var(--text-muted, #6b7280);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mem-item-act {
+    background: transparent;
+    border: 1px solid rgba(120,120,120,0.3);
+    color: var(--text-muted, #b0b4c0);
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.mem-item-act:hover {
+    background: rgba(80, 130, 220, 0.15);
+    color: var(--primary, #4f8cff);
+}
+.mem-item-act-danger:hover {
+    background: rgba(220, 80, 80, 0.2);
+    color: #ff7b7b;
+}
+
+.mem-item-content {
+    width: 100%;
+    box-sizing: border-box;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text, #e5e7eb);
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    resize: vertical;
+    font-family: inherit;
+}
+.mem-item-content:hover, .mem-item-content:focus {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(120, 160, 220, 0.3);
+    outline: none;
+}

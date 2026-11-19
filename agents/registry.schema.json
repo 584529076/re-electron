@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Registry",
+  "description": "Sprint C 全 agent 能力声明的校验 schema",
+  "type": "object",
+  "required": ["_meta"],
+  "additionalProperties": {
+    "type": "object",
+    "required": ["capabilities", "cost_per_call", "context_needs"],
+    "properties": {
+      "capabilities": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string" },
+        "description": "agent 能提供的 capability 列表。orchestrator 按 capability 匹配。"
+      },
+      "cost_per_call": {
+        "type": "object",
+        "required": ["prompt_tokens", "completion_tokens"],
+        "properties": {
+          "prompt_tokens": { "type": "number", "minimum": 0 },
+          "completion_tokens": { "type": "number", "minimum": 0 }
+        }
+      },
+      "avg_latency_ms": { "type": "number", "minimum": 0 },
+      "fallback": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "失败时 fallback 的 agent 名字列表（按顺序）"
+      },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "context_needs": {
+        "type": "array",
+        "items": { "type": "string", "pattern": "^[a-zA-Z0-9_.*-]+$" },
+        "description": "运行时需要的 shared_context key。glob 模式：仅支持末尾 *，如 'plan.*'"
+      },
+      "veto_power": {
+        "type": "boolean",
+        "description": "是否有权否决其他 agent 的决策（仅 novel-director 应为 true）"
+      },
+      "notes": { "type": "string" }
+    }
+  },
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["version", "schema_version"],
+      "properties": {
+        "version": { "type": "string" },
+        "schema_version": { "type": "string" },
+        "description": { "type": "string" },
+        "last_updated": { "type": "string", "format": "date" }
+      }
+    }
+  }
+}

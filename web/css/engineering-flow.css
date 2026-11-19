@@ -1,0 +1,42 @@
+/* 2026-11 方案 X：编排页从顶栏下方开始，顶栏 Tab 常驻 */
+#engineeringFlow { position:absolute; top:58px; left:0; right:0; bottom:0; z-index:30; display:flex; flex-direction:column; background:#f5f6fa; color:#28324a; font:13px/1.5 system-ui,sans-serif; text-align:left; }
+#engineeringFlow[hidden],#engineeringFlow [hidden] { display:none!important; }
+#engineeringFlow * { box-sizing:border-box; }
+#engineeringFlow button { cursor:pointer; font:inherit; color:inherit; border:1px solid #dce1ec; border-radius:7px; background:#fff; padding:7px 10px; }
+#engineeringFlow button:hover { background:#f3f0ff; border-color:#b5a6f1; }
+#engineeringFlow button:disabled { opacity:.5; cursor:not-allowed; }
+#engineeringFlow input,#engineeringFlow select,#engineeringFlow textarea { width:100%; padding:8px; border:1px solid #dce1ec; border-radius:6px; background:#fff; color:#28324a; font:inherit; }
+#engineeringFlow button:focus-visible,#engineeringFlow input:focus-visible,#engineeringFlow textarea:focus-visible { outline:2px solid #8764e7; outline-offset:2px; }
+/* 编排按钮已上移到顶栏 .dwp-actions-flow，页内不再需要 toolbar */
+#engineeringFlow #ef-name { display:none; }#engineeringFlow .ef-primary { background:#7253d5; color:white; border-color:#7253d5; }
+.ef-layout { display:grid; grid-template-columns:235px minmax(300px,1fr) 280px; flex:1; min-height:0; }
+.ef-library,.ef-inspector { padding:18px 14px; background:#fff; overflow:auto; }.ef-library { border-right:1px solid #e0e5ee; }.ef-inspector { border-left:1px solid #e0e5ee; }
+#engineeringFlow h3 { font-size:14px; margin:0 0 16px; }#engineeringFlow h4 { font-size:12px; color:#74819a; margin:20px 0 10px; }
+.ef-library p { font-size:11px; color:#929bad; }.ef-library #ef-library-items>button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; margin-bottom:7px; padding:10px; }.ef-library small { display:block; color:#8b95a8; font-size:10px; margin-top:3px; }.ef-node-icon { color:#795cce; font-size:19px; }
+.ef-center { display:flex; flex-direction:column; min-height:0; min-width:0; }.ef-canvas-toolbar { display:flex; align-items:center; gap:8px; padding:9px 15px; color:#8490a6; font-size:11px; background:#fafbfe; }.ef-canvas-toolbar>span:first-child { margin-right:auto; }
+.ef-viewport { flex:1; overflow:auto; position:relative; background-color:#f5f6fb; background-image:radial-gradient(#d9ddea 1px,transparent 1px); background-size:20px 20px; }.ef-board { position:relative; width:3200px; height:2400px; transform-origin:0 0; }
+.ef-wires { position:absolute; inset:0; overflow:visible; pointer-events:none; }.ef-wire { fill:none; stroke:var(--wire); stroke-width:3; pointer-events:stroke; cursor:pointer; }.ef-wire.selected { stroke-width:6; }.ef-empty { position:absolute; top:180px; left:70px; color:#98a2b6; pointer-events:none; }.ef-empty strong { font-size:24px; font-weight:500; }.ef-empty p { margin-top:10px; }
+.ef-node { position:absolute; width:234px; border:1px solid #d9deea; border-top:3px solid var(--node-color); border-radius:11px; background:#fff; box-shadow:0 4px 15px #2832520b; }.ef-node.selected { outline:2px solid #9b83e7; outline-offset:2px; }.ef-node.running { box-shadow:0 0 0 3px #fbbf2450; }.ef-node.done { border-color:#4fb99a; }.ef-node.failed { border-color:#e97777; }
+.ef-node-head { cursor:grab; padding:10px 14px; height:48px; border-bottom:1px solid #f0f1f7; touch-action:none; }.ef-node-head>span { display:block; font-weight:600; font-size:12px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }.ef-node-head small { color:#909bb0; font-size:10px; }
+#engineeringFlow .ef-port { position:absolute; border:0; background:transparent; padding:0; height:28px; display:flex; align-items:center; gap:8px; border-radius:0; font-size:10px; color:#798399; }.ef-port i { display:block; width:11px; height:11px; border-radius:50%; background:var(--port); box-shadow:0 0 0 3px white; flex-shrink:0; }.ef-port.pending i { box-shadow:0 0 0 4px #ddd1ff; }.ef-inputs { position:absolute; left:-6px; top:53px; width:150px; }#engineeringFlow .ef-inputs .ef-port { position:relative; width:145px; text-align:left; }.ef-port span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }#engineeringFlow .ef-port.output { right:-6px; top:53px; }
+/* 节点卡片内运行结果展示：宽度贴合内容区，高度自适应，多产物可左右切换 */
+#engineeringFlow .ef-node-output { margin:10px 10px 12px; border-top:1px solid #eef0f7; padding-top:9px; }
+.ef-node-out-nav { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:6px; font-size:10px; color:#8b95a8; }
+.ef-node-out-nav button { padding:0 7px; line-height:18px; height:20px; font-size:12px; border:1px solid #e0e5ee; border-radius:5px; background:#fff; }
+.ef-node-out-media { display:block; width:100%; max-height:260px; object-fit:contain; border-radius:6px; background:#f5f6fb; }
+.ef-node-out-text { display:block; width:100%; max-height:180px; overflow:auto; margin:0; padding:7px 8px; background:#f8f9fc; border-radius:6px; font:11px/1.5 inherit; color:#4b5563; white-space:pre-wrap; overflow-wrap:anywhere; }
+#ef-status { padding:10px 15px; background:#fff; border-top:1px solid #e0e5ee; color:#758099; min-height:40px; }
+.ef-field { display:flex; flex-direction:column; gap:7px; margin:15px 0; font-size:12px; }.ef-field small { color:#929bad; font-size:11px; }.ef-field textarea { resize:vertical; }.ef-connection { border-bottom:1px solid #eee; padding:8px 0; font-size:11px; }.ef-connection button { margin-top:5px; }#engineeringFlow .ef-danger { color:#c96060; margin-top:20px; }.ef-result { border:1px solid #e1e4ed; border-radius:8px; padding:10px; margin:10px 0; }.ef-result pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; font:12px/1.7 inherit; }.ef-result p { overflow-wrap:anywhere; }.ef-result img,.ef-result video { width:100%; margin-top:10px; border-radius:6px; }#ef-results { margin-top:25px; }
+@media(max-width:1100px){.ef-layout{grid-template-columns:190px minmax(250px,1fr) 230px}}
+
+.ef-wire-preview { fill:none; stroke-width:3; stroke-dasharray:7 5; pointer-events:none; }
+#engineeringFlow .ef-port { touch-action:none; user-select:none; cursor:crosshair; }
+#engineeringFlow .ef-port.ef-compatible i { box-shadow:0 0 0 4px #62bcab50; }
+#engineeringFlow .ef-port.ef-incompatible { opacity:.35; }
+#engineeringFlow .ef-port.ef-hover i { transform:scale(1.35); }
+#engineeringFlow .ef-port.ef-incompatible.ef-hover { opacity:1; color:#d65d5d; }
+
+#engineeringFlow .ef-viewport { scrollbar-width:none; }
+#engineeringFlow .ef-viewport::-webkit-scrollbar { width:0; height:0; display:none; }
+#engineeringFlow .ef-viewport.ef-pan-ready,#engineeringFlow .ef-pan-ready * { cursor:grab!important; user-select:none; }
+#engineeringFlow .ef-viewport.ef-panning,#engineeringFlow .ef-panning * { cursor:grabbing!important; }

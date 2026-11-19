@@ -1,0 +1,9 @@
+{
+  "magnet": {
+    "type": "magnet",
+    "label": "Magnetz",
+    "baseUrl": "https://magnetz.eu",
+    "searchPath": "/api/magnets/search",
+    "queryParam": "query"
+  }
+}

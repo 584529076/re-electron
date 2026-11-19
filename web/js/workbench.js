@@ -25,7 +25,9 @@
         midJobId: null,        // D-QUEUE：实际是 queueId（沿用字段名避免大改他处引用）
         midQueuePosition: -1,  // D-QUEUE：在 pending 队列中的位置（-1 不在 pending）
         midMeta: null,
-        midResult: null,       // { kind, dataUrl, filename, mime, text }
+        midResult: null,       // { kind, dataUrl, filename, mime, text, artifacts:[] }
+        midArtifactIndex: 0,   // 2026-11 多产物翻页索引
+        midQueueId: null,      // 2026-11 当前结果所属 queueId（落盘产物另存为用）
         midMode: 'preview',    // D-MID-COMPARE: 'preview' | 'compare'
         midCompareInput: null, // D-MID-COMPARE: { dataUrl, mime, sourcePath } 输入图缓存
         comfyStatus: null,     // { running, port, lastError }
@@ -83,10 +85,30 @@
         _staticBound = true;
         const btnHistory = document.getElementById('dwpBtnHistory');
         if (btnHistory) btnHistory.addEventListener('click', () => {
-            if (window.switchMainView) window.switchMainView('assets');
+            // 2026-11：查看历史 = 打开工作台自己的任务队列抽屉（生成历史），
+            // 不再跳到资产库页面。drawer 展示全部 pending/running/done/failed/cancelled 任务。
+            if (window.taskQueue && typeof window.taskQueue.open === 'function') {
+                window.taskQueue.open();
+                return;
+            }
+            // 兜底：drawer 尚未就绪时，等 DOMContentLoaded 后再试一次
+            const retry = () => {
+                if (window.taskQueue && typeof window.taskQueue.open === 'function') window.taskQueue.open();
+                else if (window.switchMainView) window.switchMainView('assets');
+            };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', retry, { once: true });
+            else retry();
         });
         const toolSel = document.getElementById('dwpToolSelect');
         if (toolSel) toolSel.addEventListener('change', (e) => setTool(e.target.value));
+        // 2026-11 方案 B：左侧工具 rail 点击切换（事件委托，rail 节点是静态的）
+        const railList = document.getElementById('dwpToolRailList');
+        if (railList) railList.addEventListener('click', (e) => {
+            const item = e.target.closest('.dwp-tool-rail-item');
+            if (!item || item.disabled) return;
+            const id = item.getAttribute('data-tool-id');
+            if (id) setTool(id);
+        });
         const btnRun = document.getElementById('dwpBtnRun');
         if (btnRun) btnRun.addEventListener('click', runJob);
         const btnReset = document.getElementById('dwpBtnReset');
@@ -106,12 +128,22 @@
         const btnReuse = document.getElementById('dwpBtnReuse');
         if (btnReuse) btnReuse.addEventListener('click', () => {
             if (!_state.toolDetail) return;
-            // 不再强制设 running 态：runJob 会根据 position 自己定 queued/running
-            // 之前强制 running 会让 updateMidStage 把已有结果先隐藏掉，
-            // 万一新任务排到队列后面（queued），结果被清掉又重新显示造成
-            // 「旧任务被取消」的视觉错觉。留给 runJob 一次性更新 midState。
             runJob();
         });
+        // 2026-11 图形化导入向导
+        const btnImport = document.getElementById('dwpBtnImportWorkflow');
+        if (btnImport) btnImport.addEventListener('click', openImportWizard);
+        const wfClose = document.getElementById('wfImpClose');
+        if (wfClose) wfClose.addEventListener('click', closeImportWizard);
+        const wfPick = document.getElementById('wfImpPick');
+        if (wfPick) wfPick.addEventListener('click', wizardPickFile);
+        const wfBack = document.getElementById('wfImpBack');
+        if (wfBack) wfBack.addEventListener('click', () => {
+            const s1 = document.getElementById('wfImpStep1'), s2 = document.getElementById('wfImpStep2');
+            if (s1) s1.hidden = false; if (s2) s2.hidden = true;
+        });
+        const wfSave = document.getElementById('wfImpSave');
+        if (wfSave) wfSave.addEventListener('click', wizardSave);
         // D-MID-ZOOM：中栏图片滚轮缩放 + 拖拽平移（仅图片；视频/文本不生效）
         setupImageZoomOnce();
         // D-MID-COMPARE：预览/对比模式切换
@@ -415,17 +447,163 @@
 
     function renderToolSelect() {
         const sel = document.getElementById('dwpToolSelect');
-        if (!sel) return;
+        // 兼容旧下拉框（hidden 但仍保留，供外部 get/set 引用）
+        if (sel) {
+            if (!_state.toolList.length) {
+                sel.innerHTML = '<option value="">（暂无可用工具）</option>';
+                sel.disabled = true;
+            } else {
+                sel.disabled = false;
+                sel.innerHTML = _state.toolList.map(t => {
+                    const bad = !!t.broken;
+                    const label = escapeHtml(t.name || t.id) + (t.mode ? ' · ' + escapeHtml(t.mode.toUpperCase()) : '');
+                    return `<option value="${escapeAttr(t.id)}"${bad ? ' disabled' : ''}>${bad ? '⚠ ' : ''}${label}${bad ? '（不可用）' : ''}</option>`;
+                }).join('');
+                if (_state.toolId) sel.value = _state.toolId;
+            }
+        }
+        // 2026-11 方案 B：左侧工具 rail
+        renderToolRail();
+    }
+
+    // 2026-11 方案 B：渲染左侧竖排工具 rail
+    function renderToolRail() {
+        const list = document.getElementById('dwpToolRailList');
+        const count = document.getElementById('dwpToolRailCount');
+        if (!list) return;
+        if (count) count.textContent = _state.toolList.length ? String(_state.toolList.length) : '';
         if (!_state.toolList.length) {
-            sel.innerHTML = '<option value="">（暂无可用工具）</option>';
-            sel.disabled = true;
+            list.innerHTML = '<div class="dwp-tool-rail-empty">暂无工具<br>点上方「导入工作流」添加</div>';
             return;
         }
-        sel.disabled = false;
-        sel.innerHTML = _state.toolList.map(t =>
-            `<option value="${escapeAttr(t.id)}">${escapeHtml(t.name || t.id)}${t.mode ? ' · ' + escapeHtml(t.mode.toUpperCase()) : ''}</option>`
-        ).join('');
-        if (_state.toolId) sel.value = _state.toolId;
+        list.innerHTML = _state.toolList.map(t => {
+            const bad = !!t.broken;
+            const active = t.id === _state.toolId;
+            const icon = (t.coverUrl && !bad)
+                ? `<img src="${escapeAttr(t.coverUrl)}" alt="" onerror="this.style.display='none';this.parentNode.textContent='\\u2728';">`
+                : `<i class="fa-solid ${bad ? 'fa-triangle-exclamation' : escapeAttr((t.coverFallback && t.coverFallback.icon) || 'fa-wand-magic-sparkles')}"></i>`;
+            const mode = String(t.mode || 'sfw').toUpperCase();
+            const name = escapeHtml(t.name || t.id) + (bad ? ' ⚠' : '');
+            return `<button type="button" class="dwp-tool-rail-item${active ? ' active' : ''}" data-tool-id="${escapeAttr(t.id)}"${bad ? ' disabled title="' + escapeAttr(t.error || '工具损坏') + '"' : ''} aria-pressed="${active}">
+                <span class="dwp-tool-rail-icon">${icon}</span>
+                <span class="dwp-tool-rail-meta"><span class="dwp-tool-rail-name" title="${escapeAttr(t.name || t.id)}">${name}</span><span class="dwp-tool-rail-mode ${escapeAttr(mode.toLowerCase())}">${escapeHtml(mode)}${bad ? ' · 不可用' : ''}</span></span>
+            </button>`;
+        }).join('');
+        _scrollRailToActive();
+    }
+
+    // 切换工具后同步 rail 选中态并滚动到可见
+    function _syncToolRailSelection() {
+        const list = document.getElementById('dwpToolRailList');
+        if (!list) return;
+        list.querySelectorAll('.dwp-tool-rail-item').forEach(el => {
+            const active = el.getAttribute('data-tool-id') === _state.toolId;
+            el.classList.toggle('active', active);
+            el.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        _scrollRailToActive();
+    }
+    function _scrollRailToActive() {
+        const list = document.getElementById('dwpToolRailList');
+        if (!list) return;
+        const active = list.querySelector('.dwp-tool-rail-item.active');
+        if (active && typeof active.scrollIntoView === 'function') {
+            try { active.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+        }
+    }
+
+    // ========== 2026-11 图形化导入工作流向导 ==========
+    let _wizardDraft = null; // { filePath, workflow, schema, preview }
+    function openImportWizard() {
+        const modal = document.getElementById('wfImportModal');
+        if (!modal) { console.warn('[workbench] 导入向导 DOM 不存在'); return; }
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        const s1 = document.getElementById('wfImpStep1'), s2 = document.getElementById('wfImpStep2');
+        if (s1) s1.hidden = false; if (s2) s2.hidden = true;
+        const msg = document.getElementById('wfImpPickMsg'); if (msg) msg.textContent = '';
+        _wizardDraft = null;
+        // 2026-11 用户期望：点「导入工作流」直接拉起资源管理器，
+        // 选完文件再进向导（字段勾选/改名），跳过第 1 步手动再点一次。
+        wizardPickFile();
+    }
+    function closeImportWizard() {
+        const modal = document.getElementById('wfImportModal');
+        if (modal) { modal.classList.remove('active'); modal.style.display = 'none'; }
+        _wizardDraft = null;
+    }
+    async function wizardPickFile() {
+        const msg = document.getElementById('wfImpPickMsg');
+        if (!api.tools || typeof api.tools.pickWorkflowFile !== 'function') {
+            if (msg) msg.textContent = '当前环境不支持导入（接口不可用）';
+            return;
+        }
+        if (msg) { msg.style.color = '#6b7280'; msg.textContent = '正在读取…'; }
+        try {
+            const r = await api.tools.pickWorkflowFile();
+            if (!r || !r.ok) { if (msg) { msg.style.color = '#dc2626'; msg.textContent = (r && r.error) || '读取失败'; } return; }
+            if (r.canceled) { closeImportWizard(); return; } // 用户取消选文件 → 关闭弹窗
+            const gen = await api.tools.generateSchema({ workflow: r.workflow, id: r.suggestedId, name: r.suggestedId });
+            if (!gen || !gen.ok) { if (msg) { msg.style.color = '#dc2626'; msg.textContent = (gen && gen.error) || '解析失败'; } return; }
+            _wizardDraft = { filePath: r.filePath, workflow: r.workflow, schema: gen.schema, preview: gen.preview };
+            renderWizardDraft();
+        } catch (e) {
+            if (msg) { msg.style.color = '#dc2626'; msg.textContent = '导入失败: ' + (e && e.message); }
+        }
+    }
+    function renderWizardDraft() {
+        const d = _wizardDraft; if (!d) return;
+        const s1 = document.getElementById('wfImpStep1'), s2 = document.getElementById('wfImpStep2');
+        if (s1) s1.hidden = true; if (s2) s2.hidden = false;
+        const idI = document.getElementById('wfImpId'); if (idI) idI.value = d.schema.id || '';
+        const nameI = document.getElementById('wfImpName'); if (nameI) nameI.value = d.schema.name || '';
+        const modeI = document.getElementById('wfImpMode'); if (modeI) modeI.value = d.schema.mode || 'sfw';
+        const p = d.preview || {};
+        const summary = document.getElementById('wfImpSummary');
+        if (summary) summary.innerHTML = `识别到 <b>${p.nodeCount || 0}</b> 个节点、<b>${(p.formFields || []).length}</b> 个可编辑字段；输出节点 <b>${(p.outputNodes || []).length}</b> 个。节点类型：${escapeHtml((p.nodeTypes || []).slice(0, 8).join('、') || '—')}`;
+        const fieldsBox = document.getElementById('wfImpFields');
+        if (fieldsBox) {
+            fieldsBox.innerHTML = (p.formFields || []).length
+                ? p.formFields.map((f, i) => `<label style="display:flex; gap:8px; align-items:flex-start; padding:5px 2px; font-size:12px; cursor:pointer;">
+                     <input type="checkbox" data-wf-field="${i}" checked style="margin-top:2px;">
+                     <span><b>${escapeHtml(f.label || f.id)}</b> <span style="color:#9ca3af;">· ${escapeHtml(f.type)} · 节点 ${escapeHtml(f.nodeId)}.${escapeHtml(f.field)}</span>${f.note ? `<br><span style="color:#9ca3af;">${escapeHtml(f.note)}</span>` : ''}</span>
+                   </label>`).join('')
+                : '<div style="color:#9ca3af; padding:10px; font-size:12px;">未识别到标准可编辑节点；可在生成后手动编辑 schema.json 补充 formFields</div>';
+        }
+        const outs = document.getElementById('wfImpOutputs');
+        if (outs) outs.innerHTML = '输出：' + ((p.outputNodes || []).map(o => `${escapeHtml(o.nodeId)} → ${escapeHtml(o.type)}`).join('、') || '<span style="color:#dc2626;">未识别，请手动指定</span>');
+        const warn = document.getElementById('wfImpWarn');
+        if (warn) warn.innerHTML = (p.warnings || []).map(w => '⚠ ' + escapeHtml(w)).join('<br>');
+    }
+    async function wizardSave() {
+        const d = _wizardDraft; if (!d) return;
+        const btn = document.getElementById('wfImpSave');
+        if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+        try {
+            const id = (document.getElementById('wfImpId').value || '').trim();
+            const name = (document.getElementById('wfImpName').value || '').trim();
+            const mode = document.getElementById('wfImpMode').value;
+            const schema = JSON.parse(JSON.stringify(d.schema));
+            schema.id = id; schema.name = name || id; schema.mode = mode;
+            // 只保留用户勾选的字段
+            const checks = Array.from(document.querySelectorAll('#wfImpFields input[data-wf-field]'));
+            const chosen = new Set(checks.filter(c => c.checked).map(c => Number(c.getAttribute('data-wf-field'))));
+            schema.formFields = (d.preview.formFields || []).filter((f, i) => chosen.has(i));
+            const r = await api.tools.import({ ...schema, workflow: d.workflow });
+            if (!r || !r.ok) { showToast('导入失败: ' + ((r && r.error) || '未知'), 'error'); return; }
+            closeImportWizard();
+            await loadToolList();
+            if (r.tool && !r.tool.broken) {
+                await setTool(r.tool.id);
+                showToast('已导入并启用：' + (r.tool.name || id), 'success');
+            } else {
+                showToast('已导入，但校验有问题：' + (r.error || '请检查 schema'), 'error');
+            }
+        } catch (e) {
+            showToast('导入失败: ' + (e && e.message), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> 保存并启用'; }
+        }
     }
 
     // ========== 切换工具 ==========
@@ -443,6 +621,7 @@
         try { localStorage.setItem('workbench.lastToolId', toolId); } catch (e) {}
         const sel = document.getElementById('dwpToolSelect');
         if (sel) sel.value = toolId;
+        _syncToolRailSelection();
         if (!api.tools || typeof api.tools.get !== 'function') return;
         const r = await api.tools.get(toolId);
         if (!r || !r.ok) {
@@ -669,33 +848,87 @@
         return target ? document.getElementById('at-field-' + target.id) : null;
     }
 
-    // ========== 提示词生成器弹层 ==========
+    // ========== 提示词生成器弹层（ComfyPromptStudio 嵌入版）==========
+    // 点击入口后，把 CPS 的完整界面以 iframe 形式铺进 host；CPS 点「采用提示词」
+    // 时通过 postMessage 把 positive 回传，这里写入左栏 textarea，回到原链路。
+    let _cpsMsgBound = false;
     function openPromptGenOverlay() {
         const host = document.getElementById('dwpPromptGenHost');
         if (!host) return;
-        if (!window.promptGenEmbedded || typeof window.promptGenEmbedded.openEmbedded !== 'function') {
-            showToast('提示词生成器模块未就绪', 'error');
-            return;
-        }
+        host.hidden = false;
         _state.promptGenOpen = true;
-        window.promptGenEmbedded.openEmbedded(host, (text) => {
-            // 把拼装结果直接写入左栏的 textarea（已动态渲染）
-            const el = _primaryPromptEl();
-            if (el) {
-                el.value = text || '';
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        });
-        // 提供关闭按钮
-        if (!host.querySelector('.dwp-prompt-close')) {
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'btn btn-sm dwp-prompt-close';
-            closeBtn.type = 'button';
-            closeBtn.innerHTML = '<i class="fa-solid fa-arrow-left"></i> 关闭提示词生成器';
-            closeBtn.style.cssText = 'position:absolute; top:14px; right:18px; z-index:5;';
-            closeBtn.addEventListener('click', closePromptGenOverlay);
-            host.appendChild(closeBtn);
+
+        // 复用已创建的 iframe
+        let frame = host.querySelector('iframe.cps-frame');
+        if (!frame) {
+            frame = document.createElement('iframe');
+            frame.className = 'cps-frame';
+            frame.src = '../cps-embed/ui/index.html?embed=1';
+            frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+            frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#0e0f12;';
+            host.appendChild(frame);
+        }
+        frame.style.display = '';
+
+        // 监听 CPS 消息（只绑定一次）：回传提示词 / 请求关闭
+        if (!_cpsMsgBound) {
+            _cpsMsgBound = true;
+            window.addEventListener('message', (ev) => {
+                const d = ev.data;
+                if (!d) return;
+                // 只接受来自 CPS iframe 的消息
+                const f = host.querySelector('iframe.cps-frame');
+                if (!f || ev.source !== f.contentWindow) return;
+
+                // CPS 左上角「关闭提示词生成器」按钮 → 返回工作台
+                if (d.type === 'cps:close') {
+                    closePromptGenOverlay();
+                    return;
+                }
+                // CPS「保存到库」→ 把正向/负向/参数写入提示词库的自定义配方
+                if (d.type === 'cps:saveToLibrary') {
+                    (async () => {
+                        try {
+                            const payload = {
+                                id: 'U' + Date.now().toString(36).toUpperCase(),
+                                name: String(d.name || '未命名'),
+                                desc: String(d.desc || ''),
+                                model: (d.param && d.param.model) || '',
+                                positive: String(d.positive || ''),
+                                negative: String(d.negative || ''),
+                                param: d.param || null
+                            };
+                            let r = { ok: false };
+                            if (window.api && window.api.recipes && window.api.recipes.save) {
+                                r = await window.api.recipes.save(payload);
+                            }
+                            if (r && r.ok) {
+                                showToast('已保存到提示词库：' + payload.name, 'success');
+                            } else {
+                                showToast('保存失败：' + ((r && r.error) || '未知原因'), 'error');
+                            }
+                        } catch (e) {
+                            showToast('保存失败：' + (e && e.message), 'error');
+                        }
+                    })();
+                    return;
+                }
+                if (d.type !== 'cps:prompt') return;
+
+                const text = String(d.positive || '');
+                const el = _primaryPromptEl();
+                if (el) {
+                    el.value = text;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                if (_state.toolDetail) {
+                    _state.formValues = collectForm();
+                    updateRunButtonState();
+                }
+                showToast(d.negative ? '已填入提示词（含负向，见 CPS 面板）' : '已填入提示词', 'success');
+                closePromptGenOverlay();
+            });
         }
     }
 
@@ -703,12 +936,8 @@
         const host = document.getElementById('dwpPromptGenHost');
         if (!host) return;
         host.hidden = true;
-        // 把 promptGenPage 移回 body，避免在 host 内被遮挡
-        const page = document.getElementById('promptGenPage');
-        if (page && page.parentNode === host) {
-            document.body.appendChild(page);
-            page.style.display = 'none';
-        }
+        const frame = host.querySelector('iframe.cps-frame');
+        if (frame) frame.style.display = 'none';
         _state.promptGenOpen = false;
     }
 
@@ -845,11 +1074,12 @@
             meta.textContent = `文本结果 · ${(result.text || '').length} 字符`;
         } else if ((result.mime || '').startsWith('video/')) {
             vid.hidden = false;
-            vid.src = result.dataUrl || '';
+            // 2026-11 流式：优先 fileUrl（本地文件），回退 dataUrl
+            vid.src = result.fileUrl || result.dataUrl || '';
             meta.textContent = `${result.filename || 'video'} · ${result.mime}`;
         } else {
             img.hidden = false;
-            img.src = result.dataUrl || '';
+            img.src = result.fileUrl || result.dataUrl || '';
             const sizeKB = result.size ? Math.round(result.size / 1024) : 0;
             meta.textContent = `${result.filename || 'image'} · ${result.mime || 'image/png'}${sizeKB ? ' · ' + sizeKB + ' KB' : ''}`;
         }
@@ -1105,52 +1335,21 @@
     async function _handleResultEvent(ev) {
         const qid = ev.queueId;
         try {
-            const r = await api.taskQueue.resultReadAsDataUrl(qid);
-            if (!r || !r.ok) {
-                console.warn('[workbench] resultReadAsDataUrl failed qid=', qid, 'r=', r);
+            // 2026-11 多产物：优先用 resultItems 拿全量产物列表（含落盘路径）
+            const result = await _loadResultForTask(qid);
+            if (!result) {
+                console.warn('[workbench] result read failed qid=', qid);
                 return;
             }
-            const kind = r.kind || (r.dataUrl ? 'image' : 'text');
-            const result = {
-                kind,
-                dataUrl: r.dataUrl || '',
-                filename: '',
-                mime: r.mime || 'image/png',
-                text: r.text || '',
-                meta: {},
-            };
             // 缓存到所有任务索引（自动匹配按需取用）
             _state.midResultsByJobId.set(qid, result);
             const t = _state.midTasksByJobId.get(qid);
             if (t) t.status = 'done';
 
             // 只渲染当前任务的结果到中栏
-            if (qid !== _state.midJobId) {
-                console.warn('[workbench] result qid mismatch qid=', qid, 'midJobId=', _state.midJobId, '(cache only, no render)');
-                return;
-            }
+            if (qid !== _state.midJobId) return;
 
-            _state.midResult = result;
-            _state.midJobId = null;
-            _state.midQueuePosition = -1;
-            _state.midState = 'done';
-            const meta = document.getElementById('dwpRunMeta');
-            if (meta) { meta.textContent = '完成 · ' + (kind === 'text' ? '文本输出' : '产物已生成'); meta.style.color = '#059669'; }
-            const btn = document.getElementById('dwpBtnRun');
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-palette"></i> 立即生成'; }
-            updateMidStage();
-            showToast('生成完成', 'success');
-            // autoSaveSidecar 依赖老 payload 形态；这里把 result 包装成近似的 shape 喂过去
-            try {
-                await autoSaveSidecar({
-                    dataUrl: r.dataUrl || '',
-                    mime: r.mime || 'image/png',
-                    meta: {},
-                    kind,
-                    text: r.text || '',
-                    filename: '',
-                }, kind);
-            } catch (e) { /* 兜底，静默失败 */ }
+            _applyResultToMid(result, qid);
         } catch (e) {
             console.warn('[workbench] result read failed:', e.message);
             if (qid === _state.midJobId) {
@@ -1158,6 +1357,105 @@
                 updateMidStage();
             }
         }
+    }
+
+    // 2026-11：加载任务的完整结果（多产物），返回统一 shape
+    // { kind, dataUrl, filename, mime, text, meta, artifacts:[{kind,dataUrl,mime,filename,text}] }
+    async function _loadResultForTask(qid) {
+        if (api.taskQueue && typeof api.taskQueue.resultItems === 'function') {
+            try {
+                const r = await api.taskQueue.resultItems(qid);
+                if (r && r.ok && Array.isArray(r.items) && r.items.length) {
+                    const artifacts = r.items.map(it => ({
+                        kind: it.kind || (it.dataUrl || it.fileUrl ? (it.mime || '').startsWith('video/') ? 'video' : 'image' : 'text'),
+                        dataUrl: it.dataUrl || '',
+                        fileUrl: it.fileUrl || '',
+                        mime: it.mime || 'image/png',
+                        filename: it.filename || '',
+                        text: it.text || '',
+                        size: it.size || 0,
+                    }));
+                    const first = artifacts[0];
+                    return {
+                        kind: first.kind, dataUrl: first.dataUrl, fileUrl: first.fileUrl,
+                        filename: first.filename, mime: first.mime, text: first.text, meta: {}, artifacts,
+                    };
+                }
+            } catch (e) { /* 回退老接口 */ }
+        }
+        // 回退：老 resultReadAsDataUrl 单产物接口
+        if (api.taskQueue && typeof api.taskQueue.resultReadAsDataUrl === 'function') {
+            const r = await api.taskQueue.resultReadAsDataUrl(qid);
+            if (!r || !r.ok) return null;
+            const kind = r.kind || (r.dataUrl ? 'image' : 'text');
+            return {
+                kind, dataUrl: r.dataUrl || '', filename: '',
+                mime: r.mime || 'image/png', text: r.text || '', meta: {},
+                artifacts: [{ kind, dataUrl: r.dataUrl || '', mime: r.mime || 'image/png', text: r.text || '', filename: '' }],
+            };
+        }
+        return null;
+    }
+
+    // 把结果渲染到中栏并更新状态 + 自动存档
+    async function _applyResultToMid(result, qid) {
+        _state.midResult = result;
+        _state.midQueueId = qid || null;
+        _state.midJobId = null;
+        _state.midQueuePosition = -1;
+        _state.midState = 'done';
+        _state.midArtifactIndex = 0;
+        renderResult(result);
+        updateMidStage();
+        _renderArtifactNav();
+        const meta = document.getElementById('dwpRunMeta');
+        const artCount = (result.artifacts || []).length;
+        if (meta) {
+            meta.textContent = '完成 · ' + (result.kind === 'text' ? '文本输出' : (artCount > 1 ? `${artCount} 个产物` : '产物已生成'));
+            meta.style.color = '#059669';
+        }
+        const btn = document.getElementById('dwpBtnRun');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-palette"></i> 立即生成'; }
+        showToast('生成完成', 'success');
+        try {
+            await autoSaveSidecar({
+                dataUrl: result.dataUrl || '', mime: result.mime || 'image/png',
+                meta: result.meta || {}, kind: result.kind, text: result.text || '', filename: result.filename || '',
+            }, result.kind);
+        } catch (e) { /* 兜底，静默失败 */ }
+    }
+
+    // 2026-11 多产物：中栏产物翻页导航（仅当 >1 个产物时显示）
+    function _renderArtifactNav() {
+        let nav = document.getElementById('dwpArtifactNav');
+        const host = document.getElementById('dwpOutputStage');
+        const result = _state.midResult;
+        const total = result && result.artifacts ? result.artifacts.length : 0;
+        if (!host) return;
+        if (total <= 1) { if (nav) nav.remove(); return; }
+        if (!nav) {
+            nav = document.createElement('div');
+            nav.id = 'dwpArtifactNav';
+            nav.style.cssText = 'position:absolute; bottom:8px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:10px; background:rgba(15,23,42,.75); color:#fff; border-radius:20px; padding:5px 12px; font-size:12px; z-index:5;';
+            if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+            host.appendChild(nav);
+        }
+        const idx = _state.midArtifactIndex || 0;
+        nav.innerHTML = `<button type="button" data-artifact="prev" style="background:none;border:none;color:#fff;cursor:pointer;font-size:15px;">‹</button>`
+            + `<span>${idx + 1} / ${total}</span>`
+            + `<button type="button" data-artifact="next" style="background:none;border:none;color:#fff;cursor:pointer;font-size:15px;">›</button>`;
+        nav.querySelectorAll('button').forEach(b => {
+            b.onclick = () => {
+                const dir = b.getAttribute('data-artifact') === 'next' ? 1 : -1;
+                _state.midArtifactIndex = (idx + dir + total) % total;
+                const a = result.artifacts[_state.midArtifactIndex];
+                if (a) {
+                    _state.midResult = { ..._state.midResult, ...a };
+                    renderResult(_state.midResult);
+                    _renderArtifactNav();
+                }
+            };
+        });
     }
 
     async function autoSaveSidecar(payload, kind) {
@@ -1204,6 +1502,21 @@
     function saveResultAs() {
         if (!_state.midResult) return;
         const r = _state.midResult;
+        // 2026-11 落盘产物：优先走零内存 file-copy 路径（含多产物当前索引）
+        if (_state.midQueueId && api.taskQueue && typeof api.taskQueue.resultSaveAs === 'function') {
+            const hasFileArtifact = (r.artifacts || []).some(a => a.fileUrl || a.dataUrl) || r.fileUrl;
+            if (hasFileArtifact && r.kind !== 'text') {
+                api.taskQueue.resultSaveAs({
+                    queueId: _state.midQueueId,
+                    index: _state.midArtifactIndex || 0,
+                }).then(out => {
+                    if (out && out.canceled) return;
+                    if (out && out.ok) showToast('已保存到 ' + (out.path || '本地'), 'success');
+                    else showToast('另存为失败: ' + ((out && out.error) || '未知'), 'error');
+                }).catch(e => showToast('另存为失败: ' + e.message, 'error'));
+                return;
+            }
+        }
         if (r.kind === 'text') {
             const base64 = btoa(unescape(encodeURIComponent(r.text || '')));
             const stem = `${_state.toolId}-${Date.now()}`;
@@ -1258,18 +1571,15 @@
         if (!_state.toolId || !_state.toolDetail) return;
 
         const currentForm = _state.formValues || {};
-        // 在 midTasksByJobId 里找：同 tool_id + status='done' + form 完全匹配的最新的任务
-        let matchQid = null;
-        let matchEnqueuedAt = -1;
-        for (const [qid, task] of _state.midTasksByJobId) {
-            if (task.tool_id !== _state.toolId) continue;
-            if (task.status !== 'done') continue;
-            if (!_formValuesMatch(task.form_values, currentForm)) continue;
-            const ts = task.enqueued_at || 0;
-            if (ts > matchEnqueuedAt) {
-                matchEnqueuedAt = ts;
-                matchQid = qid;
-            }
+        // 2026-11 放宽匹配：先本地缓存找（忽略 seed 等随机字段）
+        let matchQid = _findMatchingTaskLocal(currentForm);
+        // 本地缓存没命中 → 按需查库（突破 500 条缓存上限）
+        if (!matchQid && api.taskQueue && typeof api.taskQueue.findByForm === 'function') {
+            try {
+                const r = await api.taskQueue.findByForm({ toolId: _state.toolId, formValues: currentForm });
+                if (thisCall !== _refreshCallId) return;
+                if (r && r.ok && r.queueId) matchQid = r.queueId;
+            } catch (e) { /* 查库失败忽略，退回无匹配 */ }
         }
 
         if (matchQid) {
@@ -1279,10 +1589,14 @@
             //   2) 用户点了立即生成 → midState 已切到 running/queued，自动匹配不该再覆盖
             if (thisCall !== _refreshCallId) return;
             if (_state.midState === 'running' || _state.midState === 'queued') return;
-            if (result && (result.dataUrl || result.text)) {
+            if (result && (result.dataUrl || result.fileUrl || result.text)) {
                 _state.midResult = result;
+                _state.midQueueId = matchQid;
                 _state.midState = 'done';
+                _state.midArtifactIndex = 0;
+                renderResult(result);
                 updateMidStage();
+                _renderArtifactNav();
                 return;
             }
         }
@@ -1315,6 +1629,36 @@
         }
     }
 
+    // 2026-11 忽略随机字段的归一化（与后端 taskQueue:findByForm 保持一致）
+    const _IGNORE_RANDOM_KEYS = new Set(['seed', 'seed_1st', 'seed_2nd', 'seed_high', 'seed_low']);
+    function _normalizeFormForMatch(obj) {
+        try {
+            if (obj == null || typeof obj !== 'object') return JSON.stringify(obj);
+            const sorted = {};
+            for (const k of Object.keys(obj).sort()) {
+                if (_IGNORE_RANDOM_KEYS.has(k)) continue; // 忽略 seed 等随机字段
+                const v = obj[k];
+                if (Array.isArray(v)) {
+                    sorted[k] = v.map(x => (x && typeof x === 'object' && 'id' in x ? x.id : x));
+                } else {
+                    sorted[k] = v;
+                }
+            }
+            return JSON.stringify(sorted);
+        } catch (e) { return ''; }
+    }
+    function _findMatchingTaskLocal(currentForm) {
+        const target = _normalizeFormForMatch(currentForm);
+        let matchQid = null, matchAt = -1;
+        for (const [qid, task] of _state.midTasksByJobId) {
+            if (task.tool_id !== _state.toolId || task.status !== 'done') continue;
+            if (_normalizeFormForMatch(task.form_values) !== target) continue;
+            const ts = task.enqueued_at || 0;
+            if (ts > matchAt) { matchAt = ts; matchQid = qid; }
+        }
+        return matchQid;
+    }
+
     // 启动时拉一次历史任务列表（带 form_values，KB 级可接受），填进 midTasksByJobId
     // 用于 open() 完成后立即能匹配历史任务；result dataUrl 按需懒加载（_ensureResultCached）
     async function _loadInitialTasksForAutoMatch() {
@@ -1330,28 +1674,12 @@
         }
     }
 
-    // 懒加载：cached 命中直接返回；否则调 IPC 读 result dataUrl 并缓存
+    // 懒加载：cached 命中直接返回；否则调 IPC 读完整结果并缓存
     async function _ensureResultCached(qid) {
         if (_state.midResultsByJobId.has(qid)) return _state.midResultsByJobId.get(qid);
-        if (!api.taskQueue || typeof api.taskQueue.resultReadAsDataUrl !== 'function') return null;
-        try {
-            const r = await api.taskQueue.resultReadAsDataUrl(qid);
-            if (!r || !r.ok) return null;
-            const kind = r.kind || (r.dataUrl ? 'image' : 'text');
-            const result = {
-                kind,
-                dataUrl: r.dataUrl || '',
-                filename: '',
-                mime: r.mime || 'image/png',
-                text: r.text || '',
-                meta: {},
-            };
-            _state.midResultsByJobId.set(qid, result);
-            return result;
-        } catch (e) {
-            console.warn('[workbench] _ensureResultCached:', e && e.message);
-            return null;
-        }
+        const result = await _loadResultForTask(qid);
+        if (result) _state.midResultsByJobId.set(qid, result);
+        return result;
     }
 
     // ========== 暴露 ==========
