@@ -9,6 +9,7 @@ _c.yml
 test-*.js
 dbg-e2e-*.js
 *.log
+*.ps1
 
 # ===== 备份文件（含旧配置，绝不进仓库）=====
 *.bak
