@@ -89,44 +89,9 @@ contextBridge.exposeInMainWorld('api', {
         generate: (payload) => ipcRenderer.invoke('llm:generate', payload),
         cancel: (jobId) => ipcRenderer.invoke('llm:cancel', jobId),
     },
-    promptModules: {
-        get: () => ipcRenderer.invoke('prompt:modules:get'),
-        upsert: (m) => ipcRenderer.invoke('prompt:module:upsert', m),
-        delete: (id) => ipcRenderer.invoke('prompt:module:delete', id),
-    },
-    promptTags: {
-        get: (moduleId) => ipcRenderer.invoke('prompt:tags:get', moduleId || null),
-        upsert: (t) => ipcRenderer.invoke('prompt:tag:upsert', t),
-        delete: (id) => ipcRenderer.invoke('prompt:tag:delete', id),
-    },
     promptHistory: {
         list: () => ipcRenderer.invoke('prompt:history:list'),
         clear: () => ipcRenderer.invoke('prompt:history:clear'),
-    },
-    // ========= D-35 拼装规则 =========
-    assembleRule: {
-        get: () => ipcRenderer.invoke('prompt:assembleRule:get'),
-        set: (rule) => ipcRenderer.invoke('prompt:assembleRule:set', rule),
-    },
-    // ========= D-31 提示词分类管理（prompt_menu） =========
-    promptMenu: {
-        list: () => ipcRenderer.invoke('prompt:menu:list'),
-        add: (item) => ipcRenderer.invoke('prompt:menu:add', item),
-        update: (item) => ipcRenderer.invoke('prompt:menu:update', item),
-        delete: (id) => ipcRenderer.invoke('prompt:menu:delete', id),
-        get: (id) => ipcRenderer.invoke('prompt:menu:get', id),
-    },
-    // ========= D-31 提示词条目管理（prompt_items） =========
-    promptItems: {
-        list: (categoryId) => ipcRenderer.invoke('prompt:item:list', { category_id: categoryId }),
-        listByCategories: (ids) => ipcRenderer.invoke('prompt:item:listByCategories', { category_ids: ids }),
-        add: (item) => ipcRenderer.invoke('prompt:item:add', item),
-        update: (item) => ipcRenderer.invoke('prompt:item:update', item),
-        delete: (id) => ipcRenderer.invoke('prompt:item:delete', id),
-        get: (id) => ipcRenderer.invoke('prompt:item:get', id),
-        getByIds: (ids) => ipcRenderer.invoke('prompt:item:getByIds', { ids }),
-        listAll: () => ipcRenderer.invoke('prompt:item:listAll'),
-        import: (rows) => ipcRenderer.invoke('prompt:item:import', { rows }),
     },
     // ========= 提示词库（prompt_library：单表 + tags CSV 列） =========
     promptLibrary: {
@@ -143,44 +108,6 @@ contextBridge.exposeInMainWorld('api', {
         save:   (recipe) => ipcRenderer.invoke('recipe:save', recipe),
         delete: (id)     => ipcRenderer.invoke('recipe:delete', id),
     },
-    // ========= 提示词预览图（<promptsDir>/previews/<id>-<ts>.<ext>）=========
-    promptPreview: {
-        upload: (payload) => ipcRenderer.invoke('prompt:preview:upload', payload),
-        read:   (payload) => ipcRenderer.invoke('prompt:preview:read', payload),
-        delete: (payload) => ipcRenderer.invoke('prompt:preview:delete', payload),
-    },
-    // ========= D-29 NSFW 模式 =========
-    nsfw: {
-        fetchReadme: () => ipcRenderer.invoke('nsfw:fetchReadme'),
-        getSource: () => ipcRenderer.invoke('nsfw:source:get'),
-        // D-30: 本地模板拼装
-        importTemplates: (dir) => ipcRenderer.invoke('nsfw:importTemplates', { dir }),
-        listTemplates: (module) => ipcRenderer.invoke('nsfw:listTemplates', { module }),
-        assemble: (payload) => ipcRenderer.invoke('nsfw:assemble', payload),
-        assembleAndRefine: (payload) => ipcRenderer.invoke('nsfw:assembleAndRefine', payload),
-    },
-    // ========= D-37 + D-38: 关联规则 + 校验 =========
-    promptAssociationListByItem: (itemId) => ipcRenderer.invoke('prompt:association:listByItem', { itemId }),
-    promptAssociationListAll: () => ipcRenderer.invoke('prompt:association:listAll'),
-    promptAssociationUpsert: (payload) => ipcRenderer.invoke('prompt:association:upsert', payload),
-    promptAssociationDelete: (id) => ipcRenderer.invoke('prompt:association:delete', id),
-    promptAssociationImport: (rows) => ipcRenderer.invoke('prompt:association:import', { rows }),
-    nsfwValidate: (itemIds) => ipcRenderer.invoke('nsfw:validate', { itemIds }),
-    sceneTemplateList: () => ipcRenderer.invoke('scene:template:list'),
-    sceneTemplateAdd: (payload) => ipcRenderer.invoke('scene:template:add', payload),
-    sceneTemplateUpdate: (payload) => ipcRenderer.invoke('scene:template:update', payload),
-    sceneTemplateToggleEnabled: (payload) => ipcRenderer.invoke('scene:template:toggleEnabled', payload),
-    sceneTemplateDelete: (payload) => ipcRenderer.invoke('scene:template:delete', payload),
-    // ========= D-NSFW-A: NSFW 模板导入（向导）==========
-    promptItemFindDuplicates: (names) => ipcRenderer.invoke('prompt:item:findDuplicates', { names }),
-    promptItemMerge: (targetId, srcIds) => ipcRenderer.invoke('prompt:item:merge', { target_id: targetId, src_ids: srcIds }),
-    promptAssociationPreviewImport: (assocs) => ipcRenderer.invoke('prompt:association:previewImport', { associations: assocs }),
-    promptExampleList: (categoryId) => ipcRenderer.invoke('prompt:example:list', { category_id: categoryId || null }),
-    promptExampleImport: (examples) => ipcRenderer.invoke('prompt:example:import', { examples }),
-    promptImportHistoryList: () => ipcRenderer.invoke('prompt:importHistory:list'),
-    promptImportHistoryAdd: (record) => ipcRenderer.invoke('prompt:importHistory:add', record || {}),
-    promptNsfwImportExecute: (payload) => ipcRenderer.invoke('prompt:nsfwImport:execute', payload || {}),
-    promptNsfwImportRunParse: (payload) => ipcRenderer.invoke('prompt:nsfwImport:runParse', payload || {}),
     // ========= ComfyUI（AI 生图）=========
     comfyui: {
         configGet: () => ipcRenderer.invoke('comfyui:config:get'),
